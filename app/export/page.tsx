@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { useReel, type MusicId, type StyleId, type Quality } from "../providers";
 
 // ── Icons ──────────────────────────────────────────────────────────────────
 
@@ -64,6 +65,24 @@ const MessageIcon = () => (
   </svg>
 );
 
+// ── Label maps ─────────────────────────────────────────────────────────────
+
+const MUSIC_LABELS: Record<MusicId, string> = {
+  none: "No Music", hype: "Hype", energetic: "Energetic", cinematic: "Cinematic",
+};
+
+const STYLE_LABELS: Record<StyleId, string> = {
+  electric: "Electric", fire: "Fire", gold: "Gold", stealth: "Stealth",
+};
+
+const QUALITY_SIZES: Record<Quality, string> = {
+  "720p": "80 MB", "1080p": "180 MB", "4k": "420 MB",
+};
+
+const QUALITY_DISPLAY: Record<Quality, string> = {
+  "720p": "720p", "1080p": "HD", "4k": "4K Ultra",
+};
+
 // ── Data ───────────────────────────────────────────────────────────────────
 
 const STEPS = [
@@ -72,27 +91,16 @@ const STEPS = [
   { label: "Export",       number: 3 },
 ];
 
-type Quality = "720p" | "1080p" | "4k";
-
 const QUALITY_OPTIONS: { id: Quality; label: string; sub: string; size: string; badge?: string }[] = [
   { id: "720p",  label: "720p",     sub: "Standard",    size: "~80 MB"  },
   { id: "1080p", label: "1080p HD", sub: "Recommended", size: "~180 MB", badge: "Best" },
   { id: "4k",    label: "4K Ultra", sub: "Max quality", size: "~420 MB" },
 ];
 
-const PROCESS_STEPS = [
-  { at: 0,  text: "Analyzing your clips..." },
-  { at: 17, text: "Detecting key moments..." },
-  { at: 34, text: "Applying Electric theme..." },
-  { at: 52, text: "Mixing Hype audio..." },
-  { at: 68, text: "Rendering in 1080p HD..." },
-  { at: 86, text: "Finalizing your reel..." },
-];
-
 const SHARE_OPTIONS = [
-  { label: "Twitter / X",  icon: <XTwitterIcon />,   color: "#1d9bf0" },
-  { label: "Instagram",    icon: <InstagramIcon />,   color: "#e1306c" },
-  { label: "Text Message", icon: <MessageIcon />,     color: "#34d399" },
+  { label: "Twitter / X",  icon: <XTwitterIcon />,  color: "#1d9bf0" },
+  { label: "Instagram",    icon: <InstagramIcon />,  color: "#e1306c" },
+  { label: "Text Message", icon: <MessageIcon />,    color: "#34d399" },
 ];
 
 // ── Progress Bar ───────────────────────────────────────────────────────────
@@ -155,9 +163,15 @@ function SectionHeader({ label, title }: { label: string; title: string }) {
 function ReelThumbnail({
   overlay,
   done,
+  clipBadge,
+  athleteName,
+  athleteSub,
 }: {
   overlay?: React.ReactNode;
   done?: boolean;
+  clipBadge: string;
+  athleteName: string;
+  athleteSub: string;
 }) {
   return (
     <div
@@ -204,12 +218,12 @@ function ReelThumbnail({
             className="px-2 py-1 rounded-md text-[10px] font-semibold"
             style={{ background: "rgba(0,0,0,0.55)", color: "#94a3b8" }}
           >
-            5 clips · Hype · Electric
+            {clipBadge}
           </span>
         ) : null}
       </div>
 
-      {/* Duration badge — bottom right */}
+      {/* Duration badge */}
       {!overlay && (
         <span
           className="absolute bottom-12 right-3 px-2 py-0.5 rounded text-[10px] font-semibold"
@@ -219,7 +233,7 @@ function ReelThumbnail({
         </span>
       )}
 
-      {/* Play button (idle / done) */}
+      {/* Play button */}
       {!overlay && (
         <div className="absolute inset-0 flex items-center justify-center">
           <div
@@ -234,7 +248,7 @@ function ReelThumbnail({
         </div>
       )}
 
-      {/* Bottom gradient + athlete overlay */}
+      {/* Bottom athlete overlay */}
       {!overlay && (
         <div
           className="absolute bottom-0 left-0 right-0 px-4 pt-8 pb-3"
@@ -243,11 +257,9 @@ function ReelThumbnail({
           }}
         >
           <p className="text-white font-black text-sm tracking-wide leading-none mb-0.5">
-            MARCUS JOHNSON
+            {athleteName}
           </p>
-          <p className="text-slate-400 text-xs">
-            #23 · Basketball · St. Mark's School of Texas
-          </p>
+          <p className="text-slate-400 text-xs">{athleteSub}</p>
         </div>
       )}
 
@@ -270,13 +282,16 @@ type Phase = "idle" | "generating" | "done";
 
 export default function ExportPage() {
   const router = useRouter();
+  const { files, firstName, jerseyNumber, sport, school, music, style, quality, showIntro, update } = useReel();
 
   const [phase, setPhase]       = useState<Phase>("idle");
-  const [quality, setQuality]   = useState<Quality>("1080p");
   const [progress, setProgress] = useState(0);
-  const [stepText, setStepText] = useState(PROCESS_STEPS[0].text);
+  const [stepText, setStepText] = useState("Analyzing your clips...");
   const [copied, setCopied]     = useState(false);
 
+  // Process steps are built dynamically in handleGenerate so they reflect
+  // the user's actual music, style, and quality choices at generation time.
+  const processStepsRef = useRef<{ at: number; text: string }[]>([]);
   const intervalRef     = useRef<ReturnType<typeof setInterval> | null>(null);
   const copyTimeoutRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -298,9 +313,8 @@ export default function ExportPage() {
       current += 1.4;
       const clamped = Math.min(current, 100);
 
-      // Resolve current step label
-      let text = PROCESS_STEPS[0].text;
-      for (const s of PROCESS_STEPS) {
+      let text = processStepsRef.current[0]?.text ?? "";
+      for (const s of processStepsRef.current) {
         if (current >= s.at) text = s.text;
       }
 
@@ -319,14 +333,23 @@ export default function ExportPage() {
   }, [phase]);
 
   const handleGenerate = () => {
+    // Build step labels from the user's actual choices
+    processStepsRef.current = [
+      { at: 0,  text: "Analyzing your clips..." },
+      { at: 17, text: "Detecting key moments..." },
+      { at: 34, text: `Applying ${STYLE_LABELS[style]} theme...` },
+      { at: 52, text: `Mixing ${MUSIC_LABELS[music]} audio...` },
+      { at: 68, text: `Rendering in ${quality === "4k" ? "4K Ultra" : quality}...` },
+      { at: 86, text: "Finalizing your reel..." },
+    ];
     setProgress(0);
-    setStepText(PROCESS_STEPS[0].text);
+    setStepText(processStepsRef.current[0].text);
     setPhase("generating");
   };
 
   const handleCopy = () => {
     try {
-      navigator.clipboard.writeText("https://clipt.app/reel/marcus-johnson-23");
+      navigator.clipboard.writeText(`https://clipt.app/reel/${shareSlug}`);
     } catch {
       // no-op in non-secure contexts
     }
@@ -334,7 +357,15 @@ export default function ExportPage() {
     copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
   };
 
-  // active=4 makes all 3 steps show as completed (all step.number < 4)
+  // Derived display values
+  const clipCount   = files.length > 0 ? files.length : 5;
+  const athleteName = firstName ? firstName.toUpperCase() : "ATHLETE";
+  const athleteSub  = `#${jerseyNumber || "—"} · ${sport || "Sport"} · ${school || "Your School"}`;
+  const clipBadge   = `${clipCount} clip${clipCount !== 1 ? "s" : ""} · ${MUSIC_LABELS[music]} · ${STYLE_LABELS[style]}`;
+  const shareSlug   = firstName
+    ? `${firstName.toLowerCase()}-${jerseyNumber || "00"}`
+    : "athlete-00";
+
   const progressActive = phase === "done" ? 4 : 3;
 
   return (
@@ -401,10 +432,12 @@ export default function ExportPage() {
         <div className="mb-6">
           <ReelThumbnail
             done={phase === "done"}
+            clipBadge={clipBadge}
+            athleteName={athleteName}
+            athleteSub={athleteSub}
             overlay={
               phase === "generating" ? (
                 <div className="flex flex-col items-center gap-5 px-8 w-full max-w-xs text-center">
-                  {/* Spinner */}
                   <div
                     className="w-10 h-10 rounded-full border-2 animate-spin"
                     style={{
@@ -412,16 +445,10 @@ export default function ExportPage() {
                       borderTopColor: "#00A3FF",
                     }}
                   />
-                  {/* Step text */}
                   <p className="text-white text-sm font-semibold leading-snug">{stepText}</p>
-                  {/* Percent */}
-                  <p
-                    className="text-5xl font-black leading-none"
-                    style={{ color: "#00A3FF" }}
-                  >
+                  <p className="text-5xl font-black leading-none" style={{ color: "#00A3FF" }}>
                     {Math.floor(progress)}%
                   </p>
-                  {/* Bar */}
                   <div className="w-full h-1.5 rounded-full" style={{ background: "rgba(255,255,255,0.08)" }}>
                     <div
                       className="h-full rounded-full transition-all duration-100"
@@ -431,7 +458,7 @@ export default function ExportPage() {
                       }}
                     />
                   </div>
-                  <p className="text-slate-500 text-xs">Don't close this tab</p>
+                  <p className="text-slate-500 text-xs">Don&apos;t close this tab</p>
                 </div>
               ) : undefined
             }
@@ -444,13 +471,13 @@ export default function ExportPage() {
             className="flex items-center gap-3 flex-wrap px-4 py-3 rounded-xl mb-8 text-xs text-slate-400"
             style={{ background: "#0A1628", border: "1px solid rgba(255,255,255,0.08)" }}
           >
-            <span>5 clips</span>
+            <span>{clipCount} {clipCount === 1 ? "clip" : "clips"}</span>
             <span className="w-px h-3 bg-slate-700" />
-            <span>Hype music</span>
+            <span>{MUSIC_LABELS[music]} music</span>
             <span className="w-px h-3 bg-slate-700" />
-            <span>Electric style</span>
+            <span>{STYLE_LABELS[style]} style</span>
             <span className="w-px h-3 bg-slate-700" />
-            <span>Intro card on</span>
+            <span>Intro card {showIntro ? "on" : "off"}</span>
             <span className="w-px h-3 bg-slate-700" />
             <span>~2:34 duration</span>
           </div>
@@ -467,7 +494,7 @@ export default function ExportPage() {
                   <button
                     key={opt.id}
                     type="button"
-                    onClick={() => setQuality(opt.id)}
+                    onClick={() => update({ quality: opt.id })}
                     className="text-left p-4 rounded-xl transition-all"
                     style={{
                       background: sel ? "rgba(0,163,255,0.1)" : "#0A1628",
@@ -529,7 +556,7 @@ export default function ExportPage() {
               style={{ background: "#00A3FF" }}
             >
               <DownloadIcon />
-              Download HD · 180 MB
+              Download {QUALITY_DISPLAY[quality]} · {QUALITY_SIZES[quality]}
             </button>
 
             {/* Share link */}
@@ -543,7 +570,7 @@ export default function ExportPage() {
                     border: "1px solid rgba(255,255,255,0.08)",
                   }}
                 >
-                  clipt.app/reel/marcus-johnson-23
+                  clipt.app/reel/{shareSlug}
                 </div>
                 <button
                   type="button"

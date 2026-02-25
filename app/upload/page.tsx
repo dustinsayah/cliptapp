@@ -2,18 +2,10 @@
 
 import { useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { useReel } from "../providers";
 
 const ArrowLeftIcon = () => (
-  <svg
-    width="20"
-    height="20"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M19 12H5" />
     <path d="m12 19-7-7 7-7" />
   </svg>
@@ -68,15 +60,21 @@ const inputClass =
 
 const labelClass = "block text-sm font-semibold text-white mb-2";
 
+const MAX_CLIPS = 50;
+
 export default function UploadPage() {
   const router = useRouter();
+  const reel = useReel();
+
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [files, setFiles] = useState<File[]>([]);
-  const [dragging, setDragging] = useState(false);
-  const [firstName, setFirstName] = useState("");
-  const [jerseyNumber, setJerseyNumber] = useState("");
-  const [sport, setSport] = useState("");
-  const [school, setSchool] = useState("");
+
+  // Initialize from context so going back from step 2 restores the form
+  const [files, setFiles]               = useState<File[]>(reel.files);
+  const [dragging, setDragging]         = useState(false);
+  const [firstName, setFirstName]       = useState(reel.firstName);
+  const [jerseyNumber, setJerseyNumber] = useState(reel.jerseyNumber);
+  const [sport, setSport]               = useState(reel.sport);
+  const [school, setSchool]             = useState(reel.school);
 
   const addFiles = useCallback((incoming: FileList | null) => {
     if (!incoming) return;
@@ -85,7 +83,7 @@ export default function UploadPage() {
     );
     setFiles((prev) => {
       const combined = [...prev, ...valid];
-      return combined.slice(0, 10);
+      return combined.slice(0, MAX_CLIPS);
     });
   }, []);
 
@@ -109,7 +107,18 @@ export default function UploadPage() {
     addFiles(e.dataTransfer.files);
   };
 
-  const canContinue = files.length > 0;
+  // All four fields and at least one clip required to continue
+  const canContinue =
+    files.length > 0 &&
+    firstName.trim() !== "" &&
+    jerseyNumber.trim() !== "" &&
+    sport !== "" &&
+    school.trim() !== "";
+
+  const handleContinue = () => {
+    reel.update({ files, firstName: firstName.trim(), jerseyNumber: jerseyNumber.trim(), sport, school: school.trim() });
+    router.push("/customize");
+  };
 
   return (
     <div className="min-h-screen bg-[#050A14] text-white">
@@ -138,7 +147,6 @@ export default function UploadPage() {
             const isLast = i === steps.length - 1;
             return (
               <div key={step.number} className="flex items-center flex-1">
-                {/* Step node */}
                 <div className="flex flex-col items-center gap-2 shrink-0">
                   <div
                     className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border transition-all"
@@ -165,7 +173,6 @@ export default function UploadPage() {
                     {step.label}
                   </span>
                 </div>
-                {/* Connector line */}
                 {!isLast && (
                   <div
                     className="flex-1 h-px mx-2 mb-5"
@@ -186,7 +193,7 @@ export default function UploadPage() {
             Upload Your Clips
           </h1>
           <p className="text-slate-400 text-sm">
-            Add up to 10 clips you want in your reel.
+            Add up to {MAX_CLIPS} clips you want in your reel.
           </p>
         </div>
 
@@ -199,9 +206,7 @@ export default function UploadPage() {
           style={{
             background: "#0A1628",
             border: `2px dashed ${dragging ? "#00A3FF" : "rgba(0,163,255,0.45)"}`,
-            boxShadow: dragging
-              ? "0 0 32px rgba(0,163,255,0.15)"
-              : "none",
+            boxShadow: dragging ? "0 0 32px rgba(0,163,255,0.15)" : "none",
           }}
           onClick={() => fileInputRef.current?.click()}
         >
@@ -303,8 +308,8 @@ export default function UploadPage() {
               <option value="" disabled hidden>
                 Select a sport
               </option>
-              <option value="basketball">Basketball</option>
-              <option value="football">Football</option>
+              <option value="Basketball">Basketball</option>
+              <option value="Football">Football</option>
             </select>
           </div>
 
@@ -321,17 +326,24 @@ export default function UploadPage() {
           </div>
         </div>
 
+        {/* Helper text when button is disabled */}
+        {!canContinue && (
+          <p className="text-slate-500 text-xs text-center mb-3">
+            {files.length === 0
+              ? "Add at least one clip to continue"
+              : "Fill out all fields above to continue"}
+          </p>
+        )}
+
         {/* ── CONTINUE BUTTON ── */}
         <button
           type="button"
           disabled={!canContinue}
+          onClick={handleContinue}
           className="w-full py-4 rounded-xl font-bold text-base text-white transition-all"
           style={
             canContinue
-              ? {
-                  background: "#00A3FF",
-                  cursor: "pointer",
-                }
+              ? { background: "#00A3FF", cursor: "pointer" }
               : {
                   background: "rgba(255,255,255,0.06)",
                   color: "#64748b",

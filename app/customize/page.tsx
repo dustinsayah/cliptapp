@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { useReel, type MusicId, type StyleId } from "../providers";
 
 // ── Icons ──────────────────────────────────────────────────────────────────
 
@@ -71,25 +72,25 @@ const STEPS = [
   { label: "Export", number: 3 },
 ];
 
-type Clip = { id: string; name: string };
+// Clips are normalized to this shape so drag-reorder works for both
+// real File objects (from upload) and the placeholder fallbacks.
+type ClipItem = { key: string; name: string; file: File | null };
 
-const DEFAULT_CLIPS: Clip[] = [
-  { id: "1", name: "fastbreak_dunk.mp4" },
-  { id: "2", name: "defensive_stop.mov" },
-  { id: "3", name: "halftime_highlights.mp4" },
-  { id: "4", name: "three_pointer_buzzer.mov" },
-  { id: "5", name: "game_winner.mp4" },
+const DEFAULT_CLIP_ITEMS: ClipItem[] = [
+  { key: "d1", name: "fastbreak_dunk.mp4",       file: null },
+  { key: "d2", name: "defensive_stop.mov",        file: null },
+  { key: "d3", name: "halftime_highlights.mp4",   file: null },
+  { key: "d4", name: "three_pointer_buzzer.mov",  file: null },
+  { key: "d5", name: "game_winner.mp4",           file: null },
 ];
 
-type MusicId = "none" | "hype" | "energetic" | "cinematic";
 const MUSIC: { id: MusicId; label: string; desc: string; icon: React.ReactNode }[] = [
-  { id: "none",     label: "No Music",   desc: "Let your plays speak for themselves",    icon: <VolumeOffIcon /> },
-  { id: "hype",     label: "Hype",       desc: "High-energy beats for standout moments", icon: <ZapIcon /> },
-  { id: "energetic",label: "Energetic",  desc: "Fast-paced, keeps coaches watching",     icon: <MusicIcon /> },
-  { id: "cinematic",label: "Cinematic",  desc: "Dramatic, orchestral feel",              icon: <MusicIcon /> },
+  { id: "none",      label: "No Music",  desc: "Let your plays speak for themselves",    icon: <VolumeOffIcon /> },
+  { id: "hype",      label: "Hype",      desc: "High-energy beats for standout moments", icon: <ZapIcon /> },
+  { id: "energetic", label: "Energetic", desc: "Fast-paced, keeps coaches watching",     icon: <MusicIcon /> },
+  { id: "cinematic", label: "Cinematic", desc: "Dramatic, orchestral feel",              icon: <MusicIcon /> },
 ];
 
-type StyleId = "electric" | "fire" | "gold" | "stealth";
 const STYLES: { id: StyleId; label: string; gradient: string; accent: string }[] = [
   { id: "electric", label: "Electric", gradient: "linear-gradient(135deg,#0055EE,#00A3FF)", accent: "#00A3FF" },
   { id: "fire",     label: "Fire",     gradient: "linear-gradient(135deg,#C2410C,#FB923C)", accent: "#FB923C" },
@@ -182,9 +183,15 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
 
 export default function CustomizePage() {
   const router = useRouter();
+  const reel   = useReel();
 
-  // Clip order
-  const [clips, setClips] = useState<Clip[]>(DEFAULT_CLIPS);
+  // Clip order — initialized from context files if present, else show placeholders
+  const [orderedClips, setOrderedClips] = useState<ClipItem[]>(() =>
+    reel.files.length > 0
+      ? reel.files.map((f, i) => ({ key: `${i}:${f.name}`, name: f.name, file: f }))
+      : DEFAULT_CLIP_ITEMS
+  );
+
   const dragIdx = useRef<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
 
@@ -193,7 +200,7 @@ export default function CustomizePage() {
     e.preventDefault();
     setDragOver(i);
     if (dragIdx.current === null || dragIdx.current === i) return;
-    setClips(prev => {
+    setOrderedClips(prev => {
       const next = [...prev];
       const [moved] = next.splice(dragIdx.current!, 1);
       next.splice(i, 0, moved);
@@ -203,16 +210,27 @@ export default function CustomizePage() {
   };
   const onDragEnd = () => { dragIdx.current = null; setDragOver(null); };
 
-  // Intro card
-  const [showIntro, setShowIntro] = useState(true);
-
-  // Music
-  const [music, setMusic] = useState<MusicId>("hype");
-
-  // Style
-  const [style, setStyle] = useState<StyleId>("electric");
+  // Initialized from context so going back preserves choices
+  const [showIntro, setShowIntro] = useState(reel.showIntro);
+  const [music, setMusic]         = useState<MusicId>(reel.music);
+  const [style, setStyle]         = useState<StyleId>(reel.style);
 
   const activeStyle = STYLES.find(s => s.id === style)!;
+
+  const handleContinue = () => {
+    // Only save reordered real files back to context; placeholder clips are ignored
+    const reorderedFiles = orderedClips
+      .map(c => c.file)
+      .filter((f): f is File => f !== null);
+
+    reel.update({
+      files: reorderedFiles.length > 0 ? reorderedFiles : reel.files,
+      showIntro,
+      music,
+      style,
+    });
+    router.push("/export");
+  };
 
   return (
     <div className="min-h-screen bg-[#050A14] text-white">
@@ -250,9 +268,9 @@ export default function CustomizePage() {
             The first clip plays first in your reel. Drag the handle to rearrange.
           </p>
           <ul className="flex flex-col gap-2">
-            {clips.map((clip, i) => (
+            {orderedClips.map((clip, i) => (
               <li
-                key={clip.id}
+                key={clip.key}
                 draggable
                 onDragStart={() => onDragStart(i)}
                 onDragOver={(e) => onDragOver(e, i)}
@@ -266,18 +284,15 @@ export default function CustomizePage() {
                   cursor: "grab",
                 }}
               >
-                {/* Grip */}
                 <span className="text-slate-600 hover:text-slate-400 transition-colors">
                   <GripIcon />
                 </span>
-                {/* Number badge */}
                 <span
                   className="w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-black shrink-0"
                   style={{ background: "rgba(0,163,255,0.15)", color: "#00A3FF" }}
                 >
                   {i + 1}
                 </span>
-                {/* Film icon + name */}
                 <span className="text-slate-500 shrink-0"><FilmStripIcon /></span>
                 <span className="text-sm text-white truncate">{clip.name}</span>
               </li>
@@ -295,7 +310,7 @@ export default function CustomizePage() {
             </div>
           </div>
 
-          {/* Preview card */}
+          {/* Live preview — reflects real athlete data and selected style */}
           <div
             className="rounded-xl overflow-hidden transition-all duration-300"
             style={{ opacity: showIntro ? 1 : 0.35, filter: showIntro ? "none" : "grayscale(0.6)" }}
@@ -308,27 +323,30 @@ export default function CustomizePage() {
                 borderRadius: "0.75rem",
               }}
             >
-              {/* Top bar accent */}
               <div
                 className="absolute top-0 left-0 right-0 h-0.5 rounded-t-xl"
                 style={{ background: activeStyle.gradient }}
               />
 
-              {/* Watermark */}
               <p className="text-xs font-black tracking-widest mb-6" style={{ color: activeStyle.accent, opacity: 0.5 }}>
                 CLIPT
               </p>
 
-              {/* Athlete info */}
-              <p className="text-2xl font-black tracking-wide text-white mb-1">MARCUS JOHNSON</p>
+              <p className="text-2xl font-black tracking-wide text-white mb-1">
+                {reel.firstName ? reel.firstName.toUpperCase() : "YOUR NAME"}
+              </p>
               <p className="text-slate-400 text-sm mb-4">
-                <span style={{ color: activeStyle.accent }}>#23</span>
-                {" · "}Basketball
+                <span style={{ color: activeStyle.accent }}>
+                  #{reel.jerseyNumber || "—"}
+                </span>
+                {" · "}
+                {reel.sport || "Sport"}
               </p>
               <div className="w-10 h-px mb-4" style={{ background: activeStyle.accent }} />
-              <p className="text-slate-500 text-xs tracking-widest uppercase">St. Mark's School of Texas</p>
+              <p className="text-slate-500 text-xs tracking-widest uppercase">
+                {reel.school || "Your School"}
+              </p>
 
-              {/* Bottom bar accent */}
               <div
                 className="absolute bottom-0 left-0 right-0 h-0.5 rounded-b-xl"
                 style={{ background: activeStyle.gradient }}
@@ -406,7 +424,6 @@ export default function CustomizePage() {
                       : "1px solid rgba(255,255,255,0.08)",
                   }}
                 >
-                  {/* Swatch */}
                   <div
                     className="w-full h-10 rounded-lg"
                     style={{ background: s.gradient }}
@@ -434,7 +451,7 @@ export default function CustomizePage() {
         {/* ── CONTINUE BUTTON ── */}
         <button
           type="button"
-          onClick={() => router.push("/export")}
+          onClick={handleContinue}
           className="w-full py-4 rounded-xl font-bold text-base text-white transition-all hover:opacity-90 active:scale-[0.99]"
           style={{ background: "#00A3FF", cursor: "pointer" }}
         >
