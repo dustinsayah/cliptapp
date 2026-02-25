@@ -1,32 +1,36 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useReel, type MusicId, type StyleId, type Quality } from "../providers";
+import { useReel } from "../providers";
+import type { ColorAccent } from "../providers";
 
-// ── Icons ──────────────────────────────────────────────────────────────────
+// ── Canvas config ────────────────────────────────────────────────────────────
+const CW = 1280;
+const CH = 720;
+const TITLE_MS = 3000; // 3-second title card
 
+// ── Accent hex lookup ────────────────────────────────────────────────────────
+const COLOR_MAP: Record<ColorAccent, string> = {
+  "Electric Blue": "#00A3FF",
+  "Red":           "#EF4444",
+  "Gold":          "#FBBF24",
+  "Green":         "#22C55E",
+  "Purple":        "#A855F7",
+  "White":         "#F1F5F9",
+};
+
+// ── Steps ────────────────────────────────────────────────────────────────────
+const STEPS = [
+  { label: "Upload Clips", number: 1 },
+  { label: "Customize",    number: 2 },
+  { label: "Export",       number: 3 },
+];
+
+// ── Icons ────────────────────────────────────────────────────────────────────
 const ArrowLeftIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M19 12H5" /><path d="m12 19-7-7 7-7" />
-  </svg>
-);
-
-const CheckSm = () => (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="20 6 9 17 4 12" />
-  </svg>
-);
-
-const CheckMd = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="20 6 9 17 4 12" />
-  </svg>
-);
-
-const PlayIcon = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-    <polygon points="5 3 19 12 5 21 5 3" />
   </svg>
 );
 
@@ -45,65 +49,253 @@ const CopyIcon = () => (
   </svg>
 );
 
-const XTwitterIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.745l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+const CheckSmIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="20 6 9 17 4 12" />
   </svg>
 );
 
-const InstagramIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="2" y="2" width="20" height="20" rx="5" />
-    <circle cx="12" cy="12" r="4" />
-    <circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none" />
+const CheckMdIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="20 6 9 17 4 12" />
   </svg>
 );
 
-const MessageIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+const AlertIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+    <line x1="12" y1="9" x2="12" y2="13" />
+    <line x1="12" y1="17" x2="12.01" y2="17" />
   </svg>
 );
 
-// ── Label maps ─────────────────────────────────────────────────────────────
+// ── Canvas helpers ────────────────────────────────────────────────────────────
 
-const MUSIC_LABELS: Record<MusicId, string> = {
-  none: "No Music", hype: "Hype", energetic: "Energetic", cinematic: "Cinematic",
-};
+/** Stamp the CLIPT watermark in the bottom-right corner */
+function stamp(ctx: CanvasRenderingContext2D) {
+  ctx.save();
+  ctx.font = "bold 18px 'Courier New', monospace";
+  ctx.fillStyle = "rgba(0,163,255,0.72)";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "bottom";
+  ctx.fillText("CLIPT", CW - 18, CH - 14);
+  ctx.restore();
+}
 
-const STYLE_LABELS: Record<StyleId, string> = {
-  electric: "Electric", fire: "Fire", gold: "Gold", stealth: "Stealth",
-};
+interface TitleInfo {
+  firstName:    string;
+  jerseyNumber: string;
+  sport:        string;
+  school:       string;
+  position:     string;
+}
 
-const QUALITY_SIZES: Record<Quality, string> = {
-  "720p": "80 MB", "1080p": "180 MB", "4k": "420 MB",
-};
+/** Draw one frame of the title card onto the canvas */
+function drawTitleFrame(ctx: CanvasRenderingContext2D, info: TitleInfo, accent: string) {
+  // Background
+  ctx.fillStyle = "#050A14";
+  ctx.fillRect(0, 0, CW, CH);
 
-const QUALITY_DISPLAY: Record<Quality, string> = {
-  "720p": "720p", "1080p": "HD", "4k": "4K Ultra",
-};
+  // Grid lines
+  ctx.strokeStyle = "rgba(0,163,255,0.04)";
+  ctx.lineWidth = 1;
+  for (let x = 0; x <= CW; x += 40) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, CH); ctx.stroke();
+  }
+  for (let y = 0; y <= CH; y += 40) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(CW, y); ctx.stroke();
+  }
 
-// ── Data ───────────────────────────────────────────────────────────────────
+  // Center radial glow
+  const grd = ctx.createRadialGradient(CW / 2, CH / 2, 0, CW / 2, CH / 2, 360);
+  grd.addColorStop(0, accent + "30");
+  grd.addColorStop(1, "transparent");
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, CW, CH);
 
-const STEPS = [
-  { label: "Upload Clips", number: 1 },
-  { label: "Customize",    number: 2 },
-  { label: "Export",       number: 3 },
-];
+  // Accent bar above name
+  ctx.fillStyle = accent;
+  ctx.fillRect(CW / 2 - 40, CH / 2 - 92, 80, 3);
 
-const QUALITY_OPTIONS: { id: Quality; label: string; sub: string; size: string; badge?: string }[] = [
-  { id: "720p",  label: "720p",     sub: "Standard",    size: "~80 MB"  },
-  { id: "1080p", label: "1080p HD", sub: "Recommended", size: "~180 MB", badge: "Best" },
-  { id: "4k",    label: "4K Ultra", sub: "Max quality", size: "~420 MB" },
-];
+  // Athlete name
+  ctx.save();
+  ctx.font = "bold 76px Arial, sans-serif";
+  ctx.fillStyle = "#FFFFFF";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  ctx.fillText((info.firstName || "ATHLETE").toUpperCase(), CW / 2, CH / 2 - 10);
+  ctx.restore();
 
-const SHARE_OPTIONS = [
-  { label: "Twitter / X",  icon: <XTwitterIcon />,  color: "#1d9bf0" },
-  { label: "Instagram",    icon: <InstagramIcon />,  color: "#e1306c" },
-  { label: "Text Message", icon: <MessageIcon />,    color: "#34d399" },
-];
+  // Sport · Jersey · Position
+  ctx.save();
+  ctx.font = "bold 22px Arial, sans-serif";
+  ctx.fillStyle = accent;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  const infoLine = [
+    info.jerseyNumber ? `#${info.jerseyNumber}` : null,
+    info.sport        || null,
+    info.position     || null,
+  ].filter(Boolean).join(" · ");
+  ctx.fillText(infoLine.toUpperCase(), CW / 2, CH / 2 + 44);
+  ctx.restore();
 
-// ── Progress Bar ───────────────────────────────────────────────────────────
+  // School
+  ctx.save();
+  ctx.font = "17px Arial, sans-serif";
+  ctx.fillStyle = "#94a3b8";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  ctx.fillText((info.school || "").toUpperCase(), CW / 2, CH / 2 + 82);
+  ctx.restore();
+
+  stamp(ctx);
+}
+
+/** Animate the title card for TITLE_MS milliseconds */
+function runTitleCard(
+  ctx: CanvasRenderingContext2D,
+  info: TitleInfo,
+  accent: string,
+  isAborted: () => boolean,
+): Promise<void> {
+  return new Promise((resolve) => {
+    const t0 = performance.now();
+    const tick = (now: number) => {
+      if (isAborted() || now - t0 >= TITLE_MS) { resolve(); return; }
+      drawTitleFrame(ctx, info, accent);
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+}
+
+/** Play one video clip on the canvas frame-by-frame */
+function runClip(
+  file: File,
+  ctx: CanvasRenderingContext2D,
+  isAborted: () => boolean,
+  onClipPct: (p: number) => void,
+): Promise<void> {
+  const url = URL.createObjectURL(file);
+  return new Promise((resolve, reject) => {
+    const vid = document.createElement("video");
+    vid.src = url;
+    vid.muted = true;
+    vid.playsInline = true;
+
+    let raf = 0;
+
+    const cleanup = () => {
+      cancelAnimationFrame(raf);
+      URL.revokeObjectURL(url);
+    };
+
+    const tick = () => {
+      if (isAborted() || vid.ended) {
+        cleanup();
+        resolve();
+        return;
+      }
+      ctx.drawImage(vid, 0, 0, CW, CH);
+      stamp(ctx);
+      if (vid.duration > 0) onClipPct(vid.currentTime / vid.duration);
+      raf = requestAnimationFrame(tick);
+    };
+
+    vid.onloadedmetadata = () => {
+      vid.play().then(() => {
+        raf = requestAnimationFrame(tick);
+      }).catch(() => {
+        cleanup();
+        reject(new Error("Processing failed — try uploading smaller clips"));
+      });
+    };
+
+    vid.onended = () => { cleanup(); resolve(); };
+    vid.onerror = () => {
+      cleanup();
+      reject(new Error("Processing failed — try uploading smaller clips"));
+    };
+  });
+}
+
+/** Build and return the rendered reel as a Blob */
+async function buildReel(
+  files: File[],
+  info: TitleInfo,
+  accent: string,
+  isAborted: () => boolean,
+  onProgress: (pct: number, text: string) => void,
+): Promise<Blob> {
+  if (!("MediaRecorder" in window)) {
+    throw new Error("Processing failed — try uploading smaller clips");
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width  = CW;
+  canvas.height = CH;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Processing failed — try uploading smaller clips");
+
+  // Pick the best supported MIME type
+  const candidates = [
+    "video/webm;codecs=vp9",
+    "video/webm;codecs=vp8",
+    "video/webm",
+    "video/mp4",
+  ];
+  const mime = candidates.find((t) => MediaRecorder.isTypeSupported(t));
+  if (!mime) throw new Error("Processing failed — try uploading smaller clips");
+
+  const stream   = canvas.captureStream(30);
+  const recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 5_000_000 });
+  const chunks: Blob[] = [];
+  recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+  recorder.start(100);
+
+  try {
+    // Phase 1 — title card: 0–10%
+    onProgress(0, "Drawing title card...");
+    await runTitleCard(ctx, info, accent, isAborted);
+
+    // Phase 2 — clips: 10–90%
+    for (let i = 0; i < files.length; i++) {
+      if (isAborted()) break;
+      const base  = 10 + (i / files.length) * 80;
+      const range = 80 / files.length;
+      onProgress(base, `Processing clip ${i + 1} of ${files.length}...`);
+      await runClip(files[i], ctx, isAborted, (p) => {
+        onProgress(base + p * range, `Processing clip ${i + 1} of ${files.length}...`);
+      });
+    }
+
+    // Phase 3 — end card: 90–95%
+    if (!isAborted()) {
+      onProgress(90, "Finalizing your reel...");
+      ctx.fillStyle = "#050A14";
+      ctx.fillRect(0, 0, CW, CH);
+      stamp(ctx);
+      await new Promise<void>((r) => setTimeout(r, 500));
+      onProgress(95, "Encoding...");
+    }
+  } finally {
+    if (recorder.state !== "inactive") recorder.stop();
+  }
+
+  return new Promise<Blob>((resolve, reject) => {
+    recorder.onstop = () => {
+      if (!chunks.length) {
+        reject(new Error("Processing failed — try uploading smaller clips"));
+        return;
+      }
+      resolve(new Blob(chunks, { type: mime }));
+    };
+    recorder.onerror = () => reject(new Error("Processing failed — try uploading smaller clips"));
+  });
+}
+
+// ── Progress Bar ──────────────────────────────────────────────────────────────
 
 function ProgressBar({ active }: { active: number }) {
   return (
@@ -124,7 +316,7 @@ function ProgressBar({ active }: { active: number }) {
                       : { background: "#0A1628", borderColor: "rgba(255,255,255,0.08)", color: "#64748b" }
                   }
                 >
-                  {completed ? <CheckSm /> : step.number}
+                  {completed ? <CheckSmIcon /> : step.number}
                 </div>
                 <span
                   className="text-xs font-semibold whitespace-nowrap"
@@ -147,226 +339,117 @@ function ProgressBar({ active }: { active: number }) {
   );
 }
 
-// ── Section Header ─────────────────────────────────────────────────────────
+// ── Main page ─────────────────────────────────────────────────────────────────
 
-function SectionHeader({ label, title }: { label: string; title: string }) {
-  return (
-    <div className="mb-4">
-      <p className="text-[#00A3FF] text-xs font-bold tracking-widest uppercase mb-1">{label}</p>
-      <h2 className="text-lg font-bold text-white">{title}</h2>
-    </div>
-  );
-}
+type Phase = "idle" | "processing" | "done" | "error";
 
-// ── Reel Thumbnail ─────────────────────────────────────────────────────────
-
-function ReelThumbnail({
-  overlay,
-  done,
-  clipBadge,
-  athleteName,
-  athleteSub,
-}: {
-  overlay?: React.ReactNode;
-  done?: boolean;
-  clipBadge: string;
-  athleteName: string;
-  athleteSub: string;
-}) {
-  return (
-    <div
-      className="relative w-full rounded-xl overflow-hidden"
-      style={{ aspectRatio: "16/9", background: "#060C1A" }}
-    >
-      {/* Grid texture */}
-      <div
-        className="absolute inset-0"
-        style={{
-          backgroundImage:
-            "linear-gradient(rgba(0,163,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0,163,255,0.03) 1px, transparent 1px)",
-          backgroundSize: "32px 32px",
-        }}
-      />
-      {/* Center glow */}
-      <div
-        className="absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(ellipse 70% 70% at 50% 50%, rgba(0,70,200,0.12) 0%, transparent 70%)",
-        }}
-      />
-
-      {/* CLIPT watermark */}
-      <span
-        className="absolute top-3 right-4 text-[10px] font-black tracking-widest select-none"
-        style={{ color: "#00A3FF", opacity: 0.3 }}
-      >
-        CLIPT
-      </span>
-
-      {/* Top-left badge */}
-      <div className="absolute top-3 left-3">
-        {done ? (
-          <span
-            className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold"
-            style={{ background: "rgba(0,163,255,0.9)", color: "#fff" }}
-          >
-            <CheckSm /> READY
-          </span>
-        ) : !overlay ? (
-          <span
-            className="px-2 py-1 rounded-md text-[10px] font-semibold"
-            style={{ background: "rgba(0,0,0,0.55)", color: "#94a3b8" }}
-          >
-            {clipBadge}
-          </span>
-        ) : null}
-      </div>
-
-      {/* Duration badge */}
-      {!overlay && (
-        <span
-          className="absolute bottom-12 right-3 px-2 py-0.5 rounded text-[10px] font-semibold"
-          style={{ background: "rgba(0,0,0,0.7)", color: "#94a3b8" }}
-        >
-          2:34
-        </span>
-      )}
-
-      {/* Play button */}
-      {!overlay && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div
-            className="w-16 h-16 rounded-full flex items-center justify-center transition-transform hover:scale-105"
-            style={{
-              background: "rgba(0,163,255,0.9)",
-              boxShadow: "0 0 40px rgba(0,163,255,0.35)",
-            }}
-          >
-            <PlayIcon />
-          </div>
-        </div>
-      )}
-
-      {/* Bottom athlete overlay */}
-      {!overlay && (
-        <div
-          className="absolute bottom-0 left-0 right-0 px-4 pt-8 pb-3"
-          style={{
-            background: "linear-gradient(to top, rgba(0,0,0,0.88) 0%, transparent 100%)",
-          }}
-        >
-          <p className="text-white font-black text-sm tracking-wide leading-none mb-0.5">
-            {athleteName}
-          </p>
-          <p className="text-slate-400 text-xs">{athleteSub}</p>
-        </div>
-      )}
-
-      {/* Processing overlay */}
-      {overlay && (
-        <div
-          className="absolute inset-0 flex flex-col items-center justify-center"
-          style={{ background: "rgba(5,10,20,0.82)", backdropFilter: "blur(6px)" }}
-        >
-          {overlay}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Main Page ──────────────────────────────────────────────────────────────
-
-type Phase = "idle" | "generating" | "done";
+const cardBase: React.CSSProperties = {
+  background: "#0A1628",
+  border: "1px solid rgba(255,255,255,0.08)",
+};
 
 export default function ExportPage() {
   const router = useRouter();
-  const { files, firstName, jerseyNumber, sport, school, music, style, quality, showIntro, update } = useReel();
+  const reel   = useReel();
 
-  const [phase, setPhase]       = useState<Phase>("idle");
-  const [progress, setProgress] = useState(0);
-  const [stepText, setStepText] = useState("Analyzing your clips...");
-  const [copied, setCopied]     = useState(false);
+  const [phase,    setPhase]    = useState<Phase>("idle");
+  const [pct,      setPct]      = useState(0);
+  const [stepText, setStepText] = useState("");
+  const [errMsg,   setErrMsg]   = useState("");
+  const [blobUrl,  setBlobUrl]  = useState<string | null>(null);
+  const [blobMime, setBlobMime] = useState("video/webm");
+  const [copied,   setCopied]   = useState(false);
 
-  // Process steps are built dynamically in handleGenerate so they reflect
-  // the user's actual music, style, and quality choices at generation time.
-  const processStepsRef = useRef<{ at: number; text: string }[]>([]);
-  const intervalRef     = useRef<ReturnType<typeof setInterval> | null>(null);
-  const copyTimeoutRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortedRef   = useRef(false);
+  const blobRef      = useRef<string | null>(null);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Cleanup on unmount
+  // Revoke blob URL and cancel any timers on unmount
   useEffect(() => {
     return () => {
-      if (intervalRef.current)    clearInterval(intervalRef.current);
-      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+      abortedRef.current = true;
+      if (blobRef.current)      URL.revokeObjectURL(blobRef.current);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
     };
   }, []);
 
-  // Drive the progress animation
-  useEffect(() => {
-    if (phase !== "generating") return;
+  const handleGenerate = async () => {
+    if (reel.files.length === 0) {
+      setErrMsg("No clips found — please go back and upload your clips first.");
+      setPhase("error");
+      return;
+    }
 
-    let current = 0;
+    abortedRef.current = false;
+    setPhase("processing");
+    setPct(0);
+    setStepText("Starting...");
 
-    intervalRef.current = setInterval(() => {
-      current += 1.4;
-      const clamped = Math.min(current, 100);
-
-      let text = processStepsRef.current[0]?.text ?? "";
-      for (const s of processStepsRef.current) {
-        if (current >= s.at) text = s.text;
-      }
-
-      setProgress(clamped);
-      setStepText(text);
-
-      if (current >= 100) {
-        clearInterval(intervalRef.current!);
-        setTimeout(() => setPhase("done"), 500);
-      }
-    }, 50);
-
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+    const accent = COLOR_MAP[reel.colorAccent] ?? "#00A3FF";
+    const info: TitleInfo = {
+      firstName:    reel.firstName,
+      jerseyNumber: reel.jerseyNumber,
+      sport:        reel.sport,
+      school:       reel.school,
+      position:     reel.position,
     };
-  }, [phase]);
 
-  const handleGenerate = () => {
-    // Build step labels from the user's actual choices
-    processStepsRef.current = [
-      { at: 0,  text: "Analyzing your clips..." },
-      { at: 17, text: "Detecting key moments..." },
-      { at: 34, text: `Applying ${STYLE_LABELS[style]} theme...` },
-      { at: 52, text: `Mixing ${MUSIC_LABELS[music]} audio...` },
-      { at: 68, text: `Rendering in ${quality === "4k" ? "4K Ultra" : quality}...` },
-      { at: 86, text: "Finalizing your reel..." },
-    ];
-    setProgress(0);
-    setStepText(processStepsRef.current[0].text);
-    setPhase("generating");
+    try {
+      const blob = await buildReel(
+        reel.files,
+        info,
+        accent,
+        () => abortedRef.current,
+        (p, t) => { setPct(p); setStepText(t); },
+      );
+
+      const url = URL.createObjectURL(blob);
+      blobRef.current = url;
+      setBlobUrl(url);
+      setBlobMime(blob.type);
+      setPct(100);
+      setTimeout(() => setPhase("done"), 400);
+    } catch (err) {
+      if (abortedRef.current) { setPhase("idle"); return; }
+      const msg = err instanceof Error ? err.message : "";
+      setErrMsg(
+        msg.includes("Processing failed")
+          ? msg
+          : "Processing failed — try uploading smaller clips",
+      );
+      setPhase("error");
+    }
   };
+
+  const handleDownload = () => {
+    if (!blobUrl) return;
+    const ext  = blobMime.includes("mp4") ? "mp4" : "webm";
+    const name = `${(reel.firstName || "reel").toLowerCase().replace(/\s+/g, "-")}-clipt.${ext}`;
+    const a    = document.createElement("a");
+    a.href     = blobUrl;
+    a.download = name;
+    a.click();
+  };
+
+  const shareSlug = `${reel.firstName || "athlete"}-${reel.jerseyNumber || "00"}`
+    .toLowerCase()
+    .replace(/\s+/g, "-");
 
   const handleCopy = () => {
-    try {
-      navigator.clipboard.writeText(`https://clipt.app/reel/${shareSlug}`);
-    } catch {
-      // no-op in non-secure contexts
-    }
+    navigator.clipboard
+      .writeText(`https://clipt.app/reel/${shareSlug}`)
+      .catch(() => {});
     setCopied(true);
-    copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
+    copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
   };
 
-  // Derived display values
-  const clipCount   = files.length > 0 ? files.length : 5;
-  const athleteName = firstName ? firstName.toUpperCase() : "ATHLETE";
-  const athleteSub  = `#${jerseyNumber || "—"} · ${sport || "Sport"} · ${school || "Your School"}`;
-  const clipBadge   = `${clipCount} clip${clipCount !== 1 ? "s" : ""} · ${MUSIC_LABELS[music]} · ${STYLE_LABELS[style]}`;
-  const shareSlug   = firstName
-    ? `${firstName.toLowerCase()}-${jerseyNumber || "00"}`
-    : "athlete-00";
-
-  const progressActive = phase === "done" ? 4 : 3;
+  const progressActive  = phase === "done" ? 4 : 3;
+  const athleteNameDisp = (reel.firstName || "Athlete").toUpperCase();
+  const athleteSub      = [
+    reel.jerseyNumber ? `#${reel.jerseyNumber}` : null,
+    reel.sport  || null,
+    reel.school || null,
+  ].filter(Boolean).join(" · ");
 
   return (
     <div className="min-h-screen bg-[#050A14] text-white">
@@ -374,10 +457,10 @@ export default function ExportPage() {
       {/* ── NAV ── */}
       <nav className="flex items-center px-6 py-5 max-w-3xl mx-auto">
         <button
-          onClick={() => phase !== "generating" && router.push("/customize")}
-          disabled={phase === "generating"}
+          onClick={() => phase !== "processing" && router.push("/customize")}
+          disabled={phase === "processing"}
           className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors mr-6 disabled:opacity-30 disabled:cursor-not-allowed"
-          aria-label="Go back"
+          aria-label="Back to customize"
         >
           <ArrowLeftIcon />
         </button>
@@ -392,171 +475,190 @@ export default function ExportPage() {
       {/* ── MAIN ── */}
       <main className="max-w-3xl mx-auto px-6 pb-16">
 
-        {/* Page title */}
+        {/* ── HEADING ── */}
         <div className="mb-8">
           {phase === "idle" && (
             <>
               <h1 className="text-3xl font-black text-white mb-2">Export Your Reel</h1>
               <p className="text-slate-400 text-sm">
-                Choose your export quality, then generate your highlight reel.
+                Review your settings, then generate your downloadable highlight reel.
               </p>
             </>
           )}
-          {phase === "generating" && (
+          {phase === "processing" && (
             <>
-              <h1 className="text-3xl font-black text-white mb-2">Building Your Reel...</h1>
+              <h1 className="text-3xl font-black text-white mb-2">Building Your Reel…</h1>
               <p className="text-slate-400 text-sm">
-                AI is crafting your highlight reel. This takes about 30 seconds.
+                Stitching your clips together in your browser. Don&apos;t close this tab.
               </p>
             </>
           )}
           {phase === "done" && (
-            <>
-              <div className="flex items-center gap-3 mb-2">
-                <div
-                  className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
-                  style={{ background: "#00A3FF" }}
-                >
-                  <CheckMd />
-                </div>
-                <h1 className="text-3xl font-black text-white">Your Reel is Ready</h1>
+            <div className="flex items-center gap-3 mb-2">
+              <div
+                className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
+                style={{ background: "#00A3FF" }}
+              >
+                <CheckMdIcon />
               </div>
-              <p className="text-slate-400 text-sm">
-                Download your reel or share the link directly with coaches.
-              </p>
-            </>
+              <h1 className="text-3xl font-black text-white">Your Reel is Ready</h1>
+            </div>
+          )}
+          {phase === "error" && (
+            <h1 className="text-3xl font-black text-white mb-2">Export Failed</h1>
           )}
         </div>
 
-        {/* ── THUMBNAIL ── */}
-        <div className="mb-6">
-          <ReelThumbnail
-            done={phase === "done"}
-            clipBadge={clipBadge}
-            athleteName={athleteName}
-            athleteSub={athleteSub}
-            overlay={
-              phase === "generating" ? (
-                <div className="flex flex-col items-center gap-5 px-8 w-full max-w-xs text-center">
-                  <div
-                    className="w-10 h-10 rounded-full border-2 animate-spin"
-                    style={{
-                      borderColor: "rgba(0,163,255,0.2)",
-                      borderTopColor: "#00A3FF",
-                    }}
-                  />
-                  <p className="text-white text-sm font-semibold leading-snug">{stepText}</p>
-                  <p className="text-5xl font-black leading-none" style={{ color: "#00A3FF" }}>
-                    {Math.floor(progress)}%
-                  </p>
-                  <div className="w-full h-1.5 rounded-full" style={{ background: "rgba(255,255,255,0.08)" }}>
-                    <div
-                      className="h-full rounded-full transition-all duration-100"
-                      style={{
-                        width: `${progress}%`,
-                        background: "linear-gradient(90deg, #0055EE, #00A3FF)",
-                      }}
-                    />
-                  </div>
-                  <p className="text-slate-500 text-xs">Don&apos;t close this tab</p>
-                </div>
-              ) : undefined
-            }
-          />
-        </div>
-
-        {/* ── REEL META (idle only) ── */}
+        {/* ══════════════════════════════════════════════════════════
+            IDLE STATE
+        ══════════════════════════════════════════════════════════ */}
         {phase === "idle" && (
-          <div
-            className="flex items-center gap-3 flex-wrap px-4 py-3 rounded-xl mb-8 text-xs text-slate-400"
-            style={{ background: "#0A1628", border: "1px solid rgba(255,255,255,0.08)" }}
-          >
-            <span>{clipCount} {clipCount === 1 ? "clip" : "clips"}</span>
-            <span className="w-px h-3 bg-slate-700" />
-            <span>{MUSIC_LABELS[music]} music</span>
-            <span className="w-px h-3 bg-slate-700" />
-            <span>{STYLE_LABELS[style]} style</span>
-            <span className="w-px h-3 bg-slate-700" />
-            <span>Intro card {showIntro ? "on" : "off"}</span>
-            <span className="w-px h-3 bg-slate-700" />
-            <span>~2:34 duration</span>
+          <div className="flex flex-col gap-5">
+
+            {/* Athlete summary card */}
+            <div className="rounded-2xl p-6" style={cardBase}>
+              <p className="text-[#00A3FF] text-[10px] font-black tracking-widest uppercase mb-3">
+                Reel Summary
+              </p>
+              <p className="text-white font-black text-xl mb-1">{athleteNameDisp}</p>
+              <p className="text-slate-400 text-sm mb-4">{athleteSub}</p>
+
+              <div
+                className="h-px mb-4"
+                style={{ background: "rgba(255,255,255,0.06)" }}
+              />
+
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { label: "Clips",    value: `${reel.files.length} video${reel.files.length !== 1 ? "s" : ""}` },
+                  { label: "Music",    value: reel.musicStyle },
+                  { label: "Color",    value: reel.colorAccent },
+                  { label: "Duration", value: `${reel.reelLength} min` },
+                  { label: "Intro",    value: reel.introStyle },
+                  { label: "Font",     value: reel.fontStyle },
+                ].map(({ label, value }) => (
+                  <div key={label}>
+                    <p className="text-slate-500 text-xs mb-0.5">{label}</p>
+                    <p className="text-white text-sm font-semibold">{value}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Warning if no files */}
+            {reel.files.length === 0 && (
+              <div
+                className="flex items-center gap-3 px-4 py-3 rounded-xl"
+                style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)" }}
+              >
+                <span className="shrink-0 text-[#EF4444]">⚠</span>
+                <p className="text-sm text-[#EF4444]">
+                  No clips loaded. Go back and upload your clips first.
+                </p>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={handleGenerate}
+              className="w-full py-4 rounded-xl font-bold text-base text-white transition-all hover:opacity-90 active:scale-[0.99]"
+              style={{ background: "#00A3FF" }}
+            >
+              Generate My Reel →
+            </button>
           </div>
         )}
 
-        {/* ── QUALITY SELECTOR (idle only) ── */}
-        {phase === "idle" && (
-          <section className="mb-8">
-            <SectionHeader label="Export Quality" title="Choose Your Quality" />
-            <div className="grid grid-cols-3 gap-3">
-              {QUALITY_OPTIONS.map((opt) => {
-                const sel = quality === opt.id;
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => update({ quality: opt.id })}
-                    className="text-left p-4 rounded-xl transition-all"
-                    style={{
-                      background: sel ? "rgba(0,163,255,0.1)" : "#0A1628",
-                      border: sel
-                        ? "1px solid rgba(0,163,255,0.5)"
-                        : "1px solid rgba(255,255,255,0.08)",
-                    }}
-                  >
-                    <div className="flex items-start justify-between mb-1 gap-1">
-                      <span
-                        className="text-sm font-bold leading-none"
-                        style={{ color: sel ? "#fff" : "#94a3b8" }}
-                      >
-                        {opt.label}
-                      </span>
-                      {opt.badge && (
-                        <span
-                          className="text-[9px] font-bold px-1.5 py-0.5 rounded-md shrink-0"
-                          style={{ background: "rgba(0,163,255,0.2)", color: "#00A3FF" }}
-                        >
-                          {opt.badge}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-slate-500 mb-1">{opt.sub}</p>
-                    <p
-                      className="text-xs font-semibold"
-                      style={{ color: sel ? "#00A3FF" : "#334155" }}
-                    >
-                      {opt.size}
-                    </p>
-                  </button>
-                );
-              })}
+        {/* ══════════════════════════════════════════════════════════
+            PROCESSING STATE
+        ══════════════════════════════════════════════════════════ */}
+        {phase === "processing" && (
+          <div className="flex flex-col items-center gap-6">
+
+            {/* Spinner */}
+            <div
+              className="w-14 h-14 rounded-full border-2 animate-spin mt-4"
+              style={{
+                borderColor: "rgba(0,163,255,0.15)",
+                borderTopColor: "#00A3FF",
+              }}
+            />
+
+            {/* Percentage */}
+            <p
+              className="text-6xl font-black tabular-nums leading-none"
+              style={{ color: "#00A3FF" }}
+            >
+              {Math.floor(pct)}%
+            </p>
+
+            {/* Step label */}
+            <p className="text-white text-sm font-semibold">{stepText}</p>
+
+            {/* Progress bar */}
+            <div
+              className="w-full h-2 rounded-full overflow-hidden"
+              style={{ background: "rgba(255,255,255,0.08)" }}
+            >
+              <div
+                className="h-full rounded-full transition-all duration-150"
+                style={{
+                  width: `${pct}%`,
+                  background: "linear-gradient(90deg, #0055EE, #00A3FF)",
+                }}
+              />
             </div>
-          </section>
+
+            {/* Hint */}
+            <p className="text-slate-500 text-xs">Processing in your browser — please don&apos;t close this tab</p>
+
+            {/* What's happening */}
+            <div
+              className="w-full rounded-xl px-5 py-4 text-xs text-slate-400 leading-relaxed"
+              style={cardBase}
+            >
+              <span className="text-[#00A3FF] font-semibold">How it works: </span>
+              Your clips are being stitched together using the Canvas API directly in your browser.
+              A title card with your name and sport is drawn first, then each clip is rendered
+              frame-by-frame, and a CLIPT watermark is stamped on every frame.
+            </div>
+          </div>
         )}
 
-        {/* ── GENERATE BUTTON (idle only) ── */}
-        {phase === "idle" && (
-          <button
-            type="button"
-            onClick={handleGenerate}
-            className="w-full py-4 rounded-xl font-bold text-base text-white transition-all hover:opacity-90 active:scale-[0.99]"
-            style={{ background: "#00A3FF" }}
-          >
-            Generate My Reel →
-          </button>
-        )}
-
-        {/* ── DONE STATE ── */}
+        {/* ══════════════════════════════════════════════════════════
+            DONE STATE
+        ══════════════════════════════════════════════════════════ */}
         {phase === "done" && (
           <div className="flex flex-col gap-4">
+
+            {/* Done banner */}
+            <div
+              className="rounded-2xl px-6 py-5 flex items-center gap-4"
+              style={{ background: "rgba(0,163,255,0.08)", border: "1px solid rgba(0,163,255,0.3)" }}
+            >
+              <div
+                className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
+                style={{ background: "rgba(0,163,255,0.2)" }}
+              >
+                <CheckMdIcon />
+              </div>
+              <div>
+                <p className="text-white font-bold text-sm mb-0.5">Reel complete!</p>
+                <p className="text-slate-400 text-xs">
+                  Rendered at 1280×720 · 30 fps · {blobMime.includes("mp4") ? "MP4" : "WebM"}
+                </p>
+              </div>
+            </div>
 
             {/* Download */}
             <button
               type="button"
+              onClick={handleDownload}
               className="w-full py-4 rounded-xl font-bold text-base text-white flex items-center justify-center gap-2.5 transition-all hover:opacity-90 active:scale-[0.99]"
               style={{ background: "#00A3FF" }}
             >
               <DownloadIcon />
-              Download {QUALITY_DISPLAY[quality]} · {QUALITY_SIZES[quality]}
+              Download Highlight Reel
             </button>
 
             {/* Share link */}
@@ -564,11 +666,8 @@ export default function ExportPage() {
               <p className="text-sm font-semibold text-white mb-2">Share Link</p>
               <div className="flex gap-2">
                 <div
-                  className="flex-1 px-4 py-3 rounded-xl text-sm text-slate-400 truncate"
-                  style={{
-                    background: "#0A1628",
-                    border: "1px solid rgba(255,255,255,0.08)",
-                  }}
+                  className="flex-1 px-4 py-3 rounded-xl text-sm text-slate-400 truncate select-all"
+                  style={cardBase}
                 >
                   clipt.app/reel/{shareSlug}
                 </div>
@@ -578,49 +677,18 @@ export default function ExportPage() {
                   className="px-4 py-3 rounded-xl text-sm font-bold flex items-center gap-2 shrink-0 transition-all"
                   style={
                     copied
-                      ? {
-                          background: "rgba(0,163,255,0.12)",
-                          color: "#00A3FF",
-                          border: "1px solid rgba(0,163,255,0.4)",
-                        }
-                      : {
-                          background: "#0A1628",
-                          color: "#94a3b8",
-                          border: "1px solid rgba(255,255,255,0.08)",
-                        }
+                      ? { background: "rgba(0,163,255,0.12)", color: "#00A3FF", border: "1px solid rgba(0,163,255,0.4)" }
+                      : { background: "#0A1628", color: "#94a3b8", border: "1px solid rgba(255,255,255,0.08)" }
                   }
                 >
-                  {copied ? <CheckSm /> : <CopyIcon />}
+                  {copied ? <CheckSmIcon /> : <CopyIcon />}
                   {copied ? "Copied!" : "Copy"}
                 </button>
               </div>
             </div>
 
-            {/* Share to */}
-            <div>
-              <p className="text-sm font-semibold text-white mb-2">Share to</p>
-              <div className="grid grid-cols-3 gap-3">
-                {SHARE_OPTIONS.map((s) => (
-                  <button
-                    key={s.label}
-                    type="button"
-                    className="flex flex-col items-center gap-2.5 py-4 rounded-xl transition-all hover:border-white/20"
-                    style={{
-                      background: "#0A1628",
-                      border: "1px solid rgba(255,255,255,0.08)",
-                    }}
-                  >
-                    <span style={{ color: s.color }}>{s.icon}</span>
-                    <span className="text-xs text-slate-400 font-medium leading-none">
-                      {s.label}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
             {/* Divider */}
-            <div className="h-px mt-2" style={{ background: "rgba(255,255,255,0.06)" }} />
+            <div className="h-px" style={{ background: "rgba(255,255,255,0.06)" }} />
 
             {/* Start over */}
             <button
@@ -632,6 +700,51 @@ export default function ExportPage() {
             </button>
           </div>
         )}
+
+        {/* ══════════════════════════════════════════════════════════
+            ERROR STATE
+        ══════════════════════════════════════════════════════════ */}
+        {phase === "error" && (
+          <div className="flex flex-col gap-5">
+
+            {/* Error card */}
+            <div
+              className="rounded-2xl px-6 py-6 flex flex-col gap-3"
+              style={{ background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.25)" }}
+            >
+              <div className="flex items-center gap-3">
+                <AlertIcon />
+                <p className="text-[#EF4444] font-bold text-sm">
+                  {errMsg || "Processing failed — try uploading smaller clips"}
+                </p>
+              </div>
+              <p className="text-slate-500 text-xs leading-relaxed pl-9">
+                This can happen with very large video files or if your browser doesn&apos;t
+                support the required APIs. Try splitting large files into shorter clips.
+              </p>
+            </div>
+
+            {/* Actions */}
+            <button
+              type="button"
+              onClick={() => { setPhase("idle"); setErrMsg(""); }}
+              className="w-full py-4 rounded-xl font-bold text-base text-white transition-all hover:opacity-90 active:scale-[0.99]"
+              style={{ background: "#00A3FF" }}
+            >
+              Try Again
+            </button>
+
+            <button
+              type="button"
+              onClick={() => router.push("/customize")}
+              className="w-full py-3 rounded-xl font-semibold text-sm transition-all hover:border-white/20"
+              style={{ background: "#0A1628", color: "#94a3b8", border: "1px solid rgba(255,255,255,0.08)" }}
+            >
+              ← Back to Customize
+            </button>
+          </div>
+        )}
+
       </main>
     </div>
   );

@@ -38,18 +38,23 @@ const STEPS = [
   { label: "Export",       number: 3 },
 ];
 
-const POSITIONS = [
+const BASKETBALL_POSITIONS = [
   "Point Guard",
   "Shooting Guard",
   "Small Forward",
   "Power Forward",
   "Center",
+];
+
+const FOOTBALL_POSITIONS = [
   "Quarterback",
   "Running Back",
   "Wide Receiver",
+  "Tight End",
   "Linebacker",
   "Cornerback",
   "Safety",
+  "Defensive End",
   "Kicker",
 ];
 
@@ -180,9 +185,19 @@ export default function CustomizePage() {
     setDragOver(null);
   };
 
+  // ── Sport-specific positions ──────────────────────────────────────────────
+  const sport = reel.sport;
+  const positions =
+    sport === "Basketball" ? BASKETBALL_POSITIONS
+    : sport === "Football" ? FOOTBALL_POSITIONS
+    : [...BASKETBALL_POSITIONS, ...FOOTBALL_POSITIONS];
+
   // ── Customization state (initialized from context / localStorage) ─────────
   const [firstName,   setFirstName]   = useState(reel.firstName);
-  const [position,    setPosition]    = useState(reel.position);
+  // Reset saved position if it doesn't belong to the current sport
+  const [position,    setPosition]    = useState(() =>
+    positions.includes(reel.position) ? reel.position : ""
+  );
   const [musicStyle,  setMusicStyle]  = useState<MusicStyle>(reel.musicStyle);
   const [colorAccent, setColorAccent] = useState<ColorAccent>(reel.colorAccent);
   const [reelLength,  setReelLength]  = useState(reel.reelLength);
@@ -308,7 +323,7 @@ export default function CustomizePage() {
                       style={{ appearance: "none", paddingRight: "2.5rem" }}
                     >
                       <option value="" disabled hidden>Select your position</option>
-                      {POSITIONS.map((p) => (
+                      {positions.map((p) => (
                         <option key={p} value={p}>{p}</option>
                       ))}
                     </select>
