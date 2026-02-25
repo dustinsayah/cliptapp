@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useReel } from "../providers";
-import type { ColorAccent } from "../providers";
+import type { ColorAccent, FontStyle } from "../providers";
 
 // ── Canvas config ────────────────────────────────────────────────────────────
 const CW = 1280;
@@ -18,6 +18,14 @@ const COLOR_MAP: Record<ColorAccent, string> = {
   "Green":         "#22C55E",
   "Purple":        "#A855F7",
   "White":         "#F1F5F9",
+};
+
+// ── Canvas font lookup ───────────────────────────────────────────────────────
+const CANVAS_FONT_MAP: Record<FontStyle, string> = {
+  Modern:   "Inter",
+  Bold:     "Oswald",
+  Clean:    "Poppins",
+  Athletic: "Bebas Neue",
 };
 
 // ── Steps ────────────────────────────────────────────────────────────────────
@@ -88,16 +96,20 @@ interface TitleInfo {
   sport:        string;
   school:       string;
   position:     string;
+  fontFamily:   string;  // actual family name e.g. "Inter", "Oswald"
 }
 
 /** Draw one frame of the title card onto the canvas */
 function drawTitleFrame(ctx: CanvasRenderingContext2D, info: TitleInfo, accent: string) {
+  const ff      = info.fontFamily || "Arial";
+  const ffStack = `"${ff}", Arial, sans-serif`;
+
   // Background
   ctx.fillStyle = "#050A14";
   ctx.fillRect(0, 0, CW, CH);
 
   // Grid lines
-  ctx.strokeStyle = "rgba(0,163,255,0.04)";
+  ctx.strokeStyle = "rgba(255,255,255,0.025)";
   ctx.lineWidth = 1;
   for (let x = 0; x <= CW; x += 40) {
     ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, CH); ctx.stroke();
@@ -107,46 +119,53 @@ function drawTitleFrame(ctx: CanvasRenderingContext2D, info: TitleInfo, accent: 
   }
 
   // Center radial glow
-  const grd = ctx.createRadialGradient(CW / 2, CH / 2, 0, CW / 2, CH / 2, 360);
-  grd.addColorStop(0, accent + "30");
+  const grd = ctx.createRadialGradient(CW / 2, CH / 2, 0, CW / 2, CH / 2, 380);
+  grd.addColorStop(0, accent + "28");
   grd.addColorStop(1, "transparent");
   ctx.fillStyle = grd;
   ctx.fillRect(0, 0, CW, CH);
 
   // Accent bar above name
   ctx.fillStyle = accent;
-  ctx.fillRect(CW / 2 - 40, CH / 2 - 92, 80, 3);
+  ctx.fillRect(CW / 2 - 44, CH / 2 - 96, 88, 3);
 
-  // Athlete name
+  // Athlete name — use selected font, Bebas Neue is weight 400 only
+  const nameWeight = ff === "Bebas Neue" ? "" : "bold ";
   ctx.save();
-  ctx.font = "bold 76px Arial, sans-serif";
-  ctx.fillStyle = "#FFFFFF";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "alphabetic";
+  ctx.font          = `${nameWeight}78px ${ffStack}`;
+  ctx.fillStyle     = "#FFFFFF";
+  ctx.textAlign     = "center";
+  ctx.textBaseline  = "alphabetic";
+  ctx.letterSpacing = ff === "Bebas Neue" ? "4px" : "2px";
   ctx.fillText((info.firstName || "ATHLETE").toUpperCase(), CW / 2, CH / 2 - 10);
   ctx.restore();
 
-  // Sport · Jersey · Position
+  // Position line (accent color)
   ctx.save();
-  ctx.font = "bold 22px Arial, sans-serif";
-  ctx.fillStyle = accent;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "alphabetic";
-  const infoLine = [
-    info.jerseyNumber ? `#${info.jerseyNumber}` : null,
-    info.sport        || null,
-    info.position     || null,
+  ctx.font          = `bold 22px ${ffStack}`;
+  ctx.fillStyle     = accent;
+  ctx.textAlign     = "center";
+  ctx.textBaseline  = "alphabetic";
+  ctx.letterSpacing = "4px";
+  const posLine = [
+    info.sport    || null,
+    info.position || null,
   ].filter(Boolean).join(" · ");
-  ctx.fillText(infoLine.toUpperCase(), CW / 2, CH / 2 + 44);
+  ctx.fillText((posLine || "ATHLETE").toUpperCase(), CW / 2, CH / 2 + 46);
   ctx.restore();
 
-  // School
+  // Jersey + School
   ctx.save();
-  ctx.font = "17px Arial, sans-serif";
-  ctx.fillStyle = "#94a3b8";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "alphabetic";
-  ctx.fillText((info.school || "").toUpperCase(), CW / 2, CH / 2 + 82);
+  ctx.font          = "500 17px Arial, sans-serif";
+  ctx.fillStyle     = "#94a3b8";
+  ctx.textAlign     = "center";
+  ctx.textBaseline  = "alphabetic";
+  ctx.letterSpacing = "2px";
+  const metaLine = [
+    info.jerseyNumber ? `#${info.jerseyNumber}` : null,
+    info.school       || null,
+  ].filter(Boolean).join("  ·  ");
+  if (metaLine) ctx.fillText(metaLine.toUpperCase(), CW / 2, CH / 2 + 84);
   ctx.restore();
 
   stamp(ctx);
@@ -256,7 +275,14 @@ async function buildReel(
 
   try {
     // Phase 1 — title card: 0–10%
-    onProgress(0, "Drawing title card...");
+    onProgress(0, "Loading fonts...");
+    if (info.fontFamily && info.fontFamily !== "Arial") {
+      try {
+        await document.fonts.load(`bold 78px "${info.fontFamily}"`);
+        await document.fonts.load(`78px "${info.fontFamily}"`);
+      } catch { /* fallback to Arial */ }
+    }
+    onProgress(2, "Drawing title card...");
     await runTitleCard(ctx, info, accent, isAborted);
 
     // Phase 2 — clips: 10–90%
@@ -297,7 +323,7 @@ async function buildReel(
 
 // ── Progress Bar ──────────────────────────────────────────────────────────────
 
-function ProgressBar({ active }: { active: number }) {
+function ProgressBar({ active, accent }: { active: number; accent: string }) {
   return (
     <div className="max-w-3xl mx-auto px-6 mb-10">
       <div className="flex items-center">
@@ -312,7 +338,7 @@ function ProgressBar({ active }: { active: number }) {
                   className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border transition-all"
                   style={
                     completed || isActive
-                      ? { background: "#00A3FF", borderColor: "#00A3FF", color: "#050A14" }
+                      ? { background: accent, borderColor: accent, color: "#050A14" }
                       : { background: "#0A1628", borderColor: "rgba(255,255,255,0.08)", color: "#64748b" }
                   }
                 >
@@ -320,7 +346,7 @@ function ProgressBar({ active }: { active: number }) {
                 </div>
                 <span
                   className="text-xs font-semibold whitespace-nowrap"
-                  style={{ color: completed || isActive ? "#00A3FF" : "#64748b" }}
+                  style={{ color: completed || isActive ? accent : "#64748b" }}
                 >
                   {step.label}
                 </span>
@@ -328,7 +354,7 @@ function ProgressBar({ active }: { active: number }) {
               {!isLast && (
                 <div
                   className="flex-1 h-px mx-2 mb-5 transition-all duration-500"
-                  style={{ background: completed ? "rgba(0,163,255,0.5)" : "rgba(255,255,255,0.08)" }}
+                  style={{ background: completed ? `${accent}70` : "rgba(255,255,255,0.08)" }}
                 />
               )}
             </div>
@@ -351,6 +377,8 @@ const cardBase: React.CSSProperties = {
 export default function ExportPage() {
   const router = useRouter();
   const reel   = useReel();
+
+  const accentHex = COLOR_MAP[reel.colorAccent] ?? "#00A3FF";
 
   const [phase,    setPhase]    = useState<Phase>("idle");
   const [pct,      setPct]      = useState(0);
@@ -385,13 +413,15 @@ export default function ExportPage() {
     setPct(0);
     setStepText("Starting...");
 
-    const accent = COLOR_MAP[reel.colorAccent] ?? "#00A3FF";
+    const accent     = COLOR_MAP[reel.colorAccent] ?? "#00A3FF";
+    const fontFamily = CANVAS_FONT_MAP[reel.fontStyle] ?? "Arial";
     const info: TitleInfo = {
       firstName:    reel.firstName,
       jerseyNumber: reel.jerseyNumber,
       sport:        reel.sport,
       school:       reel.school,
       position:     reel.position,
+      fontFamily,
     };
 
     try {
@@ -419,6 +449,41 @@ export default function ExportPage() {
       );
       setPhase("error");
     }
+  };
+
+  /** Render the title card to an off-screen canvas and download as PNG */
+  const handleDownloadTitlePNG = async () => {
+    const canvas = document.createElement("canvas");
+    canvas.width  = CW;
+    canvas.height = CH;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const fontFamily = CANVAS_FONT_MAP[reel.fontStyle] ?? "Arial";
+    if (fontFamily !== "Arial") {
+      try {
+        await document.fonts.load(`bold 78px "${fontFamily}"`);
+        await document.fonts.load(`78px "${fontFamily}"`);
+      } catch { /* fallback */ }
+    }
+
+    const accent = accentHex;
+    const info: TitleInfo = {
+      firstName:    reel.firstName,
+      jerseyNumber: reel.jerseyNumber,
+      sport:        reel.sport,
+      school:       reel.school,
+      position:     reel.position,
+      fontFamily,
+    };
+
+    drawTitleFrame(ctx, info, accent);
+
+    const png  = canvas.toDataURL("image/png");
+    const a    = document.createElement("a");
+    a.href     = png;
+    a.download = `${(reel.firstName || "clipt").toLowerCase().replace(/\s+/g, "-")}-title-card.png`;
+    a.click();
   };
 
   const handleDownload = () => {
@@ -464,13 +529,13 @@ export default function ExportPage() {
         >
           <ArrowLeftIcon />
         </button>
-        <span className="text-2xl font-black tracking-widest" style={{ color: "#00A3FF" }}>
+        <span className="text-2xl font-black tracking-widest" style={{ color: accentHex }}>
           CLIPT
         </span>
       </nav>
 
       {/* ── PROGRESS BAR ── */}
-      <ProgressBar active={progressActive} />
+      <ProgressBar active={progressActive} accent={accentHex} />
 
       {/* ── MAIN ── */}
       <main className="max-w-3xl mx-auto px-6 pb-16">
@@ -497,7 +562,7 @@ export default function ExportPage() {
             <div className="flex items-center gap-3 mb-2">
               <div
                 className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
-                style={{ background: "#00A3FF" }}
+                style={{ background: accentHex }}
               >
                 <CheckMdIcon />
               </div>
@@ -517,7 +582,7 @@ export default function ExportPage() {
 
             {/* Athlete summary card */}
             <div className="rounded-2xl p-6" style={cardBase}>
-              <p className="text-[#00A3FF] text-[10px] font-black tracking-widest uppercase mb-3">
+              <p className="text-[10px] font-black tracking-widest uppercase mb-3" style={{ color: accentHex }}>
                 Reel Summary
               </p>
               <p className="text-white font-black text-xl mb-1">{athleteNameDisp}</p>
@@ -558,11 +623,29 @@ export default function ExportPage() {
               </div>
             )}
 
+            {/* Download title card PNG */}
+            <button
+              type="button"
+              onClick={handleDownloadTitlePNG}
+              className="w-full py-3 rounded-xl font-semibold text-sm transition-all hover:opacity-90 active:scale-[0.99] flex items-center justify-center gap-2"
+              style={{
+                background: `${accentHex}15`,
+                color:       accentHex,
+                border:      `1px solid ${accentHex}40`,
+              }}
+            >
+              <DownloadIcon />
+              Preview Title Card as PNG
+            </button>
+
             <button
               type="button"
               onClick={handleGenerate}
-              className="w-full py-4 rounded-xl font-bold text-base text-white transition-all hover:opacity-90 active:scale-[0.99]"
-              style={{ background: "#00A3FF" }}
+              className="w-full py-4 rounded-xl font-bold text-base transition-all hover:opacity-90 active:scale-[0.99]"
+              style={{
+                background: accentHex,
+                color:      reel.colorAccent === "White" ? "#050A14" : "#ffffff",
+              }}
             >
               Generate My Reel →
             </button>
@@ -579,15 +662,15 @@ export default function ExportPage() {
             <div
               className="w-14 h-14 rounded-full border-2 animate-spin mt-4"
               style={{
-                borderColor: "rgba(0,163,255,0.15)",
-                borderTopColor: "#00A3FF",
+                borderColor:    `${accentHex}18`,
+                borderTopColor: accentHex,
               }}
             />
 
             {/* Percentage */}
             <p
               className="text-6xl font-black tabular-nums leading-none"
-              style={{ color: "#00A3FF" }}
+              style={{ color: accentHex }}
             >
               {Math.floor(pct)}%
             </p>
@@ -603,8 +686,8 @@ export default function ExportPage() {
               <div
                 className="h-full rounded-full transition-all duration-150"
                 style={{
-                  width: `${pct}%`,
-                  background: "linear-gradient(90deg, #0055EE, #00A3FF)",
+                  width:      `${pct}%`,
+                  background: accentHex,
                 }}
               />
             </div>
@@ -617,7 +700,7 @@ export default function ExportPage() {
               className="w-full rounded-xl px-5 py-4 text-xs text-slate-400 leading-relaxed"
               style={cardBase}
             >
-              <span className="text-[#00A3FF] font-semibold">How it works: </span>
+              <span className="font-semibold" style={{ color: accentHex }}>How it works: </span>
               Your clips are being stitched together using the Canvas API directly in your browser.
               A title card with your name and sport is drawn first, then each clip is rendered
               frame-by-frame, and a CLIPT watermark is stamped on every frame.
@@ -634,11 +717,14 @@ export default function ExportPage() {
             {/* Done banner */}
             <div
               className="rounded-2xl px-6 py-5 flex items-center gap-4"
-              style={{ background: "rgba(0,163,255,0.08)", border: "1px solid rgba(0,163,255,0.3)" }}
+              style={{
+                background: `${accentHex}12`,
+                border:     `1px solid ${accentHex}45`,
+              }}
             >
               <div
                 className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
-                style={{ background: "rgba(0,163,255,0.2)" }}
+                style={{ background: `${accentHex}25` }}
               >
                 <CheckMdIcon />
               </div>
@@ -654,8 +740,11 @@ export default function ExportPage() {
             <button
               type="button"
               onClick={handleDownload}
-              className="w-full py-4 rounded-xl font-bold text-base text-white flex items-center justify-center gap-2.5 transition-all hover:opacity-90 active:scale-[0.99]"
-              style={{ background: "#00A3FF" }}
+              className="w-full py-4 rounded-xl font-bold text-base flex items-center justify-center gap-2.5 transition-all hover:opacity-90 active:scale-[0.99]"
+              style={{
+                background: accentHex,
+                color:      reel.colorAccent === "White" ? "#050A14" : "#ffffff",
+              }}
             >
               <DownloadIcon />
               Download Highlight Reel
@@ -677,7 +766,7 @@ export default function ExportPage() {
                   className="px-4 py-3 rounded-xl text-sm font-bold flex items-center gap-2 shrink-0 transition-all"
                   style={
                     copied
-                      ? { background: "rgba(0,163,255,0.12)", color: "#00A3FF", border: "1px solid rgba(0,163,255,0.4)" }
+                      ? { background: `${accentHex}15`, color: accentHex, border: `1px solid ${accentHex}55` }
                       : { background: "#0A1628", color: "#94a3b8", border: "1px solid rgba(255,255,255,0.08)" }
                   }
                 >
@@ -728,8 +817,11 @@ export default function ExportPage() {
             <button
               type="button"
               onClick={() => { setPhase("idle"); setErrMsg(""); }}
-              className="w-full py-4 rounded-xl font-bold text-base text-white transition-all hover:opacity-90 active:scale-[0.99]"
-              style={{ background: "#00A3FF" }}
+              className="w-full py-4 rounded-xl font-bold text-base transition-all hover:opacity-90 active:scale-[0.99]"
+              style={{
+                background: accentHex,
+                color:      reel.colorAccent === "White" ? "#050A14" : "#ffffff",
+              }}
             >
               Try Again
             </button>
