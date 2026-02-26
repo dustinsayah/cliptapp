@@ -99,6 +99,7 @@ const FONT_MAP: Record<FontStyle, string> = {
 interface StatField { label: string; key: string; placeholder: string }
 
 function getStatFields(sport: string, position: string): StatField[] {
+  // ── Basketball ──────────────────────────────────────────────────────────
   if (sport === "Basketball") return [
     { label: "PPG",   key: "ppg",     placeholder: "18.5" },
     { label: "RPG",   key: "rpg",     placeholder: "7.2"  },
@@ -108,26 +109,35 @@ function getStatFields(sport: string, position: string): StatField[] {
     { label: "3PT%",  key: "tpt",     placeholder: "38%"  },
     { label: "GPA",   key: "gpa_stat",placeholder: "3.8"  },
   ];
-  if (position === "Quarterback") return [
-    { label: "Pass Yds", key: "passyds",  placeholder: "2,847" },
-    { label: "TDs",      key: "tds",      placeholder: "28"    },
-    { label: "Comp%",    key: "comppct",  placeholder: "67%"   },
-    { label: "Rush Yds", key: "rushyds",  placeholder: "312"   },
-    { label: "GPA",      key: "gpa_stat", placeholder: "3.6"   },
-  ];
-  if (["Running Back","Wide Receiver","Tight End"].includes(position)) return [
-    { label: "Rec Yds", key: "recyds",  placeholder: "1,204" },
-    { label: "TDs",     key: "tds",     placeholder: "14"    },
-    { label: "YAC",     key: "yac",     placeholder: "487"   },
-    { label: "GPA",     key: "gpa_stat",placeholder: "3.5"   },
-  ];
-  if (["Linebacker","Cornerback","Safety","Defensive End","Kicker"].includes(position)) return [
-    { label: "Tackles", key: "tackles", placeholder: "89"  },
-    { label: "Sacks",   key: "sacks",   placeholder: "7.5" },
-    { label: "INTs",    key: "ints",    placeholder: "3"   },
-    { label: "PBUs",    key: "pbus",    placeholder: "12"  },
-    { label: "GPA",     key: "gpa_stat",placeholder: "3.7" },
-  ];
+
+  // ── Football: position-specific stats ───────────────────────────────────
+  if (sport === "Football") {
+    if (position === "Quarterback") return [
+      { label: "Pass Yds", key: "passyds",  placeholder: "2,847" },
+      { label: "TDs",      key: "tds",      placeholder: "28"    },
+      { label: "Comp%",    key: "comppct",  placeholder: "67%"   },
+      { label: "Rush Yds", key: "rushyds",  placeholder: "312"   },
+      { label: "INT",      key: "ints",     placeholder: "5"     },
+      { label: "GPA",      key: "gpa_stat", placeholder: "3.6"   },
+    ];
+    if (["Wide Receiver","Running Back","Tight End"].includes(position)) return [
+      { label: "Rec Yds",  key: "recyds",   placeholder: "1,204" },
+      { label: "TDs",      key: "tds",      placeholder: "14"    },
+      { label: "Rush Yds", key: "rushyds",  placeholder: "487"   },
+      { label: "YAC",      key: "yac",      placeholder: "312"   },
+      { label: "GPA",      key: "gpa_stat", placeholder: "3.5"   },
+    ];
+    if (["Linebacker","Cornerback","Safety","Defensive End"].includes(position)) return [
+      { label: "Tackles",  key: "tackles",  placeholder: "89"    },
+      { label: "Sacks",    key: "sacks",    placeholder: "7.5"   },
+      { label: "INTs",     key: "ints",     placeholder: "3"     },
+      { label: "PBUs",     key: "pbus",     placeholder: "12"    },
+      { label: "GPA",      key: "gpa_stat", placeholder: "3.7"   },
+    ];
+    // Default football (Kicker or no position selected yet)
+    return [{ label: "GPA", key: "gpa_stat", placeholder: "3.8" }];
+  }
+
   return [{ label: "GPA", key: "gpa_stat", placeholder: "3.8" }];
 }
 
@@ -344,6 +354,19 @@ export default function CustomizePage() {
   useEffect(() => {
     return () => { audioRef.current?.pause(); if (playTimer.current) clearTimeout(playTimer.current); };
   }, []);
+
+  // ── Debug: verify sport is read correctly from localStorage ───────────────
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("clipt_reel");
+      const cliptData = raw ? JSON.parse(raw) : null;
+      console.log("[Clipt] cliptData from localStorage:", cliptData);
+      console.log("[Clipt] sport:", cliptData?.sport);
+      console.log("[Clipt] reel.sport from context:", reel.sport);
+    } catch (e) {
+      console.error("[Clipt] Failed to read localStorage:", e);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const stopAudio = () => {
     audioRef.current?.pause(); audioRef.current = null;
