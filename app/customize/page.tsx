@@ -278,9 +278,11 @@ export default function CustomizePage() {
 
   const initialNames = reel.files.length > 0 ? reel.files.map((f) => f.name) : reel.clipNames;
 
-  const [clipItems, setClipItems] = useState<{ name: string; label: string }[]>(() =>
+  const [clipItems, setClipItems] = useState<{ name: string; label: string; isAiPick?: boolean; playType?: string; confidence?: number }[]>(() =>
     initialNames.map((n, i) => ({ name: n, label: reel.clipLabels[i] || "" }))
   );
+
+  const [aiBanner, setAiBanner] = useState<{ count: number; jerseyNumber: number } | null>(null);
 
   // ── Drag-to-reorder ──────────────────────────────────────────────────────
   const dragIdx = useRef<number | null>(null);
@@ -368,6 +370,32 @@ export default function CustomizePage() {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Load AI-generated clips from process page ─────────────────────────────
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("aiGeneratedClips");
+      if (!raw) return;
+      const aiClips: { id: string; clipNumber: number; playType: string; startTime: number; endTime: number; duration: number; confidence: number; jerseyNumber: number }[] = JSON.parse(raw);
+      if (!Array.isArray(aiClips) || aiClips.length === 0) return;
+      const jerseyNumber = aiClips[0].jerseyNumber;
+      setAiBanner({ count: aiClips.length, jerseyNumber });
+      // Only pre-populate clips if none were uploaded manually
+      if (initialNames.length === 0) {
+        setClipItems(
+          aiClips.map((c) => ({
+            name: `Clip ${c.clipNumber} — ${c.playType}`,
+            label: "",
+            isAiPick: true,
+            playType: c.playType,
+            confidence: c.confidence,
+          }))
+        );
+      }
+    } catch {
+      // malformed JSON — ignore
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const stopAudio = () => {
     audioRef.current?.pause(); audioRef.current = null;
     if (playTimer.current) { clearTimeout(playTimer.current); playTimer.current = null; }
@@ -421,6 +449,40 @@ export default function CustomizePage() {
       </nav>
 
       <ProgressBar active={2} accent={accentHex} />
+
+      {/* ── AI Banner ── */}
+      {aiBanner && (
+        <div className="max-w-7xl mx-auto px-6 mb-6">
+          <div
+            className="flex items-center justify-between gap-4 px-5 py-3.5 rounded-2xl text-sm font-semibold"
+            style={{
+              background: "rgba(0,163,255,0.10)",
+              border: "1px solid rgba(0,163,255,0.3)",
+              color: "#00A3FF",
+            }}
+          >
+            <div className="flex items-center gap-2.5">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
+              </svg>
+              <span>
+                AI found <strong>{aiBanner.count} clips</strong> featuring jersey{" "}
+                <strong>#{aiBanner.jerseyNumber}</strong> — review and customize your reel below.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setAiBanner(null);
+                localStorage.removeItem("aiGeneratedClips");
+              }}
+              className="shrink-0 text-xs font-bold opacity-60 hover:opacity-100 transition-opacity"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
 
       <main className="max-w-7xl mx-auto px-6 pb-16">
         <div className="mb-8">
@@ -486,7 +548,19 @@ export default function CustomizePage() {
                         <span className="text-slate-600 shrink-0"><GripIcon /></span>
                         <span className="w-5 h-5 rounded-md flex items-center justify-center text-[9px] font-black shrink-0"
                           style={{ background: `${accentHex}20`, color: accentHex }}>{i + 1}</span>
-                        <span className="text-[11px] text-slate-300 truncate">{clip.name}</span>
+                        <span className="text-[11px] text-slate-300 truncate flex-1">{clip.name}</span>
+                        {clip.isAiPick && (
+                          <span
+                            className="shrink-0 text-[8px] font-black px-1.5 py-0.5 rounded-full tracking-wide"
+                            style={{
+                              background: "rgba(0,163,255,0.15)",
+                              color: "#00A3FF",
+                              border: "1px solid rgba(0,163,255,0.3)",
+                            }}
+                          >
+                            AI PICK
+                          </span>
+                        )}
                       </div>
                       <select value={clip.label}
                         onChange={(e) => setClipItems((prev) => {

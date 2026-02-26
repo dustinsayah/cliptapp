@@ -1,10 +1,8 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Inter, Oswald, Poppins, Bebas_Neue } from "next/font/google";
+import { Inter, Oswald, Poppins, Bebas_Neue } from "next/font/google";
 import "./globals.css";
 import { ReelProvider } from "./providers";
-
-const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
-const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+import Navigation from "@/components/Navigation";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -46,9 +44,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} ${inter.variable} ${oswald.variable} ${poppins.variable} ${bebasNeue.variable} antialiased`}
+        className={`${inter.variable} ${oswald.variable} ${poppins.variable} ${bebasNeue.variable} antialiased`}
       >
-        <ReelProvider>{children}</ReelProvider>
+        <ReelProvider>
+          <Navigation />
+          {children}
+        </ReelProvider>
       </body>
     </html>
   );

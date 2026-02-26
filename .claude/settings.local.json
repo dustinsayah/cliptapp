@@ -6,7 +6,10 @@
       "WebFetch(domain:pixabay.com)",
       "WebFetch(domain:mixkit.co)",
       "Bash(head:*)",
-      "Bash(tail:*)"
+      "Bash(tail:*)",
+      "Bash(ls:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)"
     ]
   }
 }

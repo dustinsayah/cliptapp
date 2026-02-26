@@ -1,0 +1,160 @@
+/**
+ * REQUIRED DATABASE TABLES
+ * Run the SQL below in your Supabase SQL editor:
+ * Dashboard → SQL Editor → New query → paste → Run
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ *
+ * CREATE TABLE processing_jobs (
+ *   id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+ *   first_name      TEXT,
+ *   last_name       TEXT,
+ *   jersey_number   INTEGER,
+ *   position        TEXT,
+ *   sport           TEXT,
+ *   school          TEXT,
+ *   video_url       TEXT,
+ *   source          TEXT        DEFAULT 'youtube',
+ *   status          TEXT        DEFAULT 'queued',
+ *   created_at      TIMESTAMPTZ DEFAULT NOW(),
+ *   updated_at      TIMESTAMPTZ DEFAULT NOW(),
+ *   result_clips    JSONB,
+ *   error_message   TEXT,
+ *   email           TEXT
+ * );
+ *
+ * CREATE OR REPLACE FUNCTION update_updated_at_column()
+ * RETURNS TRIGGER AS $$
+ * BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
+ * $$ language 'plpgsql';
+ *
+ * CREATE TRIGGER update_processing_jobs_updated_at
+ *   BEFORE UPDATE ON processing_jobs
+ *   FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
+ *
+ * ALTER TABLE processing_jobs ENABLE ROW LEVEL SECURITY;
+ * CREATE POLICY "Allow public insert"    ON processing_jobs FOR INSERT WITH CHECK (true);
+ * CREATE POLICY "Allow public select"    ON processing_jobs FOR SELECT USING (true);
+ * CREATE POLICY "Allow public update"    ON processing_jobs FOR UPDATE USING (true);
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ *
+ * CREATE TABLE waitlist (
+ *   id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+ *   email      TEXT        UNIQUE,
+ *   source     TEXT,
+ *   created_at TIMESTAMPTZ DEFAULT NOW()
+ * );
+ *
+ * ALTER TABLE waitlist ENABLE ROW LEVEL SECURITY;
+ * CREATE POLICY "Allow public insert" ON waitlist FOR INSERT WITH CHECK (true);
+ * CREATE POLICY "Allow public select" ON waitlist FOR SELECT USING (true);
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+
+import { createClient } from "@supabase/supabase-js";
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+const isConfigured =
+  !!supabaseUrl &&
+  !!supabaseKey &&
+  supabaseKey !== "your-anon-key-here" &&
+  supabaseUrl !== "https://placeholder.supabase.co";
+
+if (!isConfigured) {
+  console.warn(
+    "[Clipt] ⚠️  Supabase credentials missing or placeholder. " +
+      "Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local. " +
+      "Forms will show success state but no data will be saved."
+  );
+}
+
+export const supabase = createClient(
+  supabaseUrl ?? "https://placeholder.supabase.co",
+  supabaseKey ?? "placeholder-key"
+);
+
+// ── Waitlist helper ────────────────────────────────────────────────────────
+
+export type WaitlistSource =
+  | "homepage"
+  | "start_page_modal"
+  | "process_page";
+
+export interface WaitlistResult {
+  success: boolean;
+  alreadyExists: boolean;
+  error?: string;
+}
+
+/**
+ * Inserts an email into the waitlist table.
+ * - If the email already exists, returns { success: true, alreadyExists: true }
+ * - If Supabase is not configured, returns { success: true, alreadyExists: false }
+ *   so the UI shows a success state without crashing.
+ */
+export async function saveToWaitlist(
+  email: string,
+  source: WaitlistSource
+): Promise<WaitlistResult> {
+  if (!isConfigured) {
+    console.warn("[Clipt] Supabase not configured — skipping waitlist insert.");
+    return { success: true, alreadyExists: false };
+  }
+
+  try {
+    const { error } = await supabase
+      .from("waitlist")
+      .insert({ email: email.trim().toLowerCase(), source });
+
+    if (error) {
+      // Postgres unique violation code
+      if (
+        error.code === "23505" ||
+        error.message?.toLowerCase().includes("duplicate") ||
+        error.message?.toLowerCase().includes("unique")
+      ) {
+        return { success: true, alreadyExists: true };
+      }
+      console.error("[Clipt] Waitlist insert error:", error);
+      return { success: false, alreadyExists: false, error: error.message };
+    }
+
+    return { success: true, alreadyExists: false };
+  } catch (err) {
+    // Network/config error — show success so UI never breaks
+    console.warn("[Clipt] Waitlist insert failed (network/config):", err);
+    return { success: true, alreadyExists: false };
+  }
+}
+
+// ── Types ──────────────────────────────────────────────────────────────────
+
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[];
+
+export interface ProcessingJobRow {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  jersey_number: number | null;
+  position: string | null;
+  sport: string | null;
+  school: string | null;
+  video_url: string | null;
+  source: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  result_clips: Json | null;
+  error_message: string | null;
+  email: string | null;
+}
