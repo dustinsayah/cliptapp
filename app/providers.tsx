@@ -48,6 +48,12 @@ interface ReelState {
   statsData:        Record<string, string>;
   highlightPlayer:  boolean;
 
+  // Per-clip editor data
+  clipTrimStarts:   number[];
+  clipTrimEnds:     number[];
+  clipTextOverlays: string[];
+  clipIntensities:  number[];
+
   // Legacy (kept for upload page compat)
   showIntro: boolean;
   music:     MusicId;
@@ -81,6 +87,10 @@ const DEFAULTS: ReelState = {
   includeStatsCard: false,
   statsData:        {},
   highlightPlayer:  false,
+  clipTrimStarts:   [],
+  clipTrimEnds:     [],
+  clipTextOverlays: [],
+  clipIntensities:  [],
   showIntro:    true,
   music:        "hype",
   style:        "electric",

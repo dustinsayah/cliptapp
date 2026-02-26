@@ -62,6 +62,12 @@ const labelClass = "block text-sm font-semibold text-white mb-2";
 
 const MAX_CLIPS = 50;
 
+function fmtFileSize(bytes: number): string {
+  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`;
+  if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(0)} MB`;
+  return `${(bytes / 1e3).toFixed(0)} KB`;
+}
+
 export default function UploadPage() {
   const router = useRouter();
   const reel = useReel();
@@ -79,7 +85,7 @@ export default function UploadPage() {
   const addFiles = useCallback((incoming: FileList | null) => {
     if (!incoming) return;
     const valid = Array.from(incoming).filter((f) =>
-      ["video/mp4", "video/quicktime"].includes(f.type)
+      f.type.startsWith("video/") || f.name.match(/\.(mp4|mov|m4v|avi|mkv|webm)$/i) !== null
     );
     setFiles((prev) => {
       const combined = [...prev, ...valid];
@@ -217,7 +223,7 @@ export default function UploadPage() {
             Drag and drop your clips here
           </p>
           <p className="text-slate-400 text-sm mb-6">
-            MP4 or MOV &bull; Up to 500MB each
+            MP4, MOV, or any video format &bull; No size limit
           </p>
           <button
             type="button"
@@ -233,7 +239,7 @@ export default function UploadPage() {
           <input
             ref={fileInputRef}
             type="file"
-            accept="video/mp4,video/quicktime,.mp4,.mov"
+            accept="video/*,.mp4,.mov,.m4v,.avi,.mkv,.webm"
             multiple
             className="hidden"
             onChange={(e) => addFiles(e.target.files)}
@@ -252,9 +258,10 @@ export default function UploadPage() {
                   border: "1px solid rgba(255,255,255,0.08)",
                 }}
               >
-                <span className="text-sm text-white truncate mr-4">
-                  {file.name}
-                </span>
+                <div className="flex flex-col min-w-0 mr-4">
+                  <span className="text-sm text-white truncate">{file.name}</span>
+                  <span className="text-xs text-slate-500 mt-0.5">{fmtFileSize(file.size)}</span>
+                </div>
                 <button
                   type="button"
                   onClick={() => removeFile(i)}
