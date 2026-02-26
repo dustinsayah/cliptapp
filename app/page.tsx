@@ -411,7 +411,7 @@ export default function Home() {
             <div>
               <p className="text-xs font-black tracking-widest uppercase text-slate-400 mb-4">Support</p>
               <ul className="flex flex-col gap-2.5">
-                {[["Contact", "#"], ["FAQ", "#"]].map(([label, href]) => (
+                {[["Contact", "#"], ["FAQ", "/faq"]].map(([label, href]) => (
                   <li key={label}>
                     <a href={href} className="text-slate-500 text-sm hover:text-white transition-colors">{label}</a>
                   </li>

@@ -35,6 +35,15 @@ const PauseIcon = () => (
     <rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" />
   </svg>
 );
+const ChevronDownIcon = ({ open }: { open: boolean }) => (
+  <svg
+    width="18" height="18" viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+    style={{ transform: open ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.25s ease", flexShrink: 0 }}
+  >
+    <polyline points="6 9 12 15 18 9" />
+  </svg>
+);
 
 // ── Static data ────────────────────────────────────────────────────────────
 
@@ -99,7 +108,6 @@ const FONT_MAP: Record<FontStyle, string> = {
 interface StatField { label: string; key: string; placeholder: string }
 
 function getStatFields(sport: string, position: string): StatField[] {
-  // ── Basketball ──────────────────────────────────────────────────────────
   if (sport === "Basketball") return [
     { label: "PPG",   key: "ppg",     placeholder: "18.5" },
     { label: "RPG",   key: "rpg",     placeholder: "7.2"  },
@@ -110,7 +118,6 @@ function getStatFields(sport: string, position: string): StatField[] {
     { label: "GPA",   key: "gpa_stat",placeholder: "3.8"  },
   ];
 
-  // ── Football: position-specific stats ───────────────────────────────────
   if (sport === "Football") {
     if (position === "Quarterback") return [
       { label: "Pass Yds", key: "passyds",  placeholder: "2,847" },
@@ -134,14 +141,11 @@ function getStatFields(sport: string, position: string): StatField[] {
       { label: "PBUs",     key: "pbus",     placeholder: "12"    },
       { label: "GPA",      key: "gpa_stat", placeholder: "3.7"   },
     ];
-    // Default football (Kicker or no position selected yet)
     return [{ label: "GPA", key: "gpa_stat", placeholder: "3.8" }];
   }
 
   return [{ label: "GPA", key: "gpa_stat", placeholder: "3.8" }];
 }
-
-// ── Clip label options ─────────────────────────────────────────────────────
 
 function getClipLabels(sport: string): string[] {
   if (sport === "Basketball")
@@ -150,8 +154,6 @@ function getClipLabels(sport: string): string[] {
     return ["Run","Reception","Block","Tackle","Sack","Interception","Route","Kickoff","Pass","Blitz"];
   return ["Offense","Defense","Highlight","Transition","Other"];
 }
-
-// ── Diversity check ────────────────────────────────────────────────────────
 
 function checkDiversity(labels: string[]): string | null {
   const filled = labels.filter((l) => !!l);
@@ -164,8 +166,6 @@ function checkDiversity(labels: string[]): string | null {
   }
   return null;
 }
-
-// ── Duration helpers ───────────────────────────────────────────────────────
 
 function fmtDuration(s: number): string {
   const m = Math.floor(s / 60);
@@ -211,14 +211,6 @@ function ProgressBar({ active, accent }: { active: number; accent: string }) {
   );
 }
 
-function SectionLabel({ text, accent }: { text: string; accent: string }) {
-  return (
-    <p className="text-[10px] font-black tracking-widest uppercase mb-1 transition-colors duration-300" style={{ color: accent }}>
-      {text}
-    </p>
-  );
-}
-
 function Toggle({ on, onToggle, accent }: { on: boolean; onToggle: () => void; accent: string }) {
   return (
     <button type="button" onClick={onToggle} className="shrink-0 w-12 h-6 rounded-full transition-all relative"
@@ -230,6 +222,53 @@ function Toggle({ on, onToggle, accent }: { on: boolean; onToggle: () => void; a
 }
 
 const cardBase: React.CSSProperties = { background: "#0A1628", border: "1px solid rgba(255,255,255,0.08)" };
+
+// ── Collapsible Section ────────────────────────────────────────────────────
+
+function CollapsibleSection({
+  title, subtitle, children, accent, defaultOpen = true,
+}: {
+  title: string; subtitle?: string; children: React.ReactNode;
+  accent: string; defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  return (
+    <section className="rounded-2xl overflow-hidden" style={cardBase}>
+      {/* Header / toggle */}
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-6 py-5 text-left hover:bg-white/[0.02] transition-colors"
+      >
+        <div className="min-w-0 pr-3">
+          <h2 className="text-base font-bold text-white leading-tight">{title}</h2>
+          {subtitle && <p className="text-slate-500 text-xs mt-0.5 leading-snug">{subtitle}</p>}
+        </div>
+        <span style={{ color: accent }}>
+          <ChevronDownIcon open={open} />
+        </span>
+      </button>
+
+      {/* Collapsible body — CSS grid trick for smooth animation */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateRows: open ? "1fr" : "0fr",
+          transition: "grid-template-rows 0.3s ease",
+        }}
+      >
+        <div style={{ overflow: "hidden" }}>
+          <div className="px-6 pb-6">
+            {/* Subtle top divider */}
+            <div className="h-px mb-5" style={{ background: "rgba(255,255,255,0.05)" }} />
+            {children}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
 
 // ── Title Card Preview ─────────────────────────────────────────────────────
 
@@ -279,7 +318,7 @@ export default function CustomizePage() {
   const initialNames = reel.files.length > 0 ? reel.files.map((f) => f.name) : reel.clipNames;
 
   const [clipItems, setClipItems] = useState<{ name: string; label: string; isAiPick?: boolean; playType?: string; confidence?: number }[]>(() =>
-    initialNames.map((n, i) => ({ name: n, label: reel.clipLabels[i] || "" }))
+    initialNames.map((n, i) => ({ name: n, label: reel.clipLabels?.[i] || "" }))
   );
 
   const [aiBanner, setAiBanner] = useState<{ count: number; jerseyNumber: number } | null>(null);
@@ -302,38 +341,40 @@ export default function CustomizePage() {
   const onDragEnd = () => { dragIdx.current = null; setDragOver(null); };
 
   // ── Sport / positions ─────────────────────────────────────────────────────
-  const sport     = reel.sport;
+  const sport     = reel.sport || "";
   const positions = sport === "Basketball" ? BASKETBALL_POSITIONS
     : sport === "Football" ? FOOTBALL_POSITIONS
     : [...BASKETBALL_POSITIONS, ...FOOTBALL_POSITIONS];
 
   // ── Customization state ────────────────────────────────────────────────────
-  const [firstName,   setFirstName]   = useState(reel.firstName);
+  const [firstName,   setFirstName]   = useState(reel.firstName || "");
   const [position,    setPosition]    = useState(() => positions.includes(reel.position) ? reel.position : "");
-  const [gradYear,    setGradYear]    = useState(reel.gradYear);
-  const [heightFt,    setHeightFt]    = useState(reel.heightFt);
-  const [heightIn,    setHeightIn]    = useState(reel.heightIn);
-  const [weight,      setWeight]      = useState(reel.weight);
-  const [gpa,         setGpa]         = useState(reel.gpa);
-  const [email,       setEmail]       = useState(reel.email);
-  const [coachName,   setCoachName]   = useState(reel.coachName);
-  const [coachEmail,  setCoachEmail]  = useState(reel.coachEmail);
+  const [gradYear,    setGradYear]    = useState(reel.gradYear || "");
+  const [heightFt,    setHeightFt]    = useState(reel.heightFt || "");
+  const [heightIn,    setHeightIn]    = useState(reel.heightIn || "");
+  const [weight,      setWeight]      = useState(reel.weight || "");
+  const [gpa,         setGpa]         = useState(reel.gpa || "");
+  const [email,       setEmail]       = useState(reel.email || "");
+  const [coachName,   setCoachName]   = useState(reel.coachName || "");
+  const [coachEmail,  setCoachEmail]  = useState(reel.coachEmail || "");
 
-  const [musicStyle,       setMusicStyle]       = useState<MusicStyle>(reel.musicStyle);
-  const [colorAccent,      setColorAccent]      = useState<ColorAccent>(reel.colorAccent);
-  const [reelLength,       setReelLength]        = useState(reel.reelLength);
-  const [introStyle,       setIntroStyle]        = useState<IntroStyle>(reel.introStyle);
-  const [fontStyle,        setFontStyle]         = useState<FontStyle>(reel.fontStyle);
-  const [transition,       setTransition]        = useState<TransitionStyle>(reel.transition);
-  const [highlightPlayer,  setHighlightPlayer]   = useState(reel.highlightPlayer);
-  const [includeStatsCard, setIncludeStatsCard]  = useState(reel.includeStatsCard);
-  const [statsData,        setStatsData]         = useState<Record<string, string>>(reel.statsData);
+  const [musicStyle,       setMusicStyle]      = useState<MusicStyle>(reel.musicStyle || "NoMusic");
+  const [colorAccent,      setColorAccent]     = useState<ColorAccent>(reel.colorAccent || "Electric Blue");
+  const [reelLength,       setReelLength]      = useState(reel.reelLength || 3);
+  const [introStyle,       setIntroStyle]      = useState<IntroStyle>(reel.introStyle || "Name + School");
+  const [fontStyle,        setFontStyle]       = useState<FontStyle>(reel.fontStyle || "Modern");
+  const [transition,       setTransition]      = useState<TransitionStyle>(reel.transition || "Hard Cut");
+  const [highlightPlayer,  setHighlightPlayer] = useState(reel.highlightPlayer || false);
+  const [includeStatsCard, setIncludeStatsCard]= useState(reel.includeStatsCard || false);
+  const [statsData,        setStatsData]       = useState<Record<string, string>>(reel.statsData || {});
+  const [enhanceQuality,   setEnhanceQuality]  = useState(reel.enhanceQuality ?? true);
+  const [showJerseyOverlay,setShowJerseyOverlay]= useState(reel.showJerseyOverlay ?? true);
 
   const accentHex     = COLOR_OPTIONS.find((o) => o.id === colorAccent)?.hex ?? "#00A3FF";
   const btnTextColor  = colorAccent === "White" ? "#050A14" : "#ffffff";
 
   // ── Duration counter ──────────────────────────────────────────────────────
-  const overhead         = 4 + (includeStatsCard ? 4 : 0) + 4;
+  const overhead         = 4 + (includeStatsCard ? 4 : 0) + 5;
   const estimatedSec     = reelLength * 60 + overhead;
   const durationColor    = estimatedSec < 240 ? "#22C55E" : estimatedSec < 300 ? "#F59E0B" : "#EF4444";
   const overDuration     = estimatedSec > 300;
@@ -350,25 +391,12 @@ export default function CustomizePage() {
 
   // ── Audio preview ──────────────────────────────────────────────────────────
   const [playingMusic, setPlayingMusic] = useState<MusicStyle | null>(null);
-  const audioRef   = useRef<HTMLAudioElement | null>(null);
-  const playTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const audioRef  = useRef<HTMLAudioElement | null>(null);
+  const playTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => { audioRef.current?.pause(); if (playTimer.current) clearTimeout(playTimer.current); };
   }, []);
-
-  // ── Debug: verify sport is read correctly from localStorage ───────────────
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem("clipt_reel");
-      const cliptData = raw ? JSON.parse(raw) : null;
-      console.log("[Clipt] cliptData from localStorage:", cliptData);
-      console.log("[Clipt] sport:", cliptData?.sport);
-      console.log("[Clipt] reel.sport from context:", reel.sport);
-    } catch (e) {
-      console.error("[Clipt] Failed to read localStorage:", e);
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Load AI-generated clips from process page ─────────────────────────────
   useEffect(() => {
@@ -379,7 +407,6 @@ export default function CustomizePage() {
       if (!Array.isArray(aiClips) || aiClips.length === 0) return;
       const jerseyNumber = aiClips[0].jerseyNumber;
       setAiBanner({ count: aiClips.length, jerseyNumber });
-      // Only pre-populate clips if none were uploaded manually
       if (initialNames.length === 0) {
         setClipItems(
           aiClips.map((c) => ({
@@ -427,6 +454,7 @@ export default function CustomizePage() {
       firstName, position, gradYear, heightFt, heightIn, weight, gpa, email, coachName, coachEmail,
       musicStyle, colorAccent, reelLength, introStyle, fontStyle,
       transition, highlightPlayer, includeStatsCard, statsData,
+      enhanceQuality, showJerseyOverlay,
       clipNames:  clipItems.map((c) => c.name),
       clipLabels: clipItems.map((c) => c.label),
     });
@@ -453,31 +481,16 @@ export default function CustomizePage() {
       {/* ── AI Banner ── */}
       {aiBanner && (
         <div className="max-w-7xl mx-auto px-6 mb-6">
-          <div
-            className="flex items-center justify-between gap-4 px-5 py-3.5 rounded-2xl text-sm font-semibold"
-            style={{
-              background: "rgba(0,163,255,0.10)",
-              border: "1px solid rgba(0,163,255,0.3)",
-              color: "#00A3FF",
-            }}
-          >
+          <div className="flex items-center justify-between gap-4 px-5 py-3.5 rounded-2xl text-sm font-semibold"
+            style={{ background: "rgba(0,163,255,0.10)", border: "1px solid rgba(0,163,255,0.3)", color: "#00A3FF" }}>
             <div className="flex items-center gap-2.5">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
                 <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
               </svg>
-              <span>
-                AI found <strong>{aiBanner.count} clips</strong> featuring jersey{" "}
-                <strong>#{aiBanner.jerseyNumber}</strong> — review and customize your reel below.
-              </span>
+              <span>AI found <strong>{aiBanner.count} clips</strong> featuring jersey <strong>#{aiBanner.jerseyNumber}</strong> — review and customize your reel below.</span>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                setAiBanner(null);
-                localStorage.removeItem("aiGeneratedClips");
-              }}
-              className="shrink-0 text-xs font-bold opacity-60 hover:opacity-100 transition-opacity"
-            >
+            <button type="button" onClick={() => { setAiBanner(null); localStorage.removeItem("aiGeneratedClips"); }}
+              className="shrink-0 text-xs font-bold opacity-60 hover:opacity-100 transition-opacity">
               Dismiss
             </button>
           </div>
@@ -498,7 +511,7 @@ export default function CustomizePage() {
 
             {/* Duration Counter */}
             <div className="rounded-2xl p-4" style={cardBase}>
-              <SectionLabel text="Reel Duration" accent={accentHex} />
+              <p className="text-[10px] font-black tracking-widest uppercase mb-1 transition-colors duration-300" style={{ color: accentHex }}>Reel Duration</p>
               <div className="flex items-baseline gap-1.5 mt-1">
                 <span className="text-2xl font-black tabular-nums transition-colors duration-300" style={{ color: durationColor }}>
                   {fmtDuration(estimatedSec)}
@@ -524,7 +537,7 @@ export default function CustomizePage() {
 
             {/* Clip Order */}
             <div className="rounded-2xl p-4" style={cardBase}>
-              <SectionLabel text="Clip Order" accent={accentHex} />
+              <p className="text-[10px] font-black tracking-widest uppercase mb-1 transition-colors duration-300" style={{ color: accentHex }}>Clip Order</p>
               <h2 className="text-sm font-bold text-white mb-1">Your Clips</h2>
               <p className="text-slate-500 text-[11px] mb-3">Drag to reorder · label each clip</p>
 
@@ -550,14 +563,8 @@ export default function CustomizePage() {
                           style={{ background: `${accentHex}20`, color: accentHex }}>{i + 1}</span>
                         <span className="text-[11px] text-slate-300 truncate flex-1">{clip.name}</span>
                         {clip.isAiPick && (
-                          <span
-                            className="shrink-0 text-[8px] font-black px-1.5 py-0.5 rounded-full tracking-wide"
-                            style={{
-                              background: "rgba(0,163,255,0.15)",
-                              color: "#00A3FF",
-                              border: "1px solid rgba(0,163,255,0.3)",
-                            }}
-                          >
+                          <span className="shrink-0 text-[8px] font-black px-1.5 py-0.5 rounded-full tracking-wide"
+                            style={{ background: "rgba(0,163,255,0.15)", color: "#00A3FF", border: "1px solid rgba(0,163,255,0.3)" }}>
                             AI PICK
                           </span>
                         )}
@@ -578,23 +585,24 @@ export default function CustomizePage() {
                 </ul>
               )}
 
-              {/* Diversity Warning */}
               {diversityWarn && (
                 <div className="mt-3 px-3 py-2 rounded-xl text-[10px] leading-snug"
                   style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", color: "#F59E0B" }}>
-                  ⚠ Coaches want variety. Too many "{diversityWarn}" clips — add defensive plays, hustle clips, or different play types.
+                  ⚠ Coaches want variety. Too many &quot;{diversityWarn}&quot; clips — add defensive plays, hustle clips, or different play types.
                 </div>
               )}
             </div>
           </aside>
 
-          {/* ── CENTER: Customization Sections ── */}
-          <div className="flex flex-col gap-5">
+          {/* ── CENTER: Collapsible Sections ── */}
+          <div className="flex flex-col gap-4">
 
-            {/* 01 — Title Card */}
-            <section className="rounded-2xl p-6" style={cardBase}>
-              <SectionLabel text="01 — Title Card" accent={accentHex} />
-              <h2 className="text-base font-bold text-white mb-5">Athlete Info</h2>
+            {/* ── 1. REEL INFO ── */}
+            <CollapsibleSection
+              title="Reel Info"
+              subtitle="Your name, position, and athlete details shown on the title card"
+              accent={accentHex}
+            >
               <div className="flex flex-col gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-white mb-2">Name</label>
@@ -664,13 +672,14 @@ export default function CustomizePage() {
                   </div>
                 </div>
               </div>
-            </section>
+            </CollapsibleSection>
 
-            {/* 02 — Music Style */}
-            <section className="rounded-2xl p-6" style={cardBase}>
-              <SectionLabel text="02 — Music Style" accent={accentHex} />
-              <h2 className="text-base font-bold text-white mb-1">Background Music</h2>
-              <p className="text-slate-500 text-xs mb-5">Instrumental only · click to preview 15 sec</p>
+            {/* ── 2. MUSIC ── */}
+            <CollapsibleSection
+              title="Music"
+              subtitle="Background track for your reel · click any option to preview 15 sec"
+              accent={accentHex}
+            >
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {MUSIC_OPTIONS.map((opt) => {
                   const selected = musicStyle === opt.id;
@@ -706,84 +715,198 @@ export default function CustomizePage() {
                   );
                 })}
               </div>
-            </section>
 
-            {/* 03 — Color Accent */}
-            <section className="rounded-2xl p-6" style={cardBase}>
-              <SectionLabel text="03 — Color Accent" accent={accentHex} />
-              <h2 className="text-base font-bold text-white mb-5">Team Color</h2>
-              <div className="flex flex-wrap gap-5">
-                {COLOR_OPTIONS.map((opt) => {
-                  const selected = colorAccent === opt.id;
-                  return (
-                    <button key={opt.id} type="button" onClick={() => handleColorPick(opt)}
-                      className="flex flex-col items-center gap-2 transition-transform active:scale-95" title={opt.id}>
-                      <div className="w-10 h-10 rounded-full transition-all duration-200"
-                        style={{ background: opt.hex,
-                          border: selected ? "3px solid rgba(255,255,255,0.95)" : "3px solid rgba(255,255,255,0.12)",
-                          boxShadow: selected ? `0 0 0 2px ${opt.hex}60` : "none" }} />
-                      <span className="text-[10px] font-semibold whitespace-nowrap transition-colors duration-200"
-                        style={{ color: selected ? "#fff" : "#64748b" }}>{opt.id}</span>
-                    </button>
-                  );
-                })}
+              {/* Now playing indicator */}
+              {playingMusic && (
+                <div className="mt-4 rounded-xl px-3 py-3 flex items-center gap-2.5"
+                  style={{ background: `${accentHex}12`, border: `1px solid ${accentHex}40` }}>
+                  <div className="flex gap-0.5 items-end h-4 shrink-0">
+                    {[0.5,0.8,0.6].map((h, i) => (
+                      <div key={i} className="w-1 rounded-full"
+                        style={{ background: accentHex, height: `${h * 100}%`, animation: `soundBar ${0.5 + i * 0.15}s ease-in-out infinite alternate` }} />
+                    ))}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11px] font-bold truncate" style={{ color: accentHex }}>{playingMusic}</p>
+                    <p className="text-[10px] text-slate-500">15s preview</p>
+                  </div>
+                  <button type="button" onClick={stopAudio} className="text-slate-500 hover:text-white text-xs shrink-0">✕</button>
+                </div>
+              )}
+            </CollapsibleSection>
+
+            {/* ── 3. STYLE ── */}
+            <CollapsibleSection
+              title="Style"
+              subtitle="Color accent, transitions, intro sequence, and typography"
+              accent={accentHex}
+            >
+              {/* Color Accent */}
+              <div className="mb-6">
+                <p className="text-xs font-bold text-slate-400 mb-3 tracking-wide uppercase">Team Color</p>
+                <div className="flex flex-wrap gap-5">
+                  {COLOR_OPTIONS.map((opt) => {
+                    const selected = colorAccent === opt.id;
+                    return (
+                      <button key={opt.id} type="button" onClick={() => handleColorPick(opt)}
+                        className="flex flex-col items-center gap-2 transition-transform active:scale-95" title={opt.id}>
+                        <div className="w-10 h-10 rounded-full transition-all duration-200"
+                          style={{ background: opt.hex,
+                            border: selected ? "3px solid rgba(255,255,255,0.95)" : "3px solid rgba(255,255,255,0.12)",
+                            boxShadow: selected ? `0 0 0 2px ${opt.hex}60` : "none" }} />
+                        <span className="text-[10px] font-semibold whitespace-nowrap transition-colors duration-200"
+                          style={{ color: selected ? "#fff" : "#64748b" }}>{opt.id}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </section>
 
-            {/* 04 — Transition Style */}
-            <section className="rounded-2xl p-6" style={cardBase}>
-              <SectionLabel text="04 — Transitions" accent={accentHex} />
-              <h2 className="text-base font-bold text-white mb-5">Between Clips</h2>
-              <div className="grid grid-cols-2 gap-3">
-                {TRANSITION_OPTIONS.map((opt) => {
-                  const selected = transition === opt.id;
-                  return (
-                    <button key={opt.id} type="button" onClick={() => handleTransition(opt.id)}
-                      className="text-left px-4 py-3 rounded-xl transition-all relative"
-                      style={{
-                        background: selected ? `${accentHex}18` : "rgba(255,255,255,0.03)",
-                        border: selected ? `1px solid ${accentHex}75` : "1px solid rgba(255,255,255,0.07)",
-                      }}>
-                      {opt.id === "Hard Cut" && (
-                        <span className="absolute top-2 right-2 text-[8px] font-black px-1.5 py-0.5 rounded tracking-wide"
-                          style={{ background: `${accentHex}25`, color: accentHex }}>COACH ✓</span>
-                      )}
-                      <p className="text-sm font-bold mb-1 pr-14 transition-colors duration-200"
-                        style={{ color: selected ? accentHex : "#e2e8f0" }}>{opt.id}</p>
-                      <p className="text-[11px] text-slate-500">{opt.desc}</p>
-                      <p className="text-[10px] mt-1" style={{ color: `${accentHex}80` }}>{opt.duration}</p>
-                    </button>
-                  );
-                })}
+              {/* Divider */}
+              <div className="h-px mb-6" style={{ background: "rgba(255,255,255,0.05)" }} />
+
+              {/* Transitions */}
+              <div className="mb-6">
+                <p className="text-xs font-bold text-slate-400 mb-3 tracking-wide uppercase">Between Clips</p>
+                <div className="grid grid-cols-2 gap-3">
+                  {TRANSITION_OPTIONS.map((opt) => {
+                    const selected = transition === opt.id;
+                    return (
+                      <button key={opt.id} type="button" onClick={() => handleTransition(opt.id)}
+                        className="text-left px-4 py-3 rounded-xl transition-all relative"
+                        style={{
+                          background: selected ? `${accentHex}18` : "rgba(255,255,255,0.03)",
+                          border: selected ? `1px solid ${accentHex}75` : "1px solid rgba(255,255,255,0.07)",
+                        }}>
+                        {opt.id === "Hard Cut" && (
+                          <span className="absolute top-2 right-2 text-[8px] font-black px-1.5 py-0.5 rounded tracking-wide"
+                            style={{ background: `${accentHex}25`, color: accentHex }}>COACH ✓</span>
+                        )}
+                        <p className="text-sm font-bold mb-1 pr-14 transition-colors duration-200"
+                          style={{ color: selected ? accentHex : "#e2e8f0" }}>{opt.id}</p>
+                        <p className="text-[11px] text-slate-500">{opt.desc}</p>
+                        <p className="text-[10px] mt-1" style={{ color: `${accentHex}80` }}>{opt.duration}</p>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </section>
 
-            {/* 05 — Player Identification */}
-            <section className="rounded-2xl p-6" style={cardBase}>
-              <SectionLabel text="05 — Player ID" accent={accentHex} />
+              {/* Divider */}
+              <div className="h-px mb-6" style={{ background: "rgba(255,255,255,0.05)" }} />
+
+              {/* Intro Style */}
+              <div className="mb-6">
+                <p className="text-xs font-bold text-slate-400 mb-3 tracking-wide uppercase">Opening Sequence</p>
+                <div className="grid grid-cols-3 gap-3">
+                  {INTRO_OPTIONS.map((opt) => {
+                    const selected = introStyle === opt.id;
+                    return (
+                      <button key={opt.id} type="button" onClick={() => setIntroStyle(opt.id)}
+                        className="text-center px-3 py-4 rounded-xl transition-all"
+                        style={{
+                          background: selected ? `${accentHex}18` : "rgba(255,255,255,0.03)",
+                          border: selected ? `1px solid ${accentHex}75` : "1px solid rgba(255,255,255,0.07)",
+                        }}>
+                        <p className="text-sm font-bold mb-1.5 leading-snug transition-colors duration-200"
+                          style={{ color: selected ? accentHex : "#e2e8f0" }}>{opt.id}</p>
+                        <p className="text-[11px] text-slate-500 leading-snug">{opt.desc}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Divider */}
+              <div className="h-px mb-6" style={{ background: "rgba(255,255,255,0.05)" }} />
+
+              {/* Font Style */}
+              <div className="mb-6">
+                <p className="text-xs font-bold text-slate-400 mb-3 tracking-wide uppercase">Typography</p>
+                <div className="grid grid-cols-2 gap-3">
+                  {FONT_STYLES.map((f) => {
+                    const selected = fontStyle === f;
+                    return (
+                      <button key={f} type="button" onClick={() => handleFontPick(f)}
+                        className="px-4 py-3 rounded-xl transition-all text-left"
+                        style={{
+                          background: selected ? `${accentHex}18` : "rgba(255,255,255,0.03)",
+                          border: selected ? `1px solid ${accentHex}75` : "1px solid rgba(255,255,255,0.07)",
+                        }}>
+                        <div style={{ fontFamily: FONT_MAP[f], fontSize: "20px", fontWeight: f === "Athletic" ? 400 : 700,
+                          color: selected ? accentHex : "#e2e8f0", lineHeight: 1.1, marginBottom: 4, transition: "color 0.2s" }}>{f}</div>
+                        <div style={{ fontFamily: FONT_MAP[f], fontSize: "10px", fontWeight: f === "Athletic" ? 400 : 500, color: "#64748b" }}>
+                          Aa Bb Cc 123
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Divider */}
+              <div className="h-px mb-6" style={{ background: "rgba(255,255,255,0.05)" }} />
+
+              {/* Enhance Video Quality toggle */}
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-base font-bold text-white mb-1">Highlight Me On Screen</h2>
+                  <p className="text-sm font-bold text-white mb-1">Enhance Video Quality</p>
+                  <p className="text-slate-500 text-xs leading-relaxed">Boost contrast, saturation, and brightness on every clip for a sharper, more professional look.</p>
+                  {enhanceQuality && (
+                    <p className="text-[10px] mt-1.5 font-semibold" style={{ color: accentHex }}>✓ contrast +10% · saturation +15% · brightness +3%</p>
+                  )}
+                </div>
+                <Toggle on={enhanceQuality} onToggle={() => setEnhanceQuality(!enhanceQuality)} accent={accentHex} />
+              </div>
+            </CollapsibleSection>
+
+            {/* ── 4. STATS CARD ── */}
+            <CollapsibleSection
+              title="Stats Card"
+              subtitle="Player ID overlay and season stats displayed after title card"
+              accent={accentHex}
+            >
+              {/* Jersey Number Overlay */}
+              <div className="flex items-start justify-between gap-4 mb-5">
+                <div>
+                  <p className="text-sm font-bold text-white mb-1">Show Jersey # Overlay</p>
                   <p className="text-slate-500 text-xs leading-relaxed">
-                    Each clip starts with a 0.8 s freeze frame and a glowing arrow so coaches instantly know who to watch. Player identification is the #1 factor coaches look for.
+                    Persistent lower-third with your name and jersey number on every clip so coaches always know who to watch.
+                  </p>
+                  {showJerseyOverlay && (
+                    <p className="text-[10px] mt-1.5 font-semibold" style={{ color: accentHex }}>✓ Name + #{reel.jerseyNumber || "00"} shown on all clips</p>
+                  )}
+                </div>
+                <Toggle on={showJerseyOverlay} onToggle={() => setShowJerseyOverlay(!showJerseyOverlay)} accent={accentHex} />
+              </div>
+
+              {/* Divider */}
+              <div className="h-px mb-5" style={{ background: "rgba(255,255,255,0.05)" }} />
+
+              {/* Player ID */}
+              <div className="flex items-start justify-between gap-4 mb-5">
+                <div>
+                  <p className="text-sm font-bold text-white mb-1">Highlight Me On Screen</p>
+                  <p className="text-slate-500 text-xs leading-relaxed">
+                    Each clip starts with a 0.8 s freeze + glowing arrow so coaches instantly know who to watch.
                   </p>
                 </div>
                 <Toggle on={highlightPlayer} onToggle={() => setHighlightPlayer(!highlightPlayer)} accent={accentHex} />
               </div>
               {highlightPlayer && (
-                <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg text-[11px]"
+                <div className="mb-5 flex items-center gap-2 px-3 py-2 rounded-lg text-[11px]"
                   style={{ background: `${accentHex}12`, border: `1px solid ${accentHex}30`, color: accentHex }}>
                   ● Accent color circle + arrow will appear at clip start
                 </div>
               )}
-            </section>
 
-            {/* 06 — Stats Card */}
-            <section className="rounded-2xl p-6" style={cardBase}>
-              <SectionLabel text="06 — Stats Card" accent={accentHex} />
+              {/* Divider */}
+              <div className="h-px mb-5" style={{ background: "rgba(255,255,255,0.05)" }} />
+
+              {/* Stats Card toggle */}
               <div className="flex items-start justify-between gap-4 mb-4">
                 <div>
-                  <h2 className="text-base font-bold text-white mb-1">Include Stats Card</h2>
+                  <p className="text-sm font-bold text-white mb-1">Include Stats Card</p>
                   <p className="text-slate-500 text-xs">Shown for 4 seconds after title card</p>
                 </div>
                 <Toggle on={includeStatsCard} onToggle={() => setIncludeStatsCard(!includeStatsCard)} accent={accentHex} />
@@ -801,14 +924,18 @@ export default function CustomizePage() {
                   ))}
                 </div>
               )}
-            </section>
+            </CollapsibleSection>
 
-            {/* 07 — Reel Length */}
-            <section className="rounded-2xl p-6" style={cardBase}>
+            {/* ── 5. DURATION ── */}
+            <CollapsibleSection
+              title="Duration"
+              subtitle="Target reel length — coaches prefer 3–5 minutes"
+              accent={accentHex}
+            >
               <div className="flex items-start justify-between mb-5">
                 <div>
-                  <SectionLabel text="07 — Reel Length" accent={accentHex} />
-                  <h2 className="text-base font-bold text-white">Duration Target</h2>
+                  <p className="text-xs text-slate-400">Clip content target</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">Basketball: 3–4 min optimal · Football: 3–5 min</p>
                 </div>
                 <span className="text-3xl font-black tabular-nums transition-colors duration-300" style={{ color: accentHex }}>
                   {reelLength}<span className="text-base font-semibold text-slate-400 ml-0.5">m</span>
@@ -824,66 +951,18 @@ export default function CustomizePage() {
                     style={{ color: reelLength === n ? accentHex : "#475569" }}>{n}m</span>
                 ))}
               </div>
-              <p className="text-[11px] text-slate-500 mt-2">Basketball: 3–4 min optimal · Football: 3–5 min optimal</p>
-            </section>
+            </CollapsibleSection>
 
-            {/* 08 — Intro Style */}
-            <section className="rounded-2xl p-6" style={cardBase}>
-              <SectionLabel text="08 — Intro Style" accent={accentHex} />
-              <h2 className="text-base font-bold text-white mb-5">Opening Sequence</h2>
-              <div className="grid grid-cols-3 gap-3">
-                {INTRO_OPTIONS.map((opt) => {
-                  const selected = introStyle === opt.id;
-                  return (
-                    <button key={opt.id} type="button" onClick={() => setIntroStyle(opt.id)}
-                      className="text-center px-3 py-4 rounded-xl transition-all"
-                      style={{
-                        background: selected ? `${accentHex}18` : "rgba(255,255,255,0.03)",
-                        border: selected ? `1px solid ${accentHex}75` : "1px solid rgba(255,255,255,0.07)",
-                      }}>
-                      <p className="text-sm font-bold mb-1.5 leading-snug transition-colors duration-200"
-                        style={{ color: selected ? accentHex : "#e2e8f0" }}>{opt.id}</p>
-                      <p className="text-[11px] text-slate-500 leading-snug">{opt.desc}</p>
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-
-            {/* 09 — Font Style */}
-            <section className="rounded-2xl p-6" style={cardBase}>
-              <SectionLabel text="09 — Font Style" accent={accentHex} />
-              <h2 className="text-base font-bold text-white mb-5">Typography</h2>
-              <div className="grid grid-cols-2 gap-3">
-                {FONT_STYLES.map((f) => {
-                  const selected = fontStyle === f;
-                  return (
-                    <button key={f} type="button" onClick={() => handleFontPick(f)}
-                      className="px-4 py-3 rounded-xl transition-all text-left"
-                      style={{
-                        background: selected ? `${accentHex}18` : "rgba(255,255,255,0.03)",
-                        border: selected ? `1px solid ${accentHex}75` : "1px solid rgba(255,255,255,0.07)",
-                      }}>
-                      <div style={{ fontFamily: FONT_MAP[f], fontSize: "20px", fontWeight: f === "Athletic" ? 400 : 700,
-                        color: selected ? accentHex : "#e2e8f0", lineHeight: 1.1, marginBottom: 4, transition: "color 0.2s" }}>{f}</div>
-                      <div style={{ fontFamily: FONT_MAP[f], fontSize: "10px", fontWeight: f === "Athletic" ? 400 : 500, color: "#64748b" }}>
-                        Aa Bb Cc 123
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
           </div>
 
           {/* ── RIGHT: Live Preview ── */}
           <aside className="lg:sticky lg:top-6 lg:self-start flex flex-col gap-4">
             <div className="rounded-2xl p-4 transition-all duration-300"
               style={{ background: "#0A1628", border: `1px solid ${accentHex}30` }}>
-              <SectionLabel text="Live Preview" accent={accentHex} />
+              <p className="text-[10px] font-black tracking-widest uppercase mb-1 transition-colors duration-300" style={{ color: accentHex }}>Live Preview</p>
               <h2 className="text-sm font-bold text-white mb-3">Title Card</h2>
-              <TitleCardPreview firstName={firstName} position={position} school={reel.school}
-                jerseyNumber={reel.jerseyNumber} fontStyle={fontStyle} accentHex={accentHex} />
+              <TitleCardPreview firstName={firstName} position={position} school={reel.school || ""}
+                jerseyNumber={reel.jerseyNumber || ""} fontStyle={fontStyle} accentHex={accentHex} />
               <div className="mt-3 flex flex-col gap-1.5">
                 <div className="flex justify-between">
                   <span className="text-[10px] text-slate-500">Font</span>
@@ -905,13 +984,13 @@ export default function CustomizePage() {
 
             {/* Reel structure */}
             <div className="rounded-2xl p-4" style={cardBase}>
-              <SectionLabel text="Reel Structure" accent={accentHex} />
+              <p className="text-[10px] font-black tracking-widest uppercase mb-2 transition-colors duration-300" style={{ color: accentHex }}>Reel Structure</p>
               <div className="mt-2 flex flex-col gap-1.5">
                 {[
                   { label: "Title Card",  value: "4s", active: true },
                   { label: "Stats Card",  value: includeStatsCard ? "4s" : "off", active: includeStatsCard },
                   { label: "Your Clips",  value: `${clipItems.length} clips`, active: clipItems.length > 0 },
-                  { label: "End Card",    value: "4s", active: true },
+                  { label: "End Card",    value: "5s", active: true },
                 ].map(({ label, value, active }) => (
                   <div key={label} className="flex justify-between items-center">
                     <div className="flex items-center gap-1.5">
@@ -923,24 +1002,6 @@ export default function CustomizePage() {
                 ))}
               </div>
             </div>
-
-            {/* Now playing */}
-            {playingMusic && (
-              <div className="rounded-xl px-3 py-3 flex items-center gap-2.5"
-                style={{ background: `${accentHex}12`, border: `1px solid ${accentHex}40` }}>
-                <div className="flex gap-0.5 items-end h-4 shrink-0">
-                  {[0.5,0.8,0.6].map((h, i) => (
-                    <div key={i} className="w-1 rounded-full"
-                      style={{ background: accentHex, height: `${h * 100}%`, animation: `soundBar ${0.5 + i * 0.15}s ease-in-out infinite alternate` }} />
-                  ))}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[11px] font-bold truncate" style={{ color: accentHex }}>{playingMusic}</p>
-                  <p className="text-[10px] text-slate-500">15s preview</p>
-                </div>
-                <button type="button" onClick={stopAudio} className="text-slate-500 hover:text-white text-xs shrink-0">✕</button>
-              </div>
-            )}
           </aside>
         </div>
 

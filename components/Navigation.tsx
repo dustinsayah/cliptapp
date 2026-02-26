@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import ComingSoonModal from "./ComingSoonModal";
 
 // Pages where the global nav should be hidden (they have their own step-based nav)
 const HIDDEN_PATHS = ["/upload", "/customize", "/export", "/editor"];
@@ -31,12 +32,13 @@ interface NavLink {
   label: string;
   href: string;
   isAnchor?: boolean;
+  isModal?: boolean;
   badge?: string;
 }
 
 const NAV_LINKS: NavLink[] = [
   { label: "Create Reel", href: "/start" },
-  { label: "AI Processing", href: "/process", badge: "New" },
+  { label: "AI Processing", href: "/process", isModal: true, badge: "New" },
   { label: "How It Works", href: "/#how-it-works", isAnchor: true },
 ];
 
@@ -45,6 +47,7 @@ export default function Navigation() {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [showAiModal, setShowAiModal] = useState(false);
 
   // Hide on workflow pages
   const hidden = HIDDEN_PATHS.some((p) => pathname.startsWith(p));
@@ -71,8 +74,11 @@ export default function Navigation() {
 
   const handleLinkClick = (link: NavLink) => {
     setMenuOpen(false);
+    if (link.isModal) {
+      setShowAiModal(true);
+      return;
+    }
     if (link.isAnchor) {
-      // If we're already on the homepage, smooth scroll
       if (pathname === "/") {
         const id = link.href.replace("/#", "");
         document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
@@ -85,7 +91,8 @@ export default function Navigation() {
   };
 
   const isActive = (href: string) =>
-    !href.includes("#") && (pathname === href || pathname.startsWith(href + "/"));
+    !href.includes("#") && !NAV_LINKS.find(l => l.href === href)?.isModal &&
+    (pathname === href || pathname.startsWith(href + "/"));
 
   return (
     <>
@@ -243,6 +250,14 @@ export default function Navigation() {
           <p className="text-slate-600 text-xs">Your Game. Your Reel. Your Future.</p>
         </div>
       </div>
+
+      {/* ── AI Processing Modal ── */}
+      {showAiModal && (
+        <ComingSoonModal
+          source="nav_ai_click"
+          onClose={() => setShowAiModal(false)}
+        />
+      )}
     </>
   );
 }

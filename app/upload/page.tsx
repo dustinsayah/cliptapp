@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useReel } from "../providers";
 
@@ -12,16 +12,7 @@ const ArrowLeftIcon = () => (
 );
 
 const FilmIcon = () => (
-  <svg
-    width="48"
-    height="48"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="#00A3FF"
-    strokeWidth="1.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
+  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#00A3FF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18" />
     <line x1="7" y1="2" x2="7" y2="22" />
     <line x1="17" y1="2" x2="17" y2="22" />
@@ -34,18 +25,22 @@ const FilmIcon = () => (
 );
 
 const XIcon = () => (
-  <svg
-    width="14"
-    height="14"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
     <line x1="18" y1="6" x2="6" y2="18" />
     <line x1="6" y1="6" x2="18" y2="18" />
+  </svg>
+);
+
+const VideoIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <polygon points="23 7 16 12 23 17 23 7" />
+    <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+  </svg>
+);
+
+const CheckIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22C55E" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="20 6 9 17 4 12" />
   </svg>
 );
 
@@ -68,6 +63,11 @@ function fmtFileSize(bytes: number): string {
   return `${(bytes / 1e3).toFixed(0)} KB`;
 }
 
+function getVideoExt(file: File): string {
+  const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+  return ext;
+}
+
 export default function UploadPage() {
   const router = useRouter();
   const reel = useReel();
@@ -77,15 +77,89 @@ export default function UploadPage() {
   // Initialize from context so going back from step 2 restores the form
   const [files, setFiles]               = useState<File[]>(reel.files);
   const [dragging, setDragging]         = useState(false);
-  const [firstName, setFirstName]       = useState(reel.firstName);
-  const [jerseyNumber, setJerseyNumber] = useState(reel.jerseyNumber);
-  const [sport, setSport]               = useState(reel.sport);
-  const [school, setSchool]             = useState(reel.school);
+  const [firstName, setFirstName]       = useState(reel.firstName || "");
+  const [jerseyNumber, setJerseyNumber] = useState(reel.jerseyNumber || "");
+  const [sport, setSport]               = useState(reel.sport || "");
+  const [school, setSchool]             = useState(reel.school || "");
+  const [thumbnails, setThumbnails]     = useState<(string | null)[]>([]);
+
+  // Generate thumbnails when files change
+  useEffect(() => {
+    if (files.length === 0) {
+      setThumbnails([]);
+      return;
+    }
+
+    // Initialize with nulls
+    setThumbnails(new Array(files.length).fill(null));
+
+    const objectUrls: string[] = [];
+    let cancelled = false;
+
+    files.forEach((file, i) => {
+      // Only attempt for common browser-supported formats
+      const ext = getVideoExt(file);
+      const supported = ["mp4", "webm", "mov", "m4v", "ogg", "ogv"].includes(ext) ||
+        file.type.startsWith("video/mp4") ||
+        file.type.startsWith("video/webm") ||
+        file.type.startsWith("video/ogg");
+
+      if (!supported) return;
+
+      const objectUrl = URL.createObjectURL(file);
+      objectUrls.push(objectUrl);
+
+      const video = document.createElement("video");
+      video.muted = true;
+      video.playsInline = true;
+      video.preload = "metadata";
+      video.crossOrigin = "anonymous";
+
+      video.onloadedmetadata = () => {
+        video.currentTime = Math.min(1.5, video.duration * 0.12);
+      };
+
+      video.onseeked = () => {
+        if (cancelled) { URL.revokeObjectURL(objectUrl); return; }
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = 120;
+          canvas.height = 68;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) return;
+          ctx.fillStyle = "#0A1628";
+          ctx.fillRect(0, 0, 120, 68);
+          ctx.drawImage(video, 0, 0, 120, 68);
+          const dataUrl = canvas.toDataURL("image/jpeg", 0.55);
+          if (!cancelled) {
+            setThumbnails((prev) => {
+              const next = [...prev];
+              next[i] = dataUrl;
+              return next;
+            });
+          }
+        } catch {
+          // CORS or format error — ignore, show generic icon
+        }
+        URL.revokeObjectURL(objectUrl);
+      };
+
+      video.onerror = () => URL.revokeObjectURL(objectUrl);
+      video.src = objectUrl;
+    });
+
+    return () => {
+      cancelled = true;
+      objectUrls.forEach((u) => {
+        try { URL.revokeObjectURL(u); } catch { /* ignore */ }
+      });
+    };
+  }, [files]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addFiles = useCallback((incoming: FileList | null) => {
     if (!incoming) return;
-    const valid = Array.from(incoming).filter((f) =>
-      f.type.startsWith("video/") || f.name.match(/\.(mp4|mov|m4v|avi|mkv|webm)$/i) !== null
+    const valid = Array.from(incoming).filter(
+      (f) => f.type.startsWith("video/") || /\.(mp4|mov|m4v|avi|mkv|webm|avi)$/i.test(f.name)
     );
     setFiles((prev) => {
       const combined = [...prev, ...valid];
@@ -95,6 +169,7 @@ export default function UploadPage() {
 
   const removeFile = (index: number) => {
     setFiles((prev) => prev.filter((_, i) => i !== index));
+    setThumbnails((prev) => prev.filter((_, i) => i !== index));
   };
 
   const onDragOver = (e: React.DragEvent) => {
@@ -122,7 +197,13 @@ export default function UploadPage() {
     school.trim() !== "";
 
   const handleContinue = () => {
-    reel.update({ files, firstName: firstName.trim(), jerseyNumber: jerseyNumber.trim(), sport, school: school.trim() });
+    reel.update({
+      files,
+      firstName: firstName.trim(),
+      jerseyNumber: jerseyNumber.trim(),
+      sport,
+      school: school.trim(),
+    });
     router.push("/customize");
   };
 
@@ -131,16 +212,13 @@ export default function UploadPage() {
       {/* ── NAV ── */}
       <nav className="flex items-center px-6 py-5 max-w-3xl mx-auto">
         <button
-          onClick={() => router.push("/")}
+          onClick={() => router.push("/start")}
           className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors mr-6"
           aria-label="Go back"
         >
           <ArrowLeftIcon />
         </button>
-        <span
-          className="text-2xl font-black tracking-widest"
-          style={{ color: "#00A3FF" }}
-        >
+        <span className="text-2xl font-black tracking-widest" style={{ color: "#00A3FF" }}>
           CLIPT
         </span>
       </nav>
@@ -149,32 +227,25 @@ export default function UploadPage() {
       <div className="max-w-3xl mx-auto px-6 mb-10">
         <div className="flex items-center gap-0">
           {steps.map((step, i) => {
-            const isActive = step.number === 1;
-            const isLast = i === steps.length - 1;
+            const isActive   = step.number === 1;
+            const isComplete = step.number < 1;
+            const isLast     = i === steps.length - 1;
             return (
               <div key={step.number} className="flex items-center flex-1">
                 <div className="flex flex-col items-center gap-2 shrink-0">
                   <div
                     className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border transition-all"
                     style={
-                      isActive
-                        ? {
-                            background: "#00A3FF",
-                            borderColor: "#00A3FF",
-                            color: "#050A14",
-                          }
-                        : {
-                            background: "#0A1628",
-                            borderColor: "rgba(255,255,255,0.08)",
-                            color: "#64748b",
-                          }
+                      isActive || isComplete
+                        ? { background: "#00A3FF", borderColor: "#00A3FF", color: "#050A14" }
+                        : { background: "#0A1628", borderColor: "rgba(255,255,255,0.08)", color: "#64748b" }
                     }
                   >
-                    {step.number}
+                    {isComplete ? <CheckIcon /> : step.number}
                   </div>
                   <span
                     className="text-xs font-semibold whitespace-nowrap"
-                    style={{ color: isActive ? "#00A3FF" : "#64748b" }}
+                    style={{ color: isActive || isComplete ? "#00A3FF" : "#64748b" }}
                   >
                     {step.label}
                   </span>
@@ -195,11 +266,9 @@ export default function UploadPage() {
       <main className="max-w-3xl mx-auto px-6 pb-12">
         {/* Page title */}
         <div className="mb-8">
-          <h1 className="text-3xl font-black text-white mb-2">
-            Upload Your Clips
-          </h1>
+          <h1 className="text-3xl font-black text-white mb-2">Upload Your Clips</h1>
           <p className="text-slate-400 text-sm">
-            Add up to {MAX_CLIPS} clips you want in your reel.
+            Add up to {MAX_CLIPS} clips you want in your reel. MP4, MOV, AVI, WebM supported.
           </p>
         </div>
 
@@ -223,7 +292,7 @@ export default function UploadPage() {
             Drag and drop your clips here
           </p>
           <p className="text-slate-400 text-sm mb-6">
-            MP4, MOV, or any video format &bull; No size limit
+            MP4 · MOV · AVI · WebM · No size limit
           </p>
           <button
             type="button"
@@ -242,30 +311,60 @@ export default function UploadPage() {
             accept="video/*,.mp4,.mov,.m4v,.avi,.mkv,.webm"
             multiple
             className="hidden"
-            onChange={(e) => addFiles(e.target.files)}
+            onChange={(e) => {
+              addFiles(e.target.files);
+              // Reset input so the same file can be re-added after removal
+              e.target.value = "";
+            }}
           />
         </div>
 
-        {/* File list */}
+        {/* File list with thumbnails */}
         {files.length > 0 && (
-          <ul className="mb-8 flex flex-col gap-2">
+          <ul className="mb-8 flex flex-col gap-2 mt-4">
             {files.map((file, i) => (
               <li
-                key={i}
-                className="flex items-center justify-between px-4 py-3 rounded-xl"
+                key={`${i}-${file.name}-${file.size}`}
+                className="flex items-center gap-3 px-4 py-3 rounded-xl"
                 style={{
                   background: "#0A1628",
                   border: "1px solid rgba(255,255,255,0.08)",
                 }}
               >
-                <div className="flex flex-col min-w-0 mr-4">
-                  <span className="text-sm text-white truncate">{file.name}</span>
-                  <span className="text-xs text-slate-500 mt-0.5">{fmtFileSize(file.size)}</span>
+                {/* Thumbnail or icon */}
+                <div
+                  className="shrink-0 rounded-lg overflow-hidden flex items-center justify-center"
+                  style={{
+                    width: 56, height: 40,
+                    background: "rgba(0,163,255,0.08)",
+                    border: "1px solid rgba(0,163,255,0.2)",
+                  }}
+                >
+                  {thumbnails[i] ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={thumbnails[i]!}
+                      alt=""
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-[#00A3FF]"><VideoIcon /></span>
+                  )}
                 </div>
+
+                <div className="flex flex-col min-w-0 mr-auto">
+                  <span className="text-sm text-white truncate font-medium">{file.name}</span>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-xs text-slate-500">{fmtFileSize(file.size)}</span>
+                    <span className="text-slate-700 text-xs">·</span>
+                    <span className="text-xs text-slate-600 uppercase">{getVideoExt(file) || "video"}</span>
+                  </div>
+                </div>
+
                 <button
                   type="button"
                   onClick={() => removeFile(i)}
-                  className="text-slate-400 hover:text-white transition-colors shrink-0"
+                  className="text-slate-400 hover:text-white transition-colors shrink-0 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/5"
                   aria-label={`Remove ${file.name}`}
                 >
                   <XIcon />
@@ -273,6 +372,28 @@ export default function UploadPage() {
               </li>
             ))}
           </ul>
+        )}
+
+        {/* Clip count badge */}
+        {files.length > 0 && (
+          <div className="flex items-center justify-between mb-6">
+            <p className="text-slate-400 text-sm">
+              <span className="text-white font-bold">{files.length}</span> clip{files.length !== 1 ? "s" : ""} added
+              {files.length >= MAX_CLIPS && (
+                <span className="text-amber-400 ml-2">(max {MAX_CLIPS})</span>
+              )}
+            </p>
+            {files.length < MAX_CLIPS && (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="text-xs font-semibold transition-colors hover:opacity-80"
+                style={{ color: "#00A3FF" }}
+              >
+                + Add more clips
+              </button>
+            )}
+          </div>
         )}
 
         {/* ── FORM FIELDS ── */}
@@ -294,10 +415,10 @@ export default function UploadPage() {
             <label className={labelClass}>Jersey Number</label>
             <input
               type="number"
-              min={1}
+              min={0}
               max={99}
               className={inputClass}
-              placeholder="1–99"
+              placeholder="0–99"
               value={jerseyNumber}
               onChange={(e) => setJerseyNumber(e.target.value)}
             />
@@ -350,7 +471,11 @@ export default function UploadPage() {
           className="w-full py-4 rounded-xl font-bold text-base text-white transition-all"
           style={
             canContinue
-              ? { background: "#00A3FF", cursor: "pointer" }
+              ? {
+                  background: "linear-gradient(135deg, #0055EE 0%, #00A3FF 100%)",
+                  boxShadow: "0 0 28px rgba(0,120,255,0.3)",
+                  cursor: "pointer",
+                }
               : {
                   background: "rgba(255,255,255,0.06)",
                   color: "#64748b",
@@ -359,7 +484,7 @@ export default function UploadPage() {
                 }
           }
         >
-          Continue to Step 2 →
+          Continue to Customize →
         </button>
       </main>
     </div>

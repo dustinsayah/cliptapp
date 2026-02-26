@@ -82,7 +82,8 @@ export const supabase = createClient(
 export type WaitlistSource =
   | "homepage"
   | "start_page_modal"
-  | "process_page";
+  | "process_page"
+  | "nav_ai_click";
 
 export interface WaitlistResult {
   success: boolean;

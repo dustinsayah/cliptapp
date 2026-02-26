@@ -48,6 +48,10 @@ interface ReelState {
   statsData:        Record<string, string>;
   highlightPlayer:  boolean;
 
+  // Video quality & overlay
+  enhanceQuality:    boolean;
+  showJerseyOverlay: boolean;
+
   // Per-clip editor data
   clipTrimStarts:   number[];
   clipTrimEnds:     number[];
@@ -87,6 +91,8 @@ const DEFAULTS: ReelState = {
   includeStatsCard: false,
   statsData:        {},
   highlightPlayer:  false,
+  enhanceQuality:    true,
+  showJerseyOverlay: true,
   clipTrimStarts:   [],
   clipTrimEnds:     [],
   clipTextOverlays: [],
