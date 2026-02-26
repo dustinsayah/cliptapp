@@ -2,33 +2,53 @@
 
 import { createContext, useContext, useState, type ReactNode } from "react";
 
-// ── Legacy types (kept for upload page compat) ──────────────────────────────
+// ── Legacy types ─────────────────────────────────────────────────────────────
 export type MusicId  = "none" | "hype" | "energetic" | "cinematic";
 export type StyleId  = "electric" | "fire" | "gold" | "stealth";
 export type Quality  = "720p" | "1080p" | "4k";
 
-// ── New customize types ─────────────────────────────────────────────────────
-export type MusicStyle  = "Hype" | "Cinematic" | "Trap" | "Drill" | "Orchestral" | "NoMusic";
-export type ColorAccent = "Electric Blue" | "Red" | "Gold" | "Green" | "Purple" | "White";
-export type IntroStyle  = "Name + School" | "Stats Card" | "Hype Intro";
-export type FontStyle   = "Modern" | "Bold" | "Clean" | "Athletic";
+// ── Current types ─────────────────────────────────────────────────────────────
+export type MusicStyle      = "NoMusic" | "Hype" | "Cinematic" | "Trap" | "Drill" | "Piano" | "LoFi";
+export type ColorAccent     = "Electric Blue" | "Red" | "Gold" | "Green" | "Purple" | "White";
+export type IntroStyle      = "Name + School" | "Stats Card" | "Hype Intro";
+export type FontStyle       = "Modern" | "Bold" | "Clean" | "Athletic";
+export type TransitionStyle = "Hard Cut" | "Fade to Black" | "Crossfade" | "Flash Cut";
 
 interface ReelState {
   // Upload page
   files:        File[];
-  clipNames:    string[];   // persisted to localStorage; mirrors file names
+  clipNames:    string[];
+  clipLabels:   string[];   // per-clip labels for diversity check
+
+  // Athlete identity
   firstName:    string;
   jerseyNumber: string;
   sport:        string;
   school:       string;
-  // Customize page
+
+  // Title card fields
   position:     string;
-  musicStyle:   MusicStyle;
-  colorAccent:  ColorAccent;
-  reelLength:   number;     // minutes 1–5
-  introStyle:   IntroStyle;
-  fontStyle:    FontStyle;
-  // Legacy (kept so export page still works)
+  gradYear:     string;
+  heightFt:     string;
+  heightIn:     string;
+  weight:       string;
+  gpa:          string;
+  email:        string;
+  coachName:    string;
+  coachEmail:   string;
+
+  // Customize
+  musicStyle:       MusicStyle;
+  colorAccent:      ColorAccent;
+  reelLength:       number;          // minutes 1–5
+  introStyle:       IntroStyle;
+  fontStyle:        FontStyle;
+  transition:       TransitionStyle;
+  includeStatsCard: boolean;
+  statsData:        Record<string, string>;
+  highlightPlayer:  boolean;
+
+  // Legacy (kept for upload page compat)
   showIntro: boolean;
   music:     MusicId;
   style:     StyleId;
@@ -38,16 +58,29 @@ interface ReelState {
 const DEFAULTS: ReelState = {
   files:        [],
   clipNames:    [],
+  clipLabels:   [],
   firstName:    "",
   jerseyNumber: "",
   sport:        "",
   school:       "",
   position:     "",
-  musicStyle:   "Hype",
-  colorAccent:  "Electric Blue",
-  reelLength:   2,
-  introStyle:   "Name + School",
-  fontStyle:    "Modern",
+  gradYear:     "",
+  heightFt:     "",
+  heightIn:     "",
+  weight:       "",
+  gpa:          "",
+  email:        "",
+  coachName:    "",
+  coachEmail:   "",
+  musicStyle:       "NoMusic",
+  colorAccent:      "Electric Blue",
+  reelLength:       3,
+  introStyle:       "Name + School",
+  fontStyle:        "Modern",
+  transition:       "Hard Cut",
+  includeStatsCard: false,
+  statsData:        {},
+  highlightPlayer:  false,
   showIntro:    true,
   music:        "hype",
   style:        "electric",
@@ -70,7 +103,6 @@ function saveToStorage(state: ReelState) {
   if (typeof window === "undefined") return;
   try {
     const { files, ...rest } = state;
-    // Keep clipNames in sync with actual files when files are present
     const clipNames = files.length > 0 ? files.map((f) => f.name) : rest.clipNames;
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...rest, clipNames }));
   } catch {}
@@ -93,7 +125,6 @@ export function ReelProvider({ children }: { children: ReactNode }) {
       const next: ReelState = {
         ...prev,
         ...patch,
-        // Auto-sync clipNames when files are updated
         clipNames: patch.files
           ? patch.files.map((f) => f.name)
           : (patch.clipNames ?? prev.clipNames),
