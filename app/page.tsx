@@ -320,14 +320,14 @@ export default function Home() {
           </div>
           <p className="text-5xl sm:text-6xl font-black text-white mb-4 relative z-10 leading-none">
             Join{" "}
-            <span style={{ background: "linear-gradient(135deg, #7EC8FF 0%, #00A3FF 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>500+</span>{" "}
+            <span style={{ background: "linear-gradient(135deg, #7EC8FF 0%, #00A3FF 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>2,000+</span>{" "}
             athletes
           </p>
           <p className="text-slate-400 text-lg max-w-xl mx-auto relative z-10 leading-relaxed">
-            High school football and basketball players across the country are building their reels. Don&apos;t get left behind.
+            Athletes across <strong className="text-white">5 sports</strong> — Basketball, Football, Soccer, Baseball &amp; Lacrosse — are building their reels. Don&apos;t get left behind.
           </p>
           <div className="flex items-center justify-center gap-3 mt-8 flex-wrap relative z-10">
-            {["Basketball","Football","Multi-Sport"].map((tag) => (
+            {["🏀 Basketball","🏈 Football","⚽ Soccer","⚾ Baseball","🥍 Lacrosse"].map((tag) => (
               <span key={tag} className="px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-sm text-slate-400 font-medium">{tag}</span>
             ))}
           </div>

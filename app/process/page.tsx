@@ -4,13 +4,13 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { isValidYouTubeUrl, getYouTubeThumbnail, type YouTubeOEmbedData } from "@/lib/youtubeUtils";
 import { supabase } from "@/lib/supabase";
+import { SPORTS_CONFIG } from "@/lib/sportsConfig";
 
-// ── Position options by sport ──────────────────────────────────────────────
+// ── Position options by sport — derived from SPORTS_CONFIG ────────────────
 
-const POSITIONS: Record<string, string[]> = {
-  Football:   ["Quarterback","Running Back","Wide Receiver","Tight End","Offensive Line","Defensive Line","Linebacker","Cornerback","Safety","Kicker / Punter"],
-  Basketball: ["Point Guard","Shooting Guard","Small Forward","Power Forward","Center"],
-};
+const POSITIONS: Record<string, string[]> = Object.fromEntries(
+  Object.entries(SPORTS_CONFIG).map(([name, cfg]) => [name, cfg.positions])
+);
 
 const GRAD_YEARS = ["2025","2026","2027","2028","2029","2030"];
 
@@ -49,85 +49,19 @@ export interface AiClip {
   thumbnailUrl: string | null;
 }
 
-const BASKETBALL_PLAYS: Array<{ playType: string; confidenceScore: number }> = [
-  { playType: "Scoring Play",    confidenceScore: 0.97 },
-  { playType: "Defensive Stop",  confidenceScore: 0.94 },
-  { playType: "Assist",          confidenceScore: 0.91 },
-  { playType: "Three Pointer",   confidenceScore: 0.89 },
-  { playType: "Drive to Basket", confidenceScore: 0.87 },
-  { playType: "Hustle Play",     confidenceScore: 0.84 },
-  { playType: "Fast Break",      confidenceScore: 0.81 },
-  { playType: "Post Move",       confidenceScore: 0.78 },
-];
-
-const FOOTBALL_PLAYS: Record<string, Array<{ playType: string; confidenceScore: number }>> = {
-  Quarterback: [
-    { playType: "Touchdown Pass",     confidenceScore: 0.96 },
-    { playType: "Scramble for First", confidenceScore: 0.92 },
-    { playType: "Deep Ball Strike",   confidenceScore: 0.90 },
-    { playType: "Red Zone Score",     confidenceScore: 0.87 },
-    { playType: "Two-Minute Drive",   confidenceScore: 0.85 },
-    { playType: "Pocket Escape",      confidenceScore: 0.82 },
-  ],
-  "Running Back": [
-    { playType: "Big Run",            confidenceScore: 0.95 },
-    { playType: "Touchdown",          confidenceScore: 0.93 },
-    { playType: "Broken Tackle",      confidenceScore: 0.90 },
-    { playType: "Screen Pass Catch",  confidenceScore: 0.87 },
-    { playType: "Yards After Contact",confidenceScore: 0.83 },
-    { playType: "Goal Line Carry",    confidenceScore: 0.80 },
-  ],
-  "Wide Receiver": [
-    { playType: "Touchdown Reception",confidenceScore: 0.96 },
-    { playType: "Deep Ball Catch",    confidenceScore: 0.93 },
-    { playType: "Route Running",      confidenceScore: 0.90 },
-    { playType: "YAC Run",            confidenceScore: 0.87 },
-    { playType: "Contested Catch",    confidenceScore: 0.84 },
-    { playType: "Slant Route Score",  confidenceScore: 0.81 },
-  ],
-  Linebacker: [
-    { playType: "Sack",            confidenceScore: 0.95 },
-    { playType: "TFL",             confidenceScore: 0.92 },
-    { playType: "Blitz",           confidenceScore: 0.89 },
-    { playType: "Pass Coverage",   confidenceScore: 0.85 },
-    { playType: "Forced Fumble",   confidenceScore: 0.82 },
-    { playType: "Key Tackle",      confidenceScore: 0.78 },
-  ],
-  Cornerback: [
-    { playType: "Interception",    confidenceScore: 0.97 },
-    { playType: "Pass Breakup",    confidenceScore: 0.93 },
-    { playType: "Man Coverage",    confidenceScore: 0.90 },
-    { playType: "Tackle for Loss", confidenceScore: 0.86 },
-    { playType: "Return Yards",    confidenceScore: 0.82 },
-    { playType: "Press Coverage",  confidenceScore: 0.79 },
-  ],
-  Safety: [
-    { playType: "Big Hit",         confidenceScore: 0.95 },
-    { playType: "Interception",    confidenceScore: 0.92 },
-    { playType: "Run Stop",        confidenceScore: 0.89 },
-    { playType: "Zone Coverage",   confidenceScore: 0.85 },
-    { playType: "Blitz",           confidenceScore: 0.81 },
-    { playType: "Deflection",      confidenceScore: 0.78 },
-  ],
-  default: [
-    { playType: "Highlight Play",  confidenceScore: 0.93 },
-    { playType: "Key Block",       confidenceScore: 0.90 },
-    { playType: "Big Play",        confidenceScore: 0.87 },
-    { playType: "Athletic Play",   confidenceScore: 0.84 },
-    { playType: "Score",           confidenceScore: 0.81 },
-    { playType: "Impact Play",     confidenceScore: 0.78 },
-  ],
-};
-
 function generateMockClips(sport: string, jerseyNumber: number, position?: string): AiClip[] {
-  let playDefs: Array<{ playType: string; confidenceScore: number }>;
-  if (sport === "Basketball") {
-    playDefs = BASKETBALL_PLAYS;
-  } else if (sport === "Football") {
-    playDefs = FOOTBALL_PLAYS[position ?? ""] ?? FOOTBALL_PLAYS.default;
-  } else {
-    playDefs = FOOTBALL_PLAYS.default;
-  }
+  const sportCfg = SPORTS_CONFIG[sport];
+  const playDefs = sportCfg
+    ? sportCfg.getClipTypes(position ?? "").map((c) => ({ playType: c.label, confidenceScore: c.confidence }))
+    : [
+        { playType: "Highlight Play", confidenceScore: 0.93 },
+        { playType: "Big Play",       confidenceScore: 0.90 },
+        { playType: "Key Play",       confidenceScore: 0.87 },
+        { playType: "Athletic Play",  confidenceScore: 0.84 },
+        { playType: "Score",          confidenceScore: 0.81 },
+        { playType: "Impact Play",    confidenceScore: 0.78 },
+      ];
+
   let cursor = 45 + Math.floor(Math.random() * 30);
   return playDefs.map(({ playType, confidenceScore }, i) => {
     const startTime = cursor;
@@ -452,6 +386,7 @@ export default function ProcessPage() {
       const clips = (job.resultClips && job.resultClips.length > 0)
         ? job.resultClips
         : generateMockClips(job.sport, job.jerseyNumber, job.position);
+      localStorage.setItem("clipSource", "ai");
       localStorage.setItem("aiGeneratedClips", JSON.stringify(clips));
       localStorage.setItem("aiJobMeta", JSON.stringify({
         jerseyNumber: job.jerseyNumber,
@@ -1059,8 +994,9 @@ export default function ProcessPage() {
                 onFocus={(e) => (e.currentTarget.style.borderColor = "rgba(0,163,255,0.5)")}
                 onBlur={(e)  => (e.currentTarget.style.borderColor = "rgba(255,255,255,0.09)")}>
                 <option value="" disabled hidden>Select a sport</option>
-                <option value="Basketball" style={{ background: "#0A1628" }}>Basketball</option>
-                <option value="Football" style={{ background: "#0A1628" }}>Football</option>
+                {Object.entries(SPORTS_CONFIG).map(([name, cfg]) => (
+                  <option key={name} value={name} style={{ background: "#0A1628" }}>{cfg.icon} {name}</option>
+                ))}
               </select>
             </div>
 

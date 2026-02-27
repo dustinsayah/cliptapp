@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useReel } from "../providers";
+import { SPORTS_CONFIG } from "../../lib/sportsConfig";
 
 const ArrowLeftIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -137,9 +138,16 @@ export default function UploadPage() {
   const [firstName, setFirstName]       = useState(reel.firstName || "");
   const [jerseyNumber, setJerseyNumber] = useState(reel.jerseyNumber || "");
   const [sport, setSport]               = useState(reel.sport || "");
+  const [position, setPosition]         = useState(reel.position || "");
   const [school, setSchool]             = useState(reel.school || "");
   const [thumbnails, setThumbnails]     = useState<(string | null)[]>([]);
   const [showUploadTip, setShowUploadTip] = useState(false);
+
+  // Reset position when sport changes
+  const handleSportChange = (newSport: string) => {
+    setSport(newSport);
+    setPosition("");
+  };
 
   // Show upload tip only on first visit (before customize-page onboard is done)
   useEffect(() => {
@@ -253,12 +261,13 @@ export default function UploadPage() {
     addFiles(e.dataTransfer.files);
   };
 
-  // All four fields and at least one clip required to continue
+  // All fields and at least one clip required to continue
   const canContinue =
     files.length > 0 &&
     firstName.trim() !== "" &&
     jerseyNumber.trim() !== "" &&
     sport !== "" &&
+    position !== "" &&
     school.trim() !== "";
 
   const handleContinue = () => {
@@ -267,8 +276,10 @@ export default function UploadPage() {
       firstName: firstName.trim(),
       jerseyNumber: jerseyNumber.trim(),
       sport,
+      position,
       school: school.trim(),
     });
+    localStorage.setItem("clipSource", "manual");
     router.push("/customize");
   };
 
@@ -500,14 +511,34 @@ export default function UploadPage() {
             <select
               className={inputClass}
               value={sport}
-              onChange={(e) => setSport(e.target.value)}
+              onChange={(e) => handleSportChange(e.target.value)}
               style={{ appearance: "none" }}
             >
               <option value="" disabled hidden>
                 Select a sport
               </option>
-              <option value="Basketball">Basketball</option>
-              <option value="Football">Football</option>
+              {Object.entries(SPORTS_CONFIG).map(([name, cfg]) => (
+                <option key={name} value={name}>{cfg.icon} {name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Position */}
+          <div>
+            <label className={labelClass}>Position</label>
+            <select
+              className={inputClass}
+              value={position}
+              onChange={(e) => setPosition(e.target.value)}
+              disabled={!sport}
+              style={{ appearance: "none", opacity: sport ? 1 : 0.5 }}
+            >
+              <option value="" disabled hidden>
+                {sport ? "Select a position" : "Select a sport first"}
+              </option>
+              {(SPORTS_CONFIG[sport]?.positions ?? []).map((pos) => (
+                <option key={pos} value={pos}>{pos}</option>
+              ))}
             </select>
           </div>
 
@@ -529,6 +560,10 @@ export default function UploadPage() {
           <p className="text-slate-500 text-xs text-center mb-3">
             {files.length === 0
               ? "Add at least one clip to continue"
+              : !sport
+              ? "Select a sport to continue"
+              : !position
+              ? "Select a position to continue"
               : "Fill out all fields above to continue"}
           </p>
         )}

@@ -7,6 +7,7 @@ import type {
   FontStyle, TransitionStyle,
   TitleCardTemplate, IntroAnimation, WatermarkStyle, ExportAspectRatio,
 } from "../providers";
+import { SPORTS_CONFIG } from "../../lib/sportsConfig";
 
 // ── Icons ──────────────────────────────────────────────────────────────────────
 
@@ -831,6 +832,10 @@ export default function CustomizePage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
+      // Only load AI clips if user arrived via the AI processing flow
+      const clipSource = localStorage.getItem("clipSource");
+      if (clipSource === "manual") return;
+
       const raw = localStorage.getItem("aiGeneratedClips");
       const metaRaw = localStorage.getItem("aiJobMeta");
       if (raw) {
@@ -899,7 +904,7 @@ export default function CustomizePage() {
 
   // ── Sport / positions ─────────────────────────────────────────────────────
   const sport     = reel.sport || "";
-  const positions = sport === "Basketball" ? BASKETBALL_POSITIONS : sport === "Football" ? FOOTBALL_POSITIONS : [...BASKETBALL_POSITIONS, ...FOOTBALL_POSITIONS];
+  const positions = SPORTS_CONFIG[sport]?.positions ?? [];
 
   // ── State ─────────────────────────────────────────────────────────────────
   const [firstName,   setFirstName]   = useState(reel.firstName || "");
@@ -955,16 +960,16 @@ export default function CustomizePage() {
   const isLight   = isLightColor(accentHex);
   const btnColor  = isLight ? "#050A14" : "#ffffff";
 
-  // Stats fields
-  const { base: baseStats, extra: extraStats } = getStatFields(sport, position);
+  // Stats fields — sport-specific from SPORTS_CONFIG
+  const { base: baseStats, extra: extraStats } = SPORTS_CONFIG[sport]?.getStatFields(position) ?? getStatFields(sport, position);
   const [showExtraStats, setShowExtraStats] = useState(false);
-  const clipLabelOpts = getClipLabels(sport);
+  const clipLabelOpts = SPORTS_CONFIG[sport]?.clipLabels ?? getClipLabels(sport);
   const diversityWarn = checkDiversity(clips.map((c) => c.label));
 
   // Duration
   const overhead        = 4 + (includeStatsCard ? 4 : 0) + (showMeasurables ? 3 : 0) + 5;
   const estimatedSec    = reelLength * 60 + overhead;
-  const limitSec        = sport === "Basketball" ? 240 : 300;
+  const limitSec        = SPORTS_CONFIG[sport]?.recommendedLength.warnAt ?? 300;
   const durationColor   = estimatedSec < limitSec ? "#22C55E" : estimatedSec < limitSec + 60 ? "#F59E0B" : "#EF4444";
   const durationFillPct = Math.min((estimatedSec / limitSec) * 100, 100);
 
@@ -1566,8 +1571,8 @@ export default function CustomizePage() {
                   </div>
                   {showMeasurables && (
                     <div className="grid grid-cols-2 gap-3">
-                      {MEASURABLES.map((f) => (
-                        <StatInput key={f.key} field={f} value={measurablesData[f.key] || ""} onChange={(v) => handleMeas(f.key, v)} accent={accentHex} />
+                      {(SPORTS_CONFIG[sport]?.measurables ?? MEASURABLES).map((f) => (
+                        <StatInput key={f.key} field={{ ...f, benchmark: 0 }} value={measurablesData[f.key] || ""} onChange={(v) => handleMeas(f.key, v)} accent={accentHex} />
                       ))}
                     </div>
                   )}

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { SPORTS_CONFIG } from "@/lib/sportsConfig";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -37,10 +38,9 @@ interface SimJob {
   elapsed: number;
 }
 
-const POSITIONS: Record<string, string[]> = {
-  Football:   ["Quarterback","Running Back","Wide Receiver","Tight End","Offensive Line","Defensive Line","Linebacker","Cornerback","Safety","Kicker / Punter"],
-  Basketball: ["Point Guard","Shooting Guard","Small Forward","Power Forward","Center"],
-};
+const POSITIONS: Record<string, string[]> = Object.fromEntries(
+  Object.entries(SPORTS_CONFIG).map(([name, cfg]) => [name, cfg.positions])
+);
 
 const STATUS_COLORS: Record<string, string> = {
   queued:      "#94A3B8",
@@ -383,8 +383,9 @@ export default function AdminPage() {
                 <label className="text-xs text-slate-400 font-medium block mb-1.5">Sport</label>
                 <select value={simSport} onChange={(e) => setSimSport(e.target.value)} style={{ ...IS, appearance: "none" } as React.CSSProperties}>
                   <option value="" disabled hidden>Select sport</option>
-                  <option value="Basketball" style={{ background: "#0A1628" }}>Basketball</option>
-                  <option value="Football" style={{ background: "#0A1628" }}>Football</option>
+                  {Object.entries(SPORTS_CONFIG).map(([name, cfg]) => (
+                    <option key={name} value={name} style={{ background: "#0A1628" }}>{cfg.icon} {name}</option>
+                  ))}
                 </select>
               </div>
               <div>
