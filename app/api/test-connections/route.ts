@@ -18,65 +18,96 @@ import { testGoogleConnection } from "@/lib/googleVideoIntelligence";
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
+// Shared response headers — prevent Vercel/CDN from caching test results
+const HEADERS = { "Cache-Control": "no-store" };
+
 export async function GET() {
-  // ── Test Supabase ─────────────────────────────────────────────────────────
-  const supabaseResult = await (async () => {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  try {
+    // ── Test Supabase ──────────────────────────────────────────────────────────
+    const supabaseResult = await testSupabase();
 
-    const PLACEHOLDER_URL = "https://placeholder.supabase.co";
-    const PLACEHOLDER_KEY = "your-anon-key-here";
+    // ── Test Google Video Intelligence ────────────────────────────────────────
+    const googleResult = await testGoogle();
 
-    if (!url || url === PLACEHOLDER_URL) {
+    return NextResponse.json(
+      { supabase: supabaseResult, google: googleResult },
+      { headers: HEADERS }
+    );
+  } catch (err) {
+    // Top-level safety net — should never reach here but prevents a blank 500
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json(
+      {
+        supabase: { connected: false, message: `Unhandled error: ${message}` },
+        google:   { connected: false, message: `Unhandled error: ${message}` },
+      },
+      { status: 500, headers: HEADERS }
+    );
+  }
+}
+
+// ── Supabase test ──────────────────────────────────────────────────────────────
+
+async function testSupabase(): Promise<{ connected: boolean; message: string }> {
+  // Check env vars first — fail fast with a clear message
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!url || url.trim() === "") {
+    return { connected: false, message: "NEXT_PUBLIC_SUPABASE_URL is not set." };
+  }
+  if (!key || key.trim() === "") {
+    return { connected: false, message: "NEXT_PUBLIC_SUPABASE_ANON_KEY is not set." };
+  }
+
+  // Reject placeholder values left over from .env.local template
+  if (url === "https://placeholder.supabase.co") {
+    return { connected: false, message: "NEXT_PUBLIC_SUPABASE_URL is still the placeholder value." };
+  }
+  if (key === "your-anon-key-here") {
+    return { connected: false, message: "NEXT_PUBLIC_SUPABASE_ANON_KEY is still the placeholder value." };
+  }
+
+  try {
+    // Create client fresh inside the handler — avoids any module-level init issues
+    const supabase = createClient(url, key);
+
+    // Minimal read — no .maybeSingle() to avoid PGRST116 confusion
+    const { data, error } = await supabase
+      .from("waitlist")
+      .select("id")
+      .limit(1);
+
+    if (error) {
       return {
         connected: false,
-        message: "NEXT_PUBLIC_SUPABASE_URL is not configured.",
-      };
-    }
-    if (!key || key === PLACEHOLDER_KEY) {
-      return {
-        connected: false,
-        message: "NEXT_PUBLIC_SUPABASE_ANON_KEY is not configured.",
+        message: `Supabase query error: ${error.message} (code: ${error.code})`,
       };
     }
 
-    try {
-      const client = createClient(url, key);
-      // Try a minimal read — just 1 row from waitlist; fails gracefully if table doesn't exist
-      const { error } = await client
-        .from("waitlist")
-        .select("id")
-        .limit(1)
-        .maybeSingle();
+    const count = Array.isArray(data) ? data.length : 0;
+    return {
+      connected: true,
+      message: `Supabase connected. ${count === 0 ? "Waitlist table is empty." : `${count} row(s) found.`}`,
+    };
+  } catch (err) {
+    return {
+      connected: false,
+      message: `Supabase connection failed: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+}
 
-      if (error) {
-        // "PGRST116" = no rows returned — that's fine, the connection works
-        if (error.code === "PGRST116") {
-          return { connected: true, message: "Supabase connected (waitlist table empty)." };
-        }
-        return {
-          connected: false,
-          message: `Supabase query error: ${error.message} (code: ${error.code})`,
-        };
-      }
+// ── Google test ────────────────────────────────────────────────────────────────
 
-      return { connected: true, message: "Supabase connected successfully." };
-    } catch (err) {
-      return {
-        connected: false,
-        message: `Supabase connection failed: ${err instanceof Error ? err.message : String(err)}`,
-      };
-    }
-  })();
-
-  // ── Test Google Video Intelligence ────────────────────────────────────────
-  const googleResult = await testGoogleConnection();
-
-  return NextResponse.json({
-    supabase: supabaseResult,
-    google: {
-      connected: googleResult.success,
-      message: googleResult.message,
-    },
-  });
+async function testGoogle(): Promise<{ connected: boolean; message: string }> {
+  try {
+    const result = await testGoogleConnection();
+    return { connected: result.success, message: result.message };
+  } catch (err) {
+    return {
+      connected: false,
+      message: `Google connection test threw: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
 }

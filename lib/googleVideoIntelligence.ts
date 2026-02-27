@@ -286,12 +286,15 @@ function labelsToPlayType(labels: string[], sport: string): string {
  * Used by the admin panel /api/test-connections route.
  */
 export async function testGoogleConnection(): Promise<{ success: boolean; message: string }> {
-  if (!isGoogleConfigured()) {
+  // Check configuration before making any network call
+  const credJson = process.env.GOOGLE_CREDENTIALS_JSON?.trim();
+  const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim();
+  const PLACEHOLDER_PATHS = ["", "/path/to/clipt-service-account.json"];
+
+  if (!credJson && (!credPath || PLACEHOLDER_PATHS.includes(credPath))) {
     return {
       success: false,
-      message:
-        "Not configured. Set GOOGLE_CREDENTIALS_JSON (Vercel) or " +
-        "GOOGLE_APPLICATION_CREDENTIALS (local). See GOOGLE_CLOUD_SETUP.md.",
+      message: "Google credentials not configured. Set GOOGLE_CREDENTIALS_JSON in Vercel environment variables.",
     };
   }
 
