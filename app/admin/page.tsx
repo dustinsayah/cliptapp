@@ -345,10 +345,38 @@ export default function AdminPage() {
     if (simElapsedRef.current) clearInterval(simElapsedRef.current);
 
     try {
+      // Generate job ID in browser
+      const jobId = crypto.randomUUID();
+
+      // Count active jobs for queue position
+      const { count } = await supabase
+        .from("processing_jobs")
+        .select("*", { count: "exact", head: true })
+        .in("status", ["queued", "downloading", "scanning", "identifying", "building"]);
+      const queuePosition = (count ?? 0) + 1;
+
+      // Insert job to Supabase directly from browser
+      await supabase.from("processing_jobs").insert({
+        id:             jobId,
+        first_name:     simFirstName.trim(),
+        last_name:      simLastName.trim(),
+        jersey_number:  jNum,
+        jersey_color:   "#FFFFFF",
+        position:       simPosition,
+        sport:          simSport,
+        school:         simSchool.trim(),
+        video_url:      simYtUrl,
+        source:         "youtube",
+        email:          simEmail.trim(),
+        status:         "queued",
+        queue_position: queuePosition,
+      });
+
       const res = await fetch("/api/process-video", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          jobId,
           videoUrl: simYtUrl,
           firstName: simFirstName.trim(),
           lastName: simLastName.trim(),
@@ -357,6 +385,7 @@ export default function AdminPage() {
           sport: simSport,
           school: simSchool.trim(),
           email: simEmail.trim(),
+          queuePosition,
         }),
       });
       const data = await res.json();
@@ -366,7 +395,6 @@ export default function AdminPage() {
         return;
       }
 
-      const jobId: string = data.jobId;
       setSimJob({ jobId, status: "queued", jerseyNumber: jNum, firstName: simFirstName.trim(), sport: simSport, elapsed: 0 });
 
       // Elapsed timer
@@ -374,7 +402,7 @@ export default function AdminPage() {
         setSimJob((prev) => prev ? { ...prev, elapsed: prev.elapsed + 1 } : prev);
       }, 1000);
 
-      // Poll status via API route (every 3 seconds)
+      // Poll status via API route (every 3 seconds), write final result to Supabase from browser
       const poll = async () => {
         try {
           const sr = await fetch(`/api/process-video/status?jobId=${jobId}`);
@@ -384,7 +412,17 @@ export default function AdminPage() {
             if (sd.status === "complete" || sd.status === "failed") {
               if (simPollRef.current) clearInterval(simPollRef.current);
               if (simElapsedRef.current) clearInterval(simElapsedRef.current);
-              loadJobs(); // refresh jobs table
+              // Update Supabase from browser with final status + clips
+              supabase
+                .from("processing_jobs")
+                .update({
+                  status:        sd.status,
+                  result_clips:  sd.resultClips  ?? null,
+                  error_message: sd.errorMessage ?? null,
+                  updated_at:    new Date().toISOString(),
+                })
+                .eq("id", jobId)
+                .then(() => loadJobs()); // refresh jobs table
             }
           }
         } catch (pollErr) {

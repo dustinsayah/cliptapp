@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Footer from "@/components/Footer";
+import { supabase } from "@/lib/supabase";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -91,16 +92,18 @@ export default function MyReelsPage() {
     setJobs(null);
 
     try {
-      const res = await fetch(
-        `/api/history?email=${encodeURIComponent(email.trim().toLowerCase())}`
-      );
-      const data = await res.json();
+      const { data, error } = await supabase
+        .from("processing_jobs")
+        .select("id,status,sport,position,jersey_number,first_name,last_name,created_at,result_clips,error_message")
+        .eq("email", email.trim().toLowerCase())
+        .order("created_at", { ascending: false })
+        .limit(50);
 
-      if (!res.ok) {
-        setError(data.error ?? "Failed to look up reels. Please try again.");
+      if (error) {
+        setError(error.message ?? "Failed to look up reels. Please try again.");
         setJobs([]);
       } else {
-        setJobs(data.jobs ?? []);
+        setJobs((data as JobRow[]) ?? []);
       }
     } catch {
       setError("Network error — please check your connection and try again.");

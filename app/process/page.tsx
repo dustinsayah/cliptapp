@@ -450,7 +450,7 @@ export default function ProcessPage() {
     });
   }, []);
 
-  // Poll job status via API
+  // Poll job status via API — write final result to Supabase from browser
   const startPolling = useCallback((jobId: string, jNum: number, fname: string, spt: string, pos: string) => {
     const poll = async () => {
       try {
@@ -469,6 +469,17 @@ export default function ProcessPage() {
         });
         if (data.status === "complete" || data.status === "failed") {
           if (pollRef.current) clearInterval(pollRef.current);
+          // Write final status + clips back to Supabase from browser
+          supabase
+            .from("processing_jobs")
+            .update({
+              status:        data.status,
+              result_clips:  data.resultClips  ?? null,
+              error_message: data.errorMessage ?? null,
+              updated_at:    new Date().toISOString(),
+            })
+            .eq("id", jobId)
+            .then(() => console.log(`[process] Supabase updated → ${data.status}`));
         }
       } catch (err) {
         console.error("Poll error:", err);
@@ -504,10 +515,44 @@ export default function ProcessPage() {
     const videoUrl = tab === "youtube" ? ytUrl : "https://example.com/stub-upload.mp4";
 
     try {
+      // Generate job ID in browser so we own the row before the API processes it
+      const jobId = crypto.randomUUID();
+
+      // Count active jobs for queue position
+      const { count } = await supabase
+        .from("processing_jobs")
+        .select("*", { count: "exact", head: true })
+        .in("status", ["queued", "downloading", "scanning", "identifying", "building"]);
+      const queuePosition = (count ?? 0) + 1;
+
+      // Insert job row to Supabase directly from browser
+      const { error: insertError } = await supabase
+        .from("processing_jobs")
+        .insert({
+          id:             jobId,
+          first_name:     fname,
+          last_name:      lastName.trim(),
+          jersey_number:  jNum,
+          jersey_color:   "#FFFFFF",
+          position:       pos,
+          sport:          spt,
+          school:         school.trim(),
+          video_url:      videoUrl,
+          source:         tab === "youtube" ? "youtube" : "upload",
+          email:          email.trim(),
+          status:         "queued",
+          queue_position: queuePosition,
+        });
+      if (insertError) {
+        console.error("[process] Supabase insert error:", insertError.message);
+        // Non-fatal — still try the API
+      }
+
       const res = await fetch("/api/process-video", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          jobId,
           videoUrl,
           firstName: fname,
           lastName:  lastName.trim(),
@@ -516,6 +561,7 @@ export default function ProcessPage() {
           sport:    spt,
           school:   school.trim(),
           email:    email.trim(),
+          queuePosition,
         }),
       });
       const data = await res.json();
@@ -527,14 +573,12 @@ export default function ProcessPage() {
           setSubmitting(false);
           return;
         }
-        // For other errors (503 = no Supabase, 500 = DB error), fall back to demo with notice
+        // For other errors fall back to demo
         console.warn("[process-video] API error:", data.error, "— running demo simulation");
         runDemoSimulation(jNum, fname, spt, pos);
         return;
       }
 
-      const jobId: string = data.jobId;
-      const queuePosition: number = data.queuePosition ?? 1;
       setJob({ id: jobId, status: "queued", jerseyNumber: jNum, firstName: fname, sport: spt, position: pos, errorMessage: null, resultClips: null, queuePosition });
       setPhase("processing");
       startPolling(jobId, jNum, fname, spt, pos);

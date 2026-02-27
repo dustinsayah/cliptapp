@@ -6,6 +6,7 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "4gb",
     },
   },
+  serverExternalPackages: ["@supabase/supabase-js", "@google-cloud/video-intelligence"],
 };
 
 export default nextConfig;
