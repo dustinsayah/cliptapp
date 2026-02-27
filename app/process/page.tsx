@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { isValidYouTubeUrl, getYouTubeThumbnail, type YouTubeOEmbedData } from "@/lib/youtubeUtils";
-import { saveToWaitlist } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 
 // ── Position options by sport ──────────────────────────────────────────────
 
@@ -369,12 +369,11 @@ export default function ProcessPage() {
     const fname = firstName.trim();
     const spt = sport.trim();
 
-    // Save email to waitlist
-    try {
-      await saveToWaitlist(email.trim(), "process_page");
-    } catch {
-      // non-blocking
-    }
+    // Save email to waitlist (non-blocking — errors do not stop form submission)
+    supabase
+      .from("waitlist")
+      .insert({ email: email.trim().toLowerCase(), source: "process_page" })
+      .then((response) => console.log("[Clipt] Supabase waitlist response:", response));
 
     const videoUrl = tab === "youtube" ? ytUrl : "https://example.com/stub-upload.mp4";
 

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { saveToWaitlist } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 
 // ── Icons ──────────────────────────────────────────────────────────────────
 
@@ -163,19 +163,25 @@ export default function Home() {
     setSubmitting(true);
     setSubmitError("");
 
-    try {
-      const result = await saveToWaitlist(email.trim(), "homepage");
-      if (result.success) {
+    const response = await supabase
+      .from("waitlist")
+      .insert({ email: email.trim().toLowerCase(), source: "homepage" });
+
+    console.log("[Clipt] Supabase waitlist response:", response);
+
+    if (response.error) {
+      if (response.error.code === "23505") {
         setSubmitted(true);
-        setAlreadyExists(result.alreadyExists);
+        setAlreadyExists(true);
       } else {
-        setSubmitError(result.error ?? "Something went wrong. Please try again.");
+        setSubmitError("Something went wrong, try again.");
       }
-    } catch {
-      setSubmitError("Network error. Please try again.");
-    } finally {
-      setSubmitting(false);
+    } else {
+      setSubmitted(true);
+      setAlreadyExists(false);
     }
+
+    setSubmitting(false);
   };
 
   return (
@@ -252,7 +258,7 @@ export default function Home() {
           <div className="flex items-center gap-3 px-8 py-3.5 rounded-xl border border-[#00A3FF]/40" style={{ background: "rgba(0,163,255,0.08)" }}>
             <CheckIcon size={18} color="#00A3FF" />
             <span className="text-[#00A3FF] font-semibold text-sm">
-              {alreadyExists ? "You're already on the list!" : "You're on the list — we'll be in touch soon!"}
+              {alreadyExists ? "You are already on the list!" : "You are on the list!"}
             </span>
           </div>
         )}

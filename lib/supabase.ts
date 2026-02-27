@@ -93,43 +93,38 @@ export interface WaitlistResult {
 
 /**
  * Inserts an email into the waitlist table.
- * - If the email already exists, returns { success: true, alreadyExists: true }
- * - If Supabase is not configured, returns { success: true, alreadyExists: false }
- *   so the UI shows a success state without crashing.
+ * - If the email already exists (code 23505), returns { success: true, alreadyExists: true }
+ * - If Supabase is not configured, returns { success: false } with an error message.
+ * - Logs the full Supabase response to the console for debugging.
  */
 export async function saveToWaitlist(
   email: string,
   source: WaitlistSource
 ): Promise<WaitlistResult> {
   if (!isConfigured) {
-    console.warn("[Clipt] Supabase not configured — skipping waitlist insert.");
-    return { success: true, alreadyExists: false };
+    console.warn("[Clipt] Supabase not configured — waitlist insert skipped.");
+    return { success: false, alreadyExists: false, error: "Supabase not configured." };
   }
 
-  try {
-    const { error } = await supabase
-      .from("waitlist")
-      .insert({ email: email.trim().toLowerCase(), source });
+  const response = await supabase
+    .from("waitlist")
+    .insert({ email: email.trim().toLowerCase(), source });
 
-    if (error) {
-      // Postgres unique violation code
-      if (
-        error.code === "23505" ||
-        error.message?.toLowerCase().includes("duplicate") ||
-        error.message?.toLowerCase().includes("unique")
-      ) {
-        return { success: true, alreadyExists: true };
-      }
-      console.error("[Clipt] Waitlist insert error:", error);
-      return { success: false, alreadyExists: false, error: error.message };
+  console.log("[Clipt] Supabase waitlist response:", response);
+
+  if (response.error) {
+    const { code, message } = response.error;
+    if (
+      code === "23505" ||
+      message?.toLowerCase().includes("duplicate") ||
+      message?.toLowerCase().includes("unique")
+    ) {
+      return { success: true, alreadyExists: true };
     }
-
-    return { success: true, alreadyExists: false };
-  } catch (err) {
-    // Network/config error — show success so UI never breaks
-    console.warn("[Clipt] Waitlist insert failed (network/config):", err);
-    return { success: true, alreadyExists: false };
+    return { success: false, alreadyExists: false, error: message };
   }
+
+  return { success: true, alreadyExists: false };
 }
 
 // ── Types ──────────────────────────────────────────────────────────────────

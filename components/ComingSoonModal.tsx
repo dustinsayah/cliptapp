@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { saveToWaitlist, type WaitlistSource } from "@/lib/supabase";
+import { supabase, type WaitlistSource } from "@/lib/supabase";
 
 // ── Icons ───────────────────────────────────────────────────────────────────
 
@@ -42,19 +42,26 @@ export default function ComingSoonModal({ source, onClose }: ComingSoonModalProp
     if (!email.trim() || loading) return;
     setLoading(true);
     setError("");
-    try {
-      const result = await saveToWaitlist(email.trim(), source);
-      if (result.success) {
+
+    const response = await supabase
+      .from("waitlist")
+      .insert({ email: email.trim().toLowerCase(), source });
+
+    console.log("[Clipt] Supabase waitlist response:", response);
+
+    if (response.error) {
+      if (response.error.code === "23505") {
         setSubmitted(true);
-        setAlreadyExists(result.alreadyExists ?? false);
+        setAlreadyExists(true);
       } else {
-        setError(result.error ?? "Something went wrong. Please try again.");
+        setError("Something went wrong, try again.");
       }
-    } catch {
-      setError("Network error. Please try again.");
-    } finally {
-      setLoading(false);
+    } else {
+      setSubmitted(true);
+      setAlreadyExists(false);
     }
+
+    setLoading(false);
   };
 
   return (
@@ -136,7 +143,7 @@ export default function ComingSoonModal({ source, onClose }: ComingSoonModalProp
               <CheckIcon />
             </div>
             <h3 className="text-xl font-black text-white mb-2">
-              {alreadyExists ? "You're already on the list!" : "You are on the list!"}
+              {alreadyExists ? "You are already on the list!" : "You are on the list!"}
             </h3>
             <p className="text-slate-400 text-sm leading-relaxed">
               {alreadyExists
