@@ -32,19 +32,18 @@
 //   https://github.com/foxesdocode/yt-dlp-wrap
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { createClient } from "@supabase/supabase-js";
 import { sendProcessingCompleteEmail, sendProcessingFailedEmail } from "./emailService";
 import { classifyAllClips, isGoogleConfigured, type ClipForClassification } from "./googleVideoIntelligence";
 
-// ── Server-side Supabase client ───────────────────────────────────────────────
-function getSupabase() {
+// ── Supabase config — direct REST fetch (no JS client) ───────────────────────
+function getSupabaseConfig(): { url: string; key: string } | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key || url === "https://placeholder.supabase.co" || key === "your-anon-key-here") {
     console.error("[videoProcessor] Supabase not configured — status updates will fail.");
     return null;
   }
-  return createClient(url, key);
+  return { url, key };
 }
 
 // ── Email notification helpers ────────────────────────────────────────────────
@@ -58,13 +57,22 @@ async function notifyEmailComplete(
   if (!email?.trim()) return;
   try {
     // 1. Save email to waitlist so we have a record
-    const supabase = getSupabase();
-    if (supabase) {
-      const { error } = await supabase
-        .from("waitlist")
-        .insert({ email: email.trim().toLowerCase(), source: "ai_processing_complete" });
-      if (error && error.code !== "23505" && !error.message?.toLowerCase().includes("duplicate")) {
-        console.error("[notifyEmailComplete] Waitlist insert error:", error.message);
+    const config = getSupabaseConfig();
+    if (config) {
+      const { url, key } = config;
+      const response = await fetch(`${url}/rest/v1/waitlist`, {
+        method: "POST",
+        headers: {
+          "apikey":        key,
+          "Authorization": `Bearer ${key}`,
+          "Content-Type":  "application/json",
+          "Prefer":        "return=minimal",
+        },
+        body: JSON.stringify({ email: email.trim().toLowerCase(), source: "ai_processing_complete" }),
+      });
+      // 409 = duplicate email — that's fine
+      if (!response.ok && response.status !== 409) {
+        console.error("[notifyEmailComplete] Waitlist insert error: HTTP", response.status);
       }
     }
     // 2. Send real email via Resend
@@ -144,25 +152,47 @@ export interface ProcessingJob {
 
 // ── Internal helpers ──────────────────────────────────────────────────────
 
-/** Updates job status in Supabase and logs to console */
+/** Updates job status via direct Supabase REST fetch */
 async function updateJobStatus(
   jobId: string,
   status: ProcessingJob["status"],
   extra?: Partial<{ error_message: string; result_clips: ClipResult[] }>
 ): Promise<void> {
   console.log(`[Job ${jobId}] Status → ${status}`);
-  const supabase = getSupabase();
-  if (!supabase) {
+  const config = getSupabaseConfig();
+  if (!config) {
     console.error(`[Job ${jobId}] Cannot update status — Supabase not configured`);
     return;
   }
-  const { error } = await supabase
-    .from("processing_jobs")
-    .update({ status, updated_at: new Date().toISOString(), ...extra })
-    .eq("id", jobId);
 
-  if (error) {
-    console.error(`[Job ${jobId}] Failed to update status in Supabase:`, error.message, error.code);
+  const { url, key } = config;
+  try {
+    const body: Record<string, unknown> = {
+      status,
+      updated_at: new Date().toISOString(),
+      ...extra,
+    };
+
+    const response = await fetch(
+      `${url}/rest/v1/processing_jobs?id=eq.${jobId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "apikey":        key,
+          "Authorization": `Bearer ${key}`,
+          "Content-Type":  "application/json",
+          "Prefer":        "return=minimal",
+        },
+        body: JSON.stringify(body),
+      }
+    );
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => "");
+      console.error(`[Job ${jobId}] Failed to update status: HTTP ${response.status} ${errText}`);
+    }
+  } catch (err) {
+    console.error(`[Job ${jobId}] Failed to update status in Supabase:`, err);
   }
 }
 
@@ -461,7 +491,7 @@ export async function processVideo(job: ProcessingJob): Promise<void> {
     await updateJobStatus(jobId, "complete", { result_clips: clips });
     console.log(`[Job ${jobId}] ✓ Complete — ${clips.length} clips found`);
 
-    // Step 5: Notify athlete via email (Supabase record + Resend)
+    // Step 6: Notify athlete via email (Supabase record + Resend)
     if (job.email) {
       await notifyEmailComplete(job.email, job.firstName, job.jerseyNumber, clips.length);
     }

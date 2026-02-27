@@ -66,6 +66,8 @@
  *
  * Creates a processing job in Supabase and kicks off the AI pipeline
  * in the background. Returns the jobId immediately so the client can poll.
+ * Uses direct fetch to the Supabase REST API — avoids the JS client's
+ * network issues in Vercel's serverless environment.
  *
  * GET /api/process-video
  * Health check — returns { ok: true, timestamp, env: { supabase: boolean } }
@@ -76,21 +78,20 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { processVideo, ProcessingJob } from "@/lib/videoProcessor";
 import { isValidYouTubeUrl } from "@/lib/youtubeUtils";
 
 export const runtime = "nodejs";
 
-// ── Inline Supabase client (server-side only, not shared with browser) ────────
-function getSupabase() {
+// ── Supabase config ───────────────────────────────────────────────────────────
+function getSupabaseConfig(): { url: string; key: string } | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key || url === "https://placeholder.supabase.co" || key === "your-anon-key-here") {
     console.error("[process-video] Supabase not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.");
     return null;
   }
-  return createClient(url, key);
+  return { url, key };
 }
 
 // ── In-memory rate limiting (3 submissions per hour per IP) ──────────────────
@@ -228,10 +229,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // ── Supabase client ───────────────────────────────────────────────────────
-  const supabase = getSupabase();
-  if (!supabase) {
-    console.error("[process-video] Cannot create job: Supabase not configured");
+  // ── Supabase config ───────────────────────────────────────────────────────
+  const config = getSupabaseConfig();
+  if (!config) {
     return NextResponse.json(
       {
         error: "Database not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in your environment variables.",
@@ -241,53 +241,92 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const { url: sbUrl, key } = config;
+  const sbHeaders = {
+    "apikey":        key,
+    "Authorization": `Bearer ${key}`,
+    "Content-Type":  "application/json",
+  };
+
   // ── Calculate queue position ──────────────────────────────────────────────
   let queuePosition = 1;
-  const { count, error: countError } = await supabase
-    .from("processing_jobs")
-    .select("id", { count: "exact", head: true })
-    .in("status", ["queued", "downloading", "scanning", "identifying", "building"]);
-
-  if (countError) {
-    console.error("[process-video] Failed to count active jobs:", countError.message);
-  } else {
-    queuePosition = (count ?? 0) + 1;
+  try {
+    const countResponse = await fetch(
+      `${sbUrl}/rest/v1/processing_jobs?select=id&status=in.(queued,downloading,scanning,identifying,building)`,
+      {
+        headers: { ...sbHeaders, "Prefer": "count=exact", "Range": "0-0" },
+        cache: "no-store",
+      }
+    );
+    // Content-Range header format: "0-0/42" or "*/0"
+    const contentRange = countResponse.headers.get("content-range");
+    if (contentRange) {
+      const total = parseInt(contentRange.split("/")[1] ?? "0", 10);
+      if (!isNaN(total)) queuePosition = total + 1;
+    }
+  } catch (err) {
+    console.error("[process-video] Failed to count active jobs:", err);
+    // Non-fatal — queue position defaults to 1
   }
 
-  // ── Create job in Supabase ────────────────────────────────────────────────
-  const { data: jobRow, error: insertError } = await supabase
-    .from("processing_jobs")
-    .insert({
-      first_name:     firstName!.trim(),
-      last_name:      lastName!.trim(),
-      jersey_number:  jerseyNum,
-      position:       position!.trim(),
-      sport:          sport!.trim(),
-      school:         school!.trim(),
-      video_url:      urlStr,
-      source,
-      email:          email!.trim(),
-      status:         "queued",
-      queue_position: queuePosition,
-    })
-    .select("id")
-    .single();
+  // ── Insert job into Supabase ──────────────────────────────────────────────
+  const jobPayload = {
+    first_name:     firstName!.trim(),
+    last_name:      lastName!.trim(),
+    jersey_number:  jerseyNum,
+    position:       position!.trim(),
+    sport:          sport!.trim(),
+    school:         school!.trim(),
+    video_url:      urlStr,
+    source,
+    email:          email!.trim(),
+    status:         "queued",
+    queue_position: queuePosition,
+  };
 
-  if (insertError || !jobRow) {
-    console.error("[process-video] Failed to insert job into Supabase:", insertError?.message ?? "No row returned");
-    console.error("[process-video] Supabase error details:", JSON.stringify(insertError));
-    return NextResponse.json(
+  let jobId: string;
+  try {
+    const insertResponse = await fetch(
+      `${sbUrl}/rest/v1/processing_jobs?select=id`,
       {
-        error: `Failed to create processing job: ${insertError?.message ?? "Unknown database error"}`,
-        hint: "Check that your Supabase project is running and the processing_jobs table exists. See SETUP_GUIDE.md.",
-        supabaseError: insertError?.message,
-        supabaseCode: insertError?.code,
-      },
+        method: "POST",
+        headers: { ...sbHeaders, "Prefer": "return=representation" },
+        body: JSON.stringify(jobPayload),
+        cache: "no-store",
+      }
+    );
+
+    if (!insertResponse.ok) {
+      const errText = await insertResponse.text().catch(() => "");
+      console.error("[process-video] Failed to insert job:", insertResponse.status, errText);
+      return NextResponse.json(
+        {
+          error: `Failed to create processing job: HTTP ${insertResponse.status}`,
+          hint: "Check that your Supabase project is running and the processing_jobs table exists. See SETUP_GUIDE.md.",
+          detail: errText.slice(0, 300),
+        },
+        { status: 500 }
+      );
+    }
+
+    const rows = await insertResponse.json() as { id: string }[];
+    if (!Array.isArray(rows) || rows.length === 0 || !rows[0].id) {
+      console.error("[process-video] Insert returned no row");
+      return NextResponse.json(
+        { error: "Failed to create processing job: no row returned from database" },
+        { status: 500 }
+      );
+    }
+
+    jobId = rows[0].id;
+  } catch (err) {
+    console.error("[process-video] Insert fetch failed:", err);
+    return NextResponse.json(
+      { error: `Database request failed: ${err instanceof Error ? err.message : String(err)}` },
       { status: 500 }
     );
   }
 
-  const jobId: string = jobRow.id;
   console.log(`[process-video] Created job ${jobId} for ${firstName} ${lastName} #${jerseyNum} — queue position ${queuePosition}`);
 
   // ── Fire-and-forget processing pipeline ──────────────────────────────────
