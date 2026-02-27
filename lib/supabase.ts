@@ -58,18 +58,29 @@ import { createClient } from "@supabase/supabase-js";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-const isConfigured =
+const PLACEHOLDER_URLS = ["https://placeholder.supabase.co", ""];
+const PLACEHOLDER_KEYS = ["your-anon-key-here", "placeholder-key", ""];
+
+/** True when real (non-placeholder) credentials are present */
+export const isConfigured =
   !!supabaseUrl &&
   !!supabaseKey &&
-  supabaseKey !== "your-anon-key-here" &&
-  supabaseUrl !== "https://placeholder.supabase.co";
+  !PLACEHOLDER_URLS.includes(supabaseUrl) &&
+  !PLACEHOLDER_KEYS.includes(supabaseKey);
+
+/** Human-readable explanation of what's missing — empty string when configured */
+export const configError: string = (() => {
+  if (!supabaseUrl || PLACEHOLDER_URLS.includes(supabaseUrl ?? "")) {
+    return "NEXT_PUBLIC_SUPABASE_URL is missing or still set to the placeholder value.";
+  }
+  if (!supabaseKey || PLACEHOLDER_KEYS.includes(supabaseKey ?? "")) {
+    return "NEXT_PUBLIC_SUPABASE_ANON_KEY is missing or still set to 'your-anon-key-here'. Get it from Supabase Dashboard → Project Settings → API → anon public key.";
+  }
+  return "";
+})();
 
 if (!isConfigured) {
-  console.warn(
-    "[Clipt] ⚠️  Supabase credentials missing or placeholder. " +
-      "Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local. " +
-      "Forms will show success state but no data will be saved."
-  );
+  console.warn("[Clipt] ⚠️  Supabase not configured —", configError);
 }
 
 export const supabase = createClient(

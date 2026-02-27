@@ -110,7 +110,7 @@ function UploadTip({ onDismiss }: { onDismiss: () => void }) {
       <div className="flex-1 min-w-0">
         <p className="text-white text-sm font-semibold mb-0.5">Upload up to 50 clips</p>
         <p className="text-slate-400 text-xs leading-relaxed">
-          Drag-and-drop or browse. Add your best plays — coaches want variety. MP4, MOV, AVI, and WebM all work.
+          Drag-and-drop or browse. Add your best plays — coaches want variety. All video formats work including iPhone videos.
         </p>
       </div>
       <button
@@ -231,11 +231,10 @@ export default function UploadPage() {
 
   const addFiles = useCallback((incoming: FileList | null) => {
     if (!incoming) return;
-    const valid = Array.from(incoming).filter(
-      (f) => f.type.startsWith("video/") || /\.(mp4|mov|m4v|avi|mkv|webm|avi)$/i.test(f.name)
-    );
+    // Accept all files — iOS Safari sends empty MIME types; never reject based on type
+    const all = Array.from(incoming);
     setFiles((prev) => {
-      const combined = [...prev, ...valid];
+      const combined = [...prev, ...all];
       return combined.slice(0, MAX_CLIPS);
     });
   }, []);
@@ -350,7 +349,7 @@ export default function UploadPage() {
         <div className="mb-8">
           <h1 className="text-3xl font-black text-white mb-2">Upload Your Clips</h1>
           <p className="text-slate-400 text-sm">
-            Add up to {MAX_CLIPS} clips you want in your reel. MP4, MOV, AVI, WebM supported.
+            Add up to {MAX_CLIPS} clips you want in your reel. All video formats accepted — just pick your files.
           </p>
         </div>
 
@@ -374,7 +373,7 @@ export default function UploadPage() {
             Drag and drop your clips here
           </p>
           <p className="text-slate-400 text-sm mb-6">
-            MP4 · MOV · AVI · WebM · No size limit
+            All video formats accepted · No size limit
           </p>
           <button
             type="button"
@@ -390,7 +389,7 @@ export default function UploadPage() {
           <input
             ref={fileInputRef}
             type="file"
-            accept="video/*,.mp4,.mov,.m4v,.avi,.mkv,.webm"
+            accept=""
             multiple
             className="hidden"
             onChange={(e) => {
@@ -464,12 +463,21 @@ export default function UploadPage() {
         {/* Clip count badge */}
         {files.length > 0 && (
           <div className="flex items-center justify-between mb-6">
-            <p className="text-slate-400 text-sm">
-              <span className="text-white font-bold">{files.length}</span> clip{files.length !== 1 ? "s" : ""} added
-              {files.length >= MAX_CLIPS && (
-                <span className="text-amber-400 ml-2">(max {MAX_CLIPS})</span>
+            <div className="flex items-center gap-2">
+              {files.length >= 3 ? (
+                <div className="flex items-center gap-1.5 rounded-full px-3 py-1" style={{ background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.25)" }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22C55E" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                  <span className="text-green-400 text-xs font-bold">{files.length} clips ready</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 rounded-full px-3 py-1" style={{ background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.25)" }}>
+                  <span className="text-amber-400 text-xs font-bold">⚠️ {files.length} clip{files.length !== 1 ? "s" : ""} — add at least 3 for best results</span>
+                </div>
               )}
-            </p>
+              {files.length >= MAX_CLIPS && (
+                <span className="text-amber-400 text-xs">(max {MAX_CLIPS})</span>
+              )}
+            </div>
             {files.length < MAX_CLIPS && (
               <button
                 type="button"

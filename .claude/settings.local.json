@@ -12,7 +12,9 @@
       "Bash(npx tsc:*)",
       "Bash(npm run:*)",
       "Bash(python:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(npx next:*)",
+      "Bash(rm:*)"
     ]
   }
 }

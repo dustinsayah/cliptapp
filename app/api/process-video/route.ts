@@ -34,6 +34,9 @@
  * -- Add queue_position to existing tables (safe to run even if column already exists)
  * ALTER TABLE processing_jobs ADD COLUMN IF NOT EXISTS queue_position INTEGER DEFAULT 0;
  *
+ * -- Add reviewed_clips column (stores the clips the athlete kept after the /review step)
+ * ALTER TABLE processing_jobs ADD COLUMN IF NOT EXISTS reviewed_clips JSONB;
+ *
  * -- Auto-update updated_at on row change
  * CREATE OR REPLACE FUNCTION update_updated_at_column()
  * RETURNS TRIGGER AS $$
@@ -172,6 +175,7 @@ export async function POST(request: NextRequest) {
     firstName,
     lastName,
     jerseyNumber,
+    jerseyColor,
     position,
     sport,
     school,
@@ -181,6 +185,8 @@ export async function POST(request: NextRequest) {
     firstName?: string;
     lastName?: string;
     jerseyNumber?: number | string;
+    /** Hex code (e.g. "#FF0000") or color name (e.g. "royal blue") — optional, used for HSV masking */
+    jerseyColor?: string;
     position?: string;
     sport?: string;
     school?: string;
@@ -290,6 +296,7 @@ export async function POST(request: NextRequest) {
     firstName: firstName!.trim(),
     lastName:  lastName!.trim(),
     jerseyNumber: jerseyNum,
+    jerseyColor: jerseyColor?.trim() || "#FFFFFF",
     position:  position!.trim(),
     sport:     sport!.trim(),
     school:    school!.trim(),

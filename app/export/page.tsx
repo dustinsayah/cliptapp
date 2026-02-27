@@ -126,6 +126,266 @@ function isLightColor(hex: string): boolean {
   return (0.299*r + 0.587*g + 0.114*b) > 0.6;
 }
 
+// ── Coach Ready Score ─────────────────────────────────────────────────────────
+
+interface ScoreItem {
+  label: string;
+  delta: number; // negative = deduction, positive = bonus
+  applies: boolean;
+  fix?: string;
+}
+
+interface CoachScore {
+  score: number;
+  grade: string;
+  gradeLabel: string;
+  bonuses: ScoreItem[];
+  deductions: ScoreItem[];
+}
+
+function calcCoachReadyScore(reel: {
+  reelLength: number; sport: string; musicTrackId: string; includeStatsCard: boolean;
+  gradYear: string; heightFt: string; weight: string; email: string; gpa: string;
+  fontStyle: string; transition: string; firstName: string; school: string;
+  position: string; jerseyNumber: string;
+}): CoachScore {
+  const sportMax = reel.sport === "Basketball" ? 4 : 5;
+  const trackHasLyrics = ["nba-warmup","game-time","trap-god","drill-season","ice-cold","street-ball","pressure"].includes(reel.musicTrackId);
+  const gpaNum = parseFloat(reel.gpa) || 0;
+  const allFieldsFilled = !!(reel.firstName && reel.gradYear && reel.heightFt && reel.weight && reel.email && reel.school && reel.position && reel.jerseyNumber);
+
+  const deductions: ScoreItem[] = [
+    { label: "Reel over recommended length", delta: -20, applies: reel.reelLength > sportMax, fix: `Reduce to ${sportMax} min or less in Reel Duration settings` },
+    { label: "Music may have lyrics (coaches watch on mute)", delta: -15, applies: trackHasLyrics, fix: "Switch to Cinematic or Coach Recommended music" },
+    { label: "No stats card included", delta: -10, applies: !reel.includeStatsCard, fix: "Enable Stats Card in the Stats System section" },
+    { label: "Missing graduation year", delta: -10, applies: !reel.gradYear, fix: "Add your Class of year in Reel Info" },
+    { label: "Missing height or weight", delta: -10, applies: !reel.heightFt || !reel.weight, fix: "Add your measurables in Reel Info" },
+    { label: "Missing email address", delta: -10, applies: !reel.email, fix: "Add your email in Reel Info — coaches need a way to contact you" },
+    { label: "Font not coach-standard (Modern or Bold)", delta: -5, applies: !["Modern","Bold"].includes(reel.fontStyle), fix: "Switch to Modern or Bold font in Color & Style" },
+    { label: "Non-Hard Cut transitions slow down viewing", delta: -5, applies: reel.transition !== "Hard Cut", fix: "Switch to Hard Cut in Color & Style" },
+  ];
+
+  const bonuses: ScoreItem[] = [
+    { label: "All title card fields complete", delta: 5, applies: allFieldsFilled },
+    { label: `GPA ${gpaNum.toFixed(1)} — above 3.0 (academic bonus)`, delta: 5, applies: gpaNum >= 3.0 && !!reel.gpa },
+  ];
+
+  let score = 100;
+  deductions.forEach((d) => { if (d.applies) score += d.delta; });
+  bonuses.forEach((b) => { if (b.applies) score += b.delta; });
+  score = Math.max(0, Math.min(110, score));
+
+  const grade = score >= 90 ? "A" : score >= 80 ? "B" : score >= 70 ? "C" : "D";
+  const gradeLabel = score >= 90 ? "Coach Ready" : score >= 80 ? "Strong Reel" : score >= 70 ? "Needs Work" : "Missing Key Info";
+
+  return { score, grade, gradeLabel, bonuses, deductions };
+}
+
+// ── Reel Comparison Benchmarks ─────────────────────────────────────────────────
+
+interface PosBenchmark { avgReelMin: number; idealClips: [number, number]; avgGpa: number; topClips: string }
+
+const BENCHMARKS: Record<string, Record<string, PosBenchmark>> = {
+  Basketball: {
+    "Point Guard":      { avgReelMin: 3.1, idealClips: [6, 10], avgGpa: 3.4, topClips: "Ball handling, assists, defense" },
+    "Shooting Guard":   { avgReelMin: 3.2, idealClips: [6, 10], avgGpa: 3.3, topClips: "Scoring, three-point shooting" },
+    "Small Forward":    { avgReelMin: 3.0, idealClips: [6, 10], avgGpa: 3.2, topClips: "Scoring versatility, defense" },
+    "Power Forward":    { avgReelMin: 2.9, idealClips: [5, 9],  avgGpa: 3.1, topClips: "Post play, rebounding, defense" },
+    "Center":           { avgReelMin: 2.8, idealClips: [5, 8],  avgGpa: 3.0, topClips: "Post scoring, shot blocking" },
+  },
+  Football: {
+    "Quarterback":      { avgReelMin: 4.2, idealClips: [8, 14], avgGpa: 3.5, topClips: "Deep ball, pocket presence, accuracy" },
+    "Running Back":     { avgReelMin: 3.5, idealClips: [7, 12], avgGpa: 3.2, topClips: "Explosion, receiving, pass pro" },
+    "Wide Receiver":    { avgReelMin: 3.8, idealClips: [8, 14], avgGpa: 3.3, topClips: "Route running, YAC, separation" },
+    "Linebacker":       { avgReelMin: 3.6, idealClips: [7, 12], avgGpa: 3.3, topClips: "Pass rush, tackling, coverage" },
+    "Cornerback":       { avgReelMin: 3.4, idealClips: [7, 12], avgGpa: 3.4, topClips: "Man coverage, ball skills" },
+    "Defensive End":    { avgReelMin: 3.3, idealClips: [6, 10], avgGpa: 3.1, topClips: "Pass rush, sacks, run stops" },
+  },
+  Soccer: {
+    "Goalkeeper":       { avgReelMin: 3.0, idealClips: [6, 10], avgGpa: 3.4, topClips: "Shot stops, distribution" },
+    "Striker":          { avgReelMin: 3.2, idealClips: [6, 10], avgGpa: 3.2, topClips: "Goals, finishing, movement" },
+    "Center Back":      { avgReelMin: 3.0, idealClips: [6, 10], avgGpa: 3.3, topClips: "Aerials, tackling, passing" },
+    "Central Midfielder":{ avgReelMin: 3.2, idealClips: [7, 11], avgGpa: 3.4, topClips: "Passing range, pressing, goals" },
+  },
+  Baseball: {
+    "Pitcher":          { avgReelMin: 3.5, idealClips: [5, 9],  avgGpa: 3.3, topClips: "Velo, breaking ball, strikeouts" },
+    "Catcher":          { avgReelMin: 3.2, idealClips: [5, 8],  avgGpa: 3.3, topClips: "Pop time, blocking, hitting" },
+    "Shortstop":        { avgReelMin: 3.0, idealClips: [5, 9],  avgGpa: 3.4, topClips: "Range, arm, double plays" },
+  },
+  Lacrosse: {
+    "Attack":           { avgReelMin: 3.2, idealClips: [6, 10], avgGpa: 3.3, topClips: "Goals, dodges, assists" },
+    "Midfield":         { avgReelMin: 3.0, idealClips: [6, 10], avgGpa: 3.3, topClips: "Transition, shooting, groundballs" },
+    "Defense":          { avgReelMin: 3.0, idealClips: [6, 10], avgGpa: 3.2, topClips: "Caused turnovers, groundballs" },
+    "Goalkeeper":       { avgReelMin: 2.8, idealClips: [5, 8],  avgGpa: 3.2, topClips: "Saves, outlet passes" },
+  },
+};
+
+function getBenchmark(sport: string, position: string): PosBenchmark | null {
+  return BENCHMARKS[sport]?.[position] ?? Object.values(BENCHMARKS[sport] ?? {})[0] ?? null;
+}
+
+// ── Recruiting Card Canvas ─────────────────────────────────────────────────────
+
+async function drawRecruitingCard(info: TitleInfo, accentHex: string): Promise<string> {
+  const W = 1200, H = 800;
+  const canvas = document.createElement("canvas");
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext("2d")!;
+  const s = H / 800;
+
+  await Promise.allSettled(["Inter","Oswald","Poppins","Bebas Neue"].map((f) => document.fonts.load(`bold 48px "${f}"`)));
+
+  // Background
+  ctx.fillStyle = "#050A14"; ctx.fillRect(0, 0, W, H);
+  // Diagonal pattern
+  ctx.save(); ctx.strokeStyle = accentHex + "0D"; ctx.lineWidth = 1;
+  const step = 32;
+  for (let x = -H; x < W + H; x += step) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x + H, H); ctx.stroke();
+  }
+  ctx.restore();
+  // Accent top stripe
+  ctx.fillStyle = accentHex; ctx.fillRect(0, 0, W, 8);
+  // Card border
+  ctx.strokeStyle = accentHex + "40"; ctx.lineWidth = 1.5;
+  ctx.strokeRect(1, 1, W - 2, H - 2);
+
+  // Left panel bg
+  ctx.fillStyle = accentHex + "12"; ctx.fillRect(0, 0, 340, H);
+  ctx.fillStyle = accentHex; ctx.fillRect(340, 0, 2, H);
+
+  // Jersey number — big in left panel
+  ctx.save();
+  ctx.shadowColor = accentHex; ctx.shadowBlur = 40;
+  ctx.font = `bold ${Math.round(140 * s)}px Arial, sans-serif`;
+  ctx.fillStyle = accentHex; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText(info.jerseyNumber ? `#${info.jerseyNumber}` : "#00", 170, 220);
+  ctx.restore();
+
+  // Sport + position in left panel
+  ctx.save();
+  ctx.font = `bold ${Math.round(14 * s)}px Arial, sans-serif`;
+  ctx.fillStyle = "#64748b"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  (ctx as unknown as { letterSpacing: string }).letterSpacing = "3px";
+  ctx.fillText([info.sport, info.position].filter(Boolean).join("  ·  ").toUpperCase(), 170, 340);
+  ctx.restore();
+
+  // School in left panel
+  if (info.school) {
+    ctx.save();
+    ctx.font = `bold ${Math.round(13 * s)}px Arial, sans-serif`;
+    ctx.fillStyle = "#e2e8f0"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(info.school.toUpperCase(), 170, 380);
+    ctx.restore();
+  }
+
+  // Measurables in left panel
+  const measLines = [
+    info.heightFt ? `${info.heightFt}'${info.heightIn||"0"}"  HT` : null,
+    info.weight ? `${info.weight} LBS` : null,
+    info.gradYear ? `CLASS OF ${info.gradYear}` : null,
+  ].filter(Boolean) as string[];
+  measLines.forEach((line, i) => {
+    ctx.save();
+    ctx.font = `${Math.round(12 * s)}px Arial, sans-serif`;
+    ctx.fillStyle = "#94a3b8"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(line, 170, 440 + i * 26);
+    ctx.restore();
+  });
+
+  // QR placeholder
+  const qrX = 90, qrY = 560, qrS = 160;
+  ctx.strokeStyle = accentHex + "50"; ctx.lineWidth = 1.5;
+  ctx.strokeRect(qrX, qrY, qrS, qrS);
+  ctx.fillStyle = accentHex + "08"; ctx.fillRect(qrX, qrY, qrS, qrS);
+  // Draw a simple QR-like grid pattern
+  const cell = 10;
+  ctx.fillStyle = accentHex + "25";
+  for (let r = 0; r < 16; r++) {
+    for (let c = 0; c < 16; c++) {
+      if (Math.random() > 0.5) ctx.fillRect(qrX + 4 + c * cell, qrY + 4 + r * cell, cell - 1, cell - 1);
+    }
+  }
+  ctx.save();
+  ctx.font = `bold ${Math.round(8 * s)}px Arial, sans-serif`;
+  ctx.fillStyle = accentHex; ctx.textAlign = "center"; ctx.textBaseline = "top";
+  (ctx as unknown as { letterSpacing: string }).letterSpacing = "1px";
+  ctx.fillText("LINK TO FULL REEL", qrX + qrS / 2, qrY + qrS + 8);
+  ctx.fillStyle = "#475569"; ctx.font = `${Math.round(7 * s)}px Arial, sans-serif`;
+  ctx.fillText("CLIPTAPP.COM", qrX + qrS / 2, qrY + qrS + 22);
+  ctx.restore();
+
+  // Right panel — Athlete name
+  const rx = 380;
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 4;
+  ctx.font = `bold ${Math.round(64 * s)}px Arial, sans-serif`;
+  ctx.fillStyle = "#FFFFFF"; ctx.textAlign = "left"; ctx.textBaseline = "top";
+  ctx.fillText((info.firstName || "ATHLETE").toUpperCase(), rx, 40);
+  ctx.restore();
+  ctx.fillStyle = accentHex; ctx.fillRect(rx, 118, 400, 3);
+
+  // Stats grid
+  const statEntries = Object.entries(info.statsData || {}).filter(([,v]) => v?.trim()).slice(0, 9);
+  if (statEntries.length > 0) {
+    ctx.save();
+    ctx.font = `bold ${Math.round(10 * s)}px Arial, sans-serif`;
+    ctx.fillStyle = accentHex; ctx.textAlign = "left";
+    (ctx as unknown as { letterSpacing: string }).letterSpacing = "3px";
+    ctx.fillText("SEASON STATS", rx, 145);
+    ctx.restore();
+    const cols = 3, cw = 230, ch = 72, gx = 16, gy = 10;
+    const sy = 170;
+    statEntries.forEach(([label, value], idx) => {
+      const col = idx % cols, row = Math.floor(idx / cols);
+      const x = rx + col * (cw + gx), y = sy + row * (ch + gy);
+      ctx.fillStyle = "rgba(255,255,255,0.04)";
+      ctx.beginPath();
+      ctx.roundRect(x, y, cw, ch, 8);
+      ctx.fill();
+      ctx.strokeStyle = accentHex + "30"; ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.save();
+      ctx.font = `bold ${Math.round(28 * s)}px Arial, sans-serif`;
+      ctx.fillStyle = accentHex; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(value, x + cw / 2, y + ch * 0.42);
+      ctx.restore();
+      ctx.save();
+      ctx.font = `${Math.round(9 * s)}px Arial, sans-serif`;
+      ctx.fillStyle = "#64748b"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      (ctx as unknown as { letterSpacing: string }).letterSpacing = "1px";
+      ctx.fillText(label.toUpperCase(), x + cw / 2, y + ch * 0.78);
+      ctx.restore();
+    });
+  }
+
+  // Contact + academic info at bottom
+  const bY = 640;
+  ctx.fillStyle = "rgba(255,255,255,0.05)"; ctx.fillRect(rx, bY, W - rx - 40, 1);
+  const bottomInfo = [
+    info.email ? `📧 ${info.email}` : null,
+    info.gpa ? `GPA ${info.gpa}` : null,
+    info.coachName ? `Coach: ${info.coachName}` : null,
+  ].filter(Boolean) as string[];
+  bottomInfo.forEach((line, i) => {
+    ctx.save();
+    ctx.font = `${Math.round(11 * s)}px Arial, sans-serif`;
+    ctx.fillStyle = i === 0 ? "#e2e8f0" : "#64748b"; ctx.textAlign = "left"; ctx.textBaseline = "top";
+    ctx.fillText(line, rx, bY + 18 + i * 24);
+    ctx.restore();
+  });
+
+  // CLIPT branding — bottom right
+  ctx.save();
+  ctx.font = `bold ${Math.round(10 * s)}px 'Courier New', monospace`;
+  ctx.fillStyle = `${accentHex}80`; ctx.textAlign = "right"; ctx.textBaseline = "bottom";
+  (ctx as unknown as { letterSpacing: string }).letterSpacing = "4px";
+  ctx.fillText("CLIPT · CLIPTAPP.COM", W - 20, H - 12);
+  ctx.restore();
+
+  return canvas.toDataURL("image/png");
+}
+
 // ── Icons ──────────────────────────────────────────────────────────────────────
 const ArrowLeftIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1068,6 +1328,24 @@ async function buildReel(cfg: BuildConfig): Promise<Blob> {
 
 // ── UI components ──────────────────────────────────────────────────────────────
 
+function TitleCardPreview({ info, accent, template }: { info: TitleInfo; accent: string; template: TitleCardTemplate }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = canvasRef.current; if (!canvas) return;
+    const ctx = canvas.getContext("2d"); if (!ctx) return;
+    Promise.allSettled(["Inter","Oswald","Poppins","Bebas Neue"].map((f) => document.fonts.load(`bold 48px "${f}"`))).then(() => {
+      drawTitleFrame(ctx, info, accent, { w: 640, h: 360 }, template);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [info.firstName, info.sport, info.position, info.school, info.gradYear, info.email, accent, template]);
+
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${accent}25` }}>
+      <canvas ref={canvasRef} width={640} height={360} style={{ width: "100%", display: "block" }} />
+    </div>
+  );
+}
+
 function ProgressBar({ active, accent }: { active: number; accent: string }) {
   return (
     <div className="max-w-3xl mx-auto px-6 mb-10">
@@ -1154,6 +1432,16 @@ export default function ExportPage() {
 
   const abortRef  = useRef(false);
   const blobRef   = useRef<string | null>(null);
+
+  // Proprietary feature state
+  const [showCoachScore, setShowCoachScore] = useState(false);
+  const [showComparison, setShowComparison] = useState(false);
+  const [recruitingCardUrl, setRecruitingCardUrl] = useState<string | null>(null);
+  const [generatingCard, setGeneratingCard] = useState(false);
+  const [smartCropOffset, setSmartCropOffset] = useState(0); // -50 to +50 percent shift
+  const [smartCropPreviewUrl, setSmartCropPreviewUrl] = useState<string | null>(null);
+  const [showSmartCropPanel, setShowSmartCropPanel] = useState(false);
+  const smartCropOffsetRef = useRef(0); // keep in sync with smartCropOffset for preview fn
 
   // Sharing
   const [copied, setCopied] = useState(false);
@@ -1303,6 +1591,94 @@ export default function ExportPage() {
       URL.revokeObjectURL(url);
       if (i < reel.files.length - 1) await new Promise<void>((r) => setTimeout(r, 700));
     }
+  };
+
+  const handleGenerateRecruitingCard = async () => {
+    setGeneratingCard(true);
+    try {
+      const dataUrl = await drawRecruitingCard(buildInfo(), accentHex);
+      setRecruitingCardUrl(dataUrl);
+      const a = document.createElement("a");
+      a.href = dataUrl; a.download = `${baseName}-recruiting-card.png`; a.style.display = "none";
+      document.body.appendChild(a); a.click();
+      setTimeout(() => document.body.removeChild(a), 200);
+    } catch (e) { console.error("[recruitingCard]", e); }
+    finally { setGeneratingCard(false); }
+  };
+
+  const handleSmartCropPreview = async () => {
+    const urls: string[] = (() => {
+      try { return JSON.parse(localStorage.getItem("clipt_blob_urls") || "[]"); } catch { return []; }
+    })();
+    const fileOrUrl = reel.files[0] ? URL.createObjectURL(reel.files[0]) : urls[0];
+    if (!fileOrUrl) return;
+    const vid = document.createElement("video");
+    vid.src = fileOrUrl; vid.muted = true; vid.playsInline = true; vid.crossOrigin = "anonymous";
+
+    const renderPreview = (autoCenterXPct: number) => {
+      try {
+        const srcW = vid.videoWidth || 1280, srcH = vid.videoHeight || 720;
+        const cropW = Math.round(srcH * (9 / 16));
+        // Use auto-detected center + user offset
+        const autoCenterX = Math.round(srcW * autoCenterXPct);
+        const offsetX = Math.round((smartCropOffsetRef.current / 100) * (srcW / 2));
+        const centerX = autoCenterX + offsetX;
+        const cropX = Math.max(0, Math.min(srcW - cropW, centerX - cropW / 2));
+        const previewCanvas = document.createElement("canvas");
+        previewCanvas.width = 270; previewCanvas.height = 480;
+        const pctx = previewCanvas.getContext("2d")!;
+        pctx.fillStyle = "#050A14"; pctx.fillRect(0, 0, 270, 480);
+        pctx.drawImage(vid, cropX, 0, cropW, srcH, 0, 0, 270, 480);
+        setSmartCropPreviewUrl(previewCanvas.toDataURL("image/jpeg", 0.8));
+      } catch {}
+    };
+
+    // Analyze two frames to find motion region using 3×3 grid diff
+    const analyzeMotion = (): Promise<number> => {
+      return new Promise((resolve) => {
+        const analyzeCanvas = document.createElement("canvas");
+        analyzeCanvas.width = 160; analyzeCanvas.height = 90;
+        const actx = analyzeCanvas.getContext("2d")!;
+
+        const captureFrame = (): ImageData => {
+          actx.drawImage(vid, 0, 0, 160, 90);
+          return actx.getImageData(0, 0, 160, 90);
+        };
+
+        let frame1: ImageData | null = null;
+        vid.onloadedmetadata = () => { vid.currentTime = Math.min(1.0, vid.duration * 0.15); };
+        vid.onseeked = () => {
+          if (!frame1) {
+            frame1 = captureFrame();
+            vid.currentTime = vid.currentTime + 0.066; // ~2 frames later
+          } else {
+            try {
+              const frame2 = captureFrame();
+              const f1 = frame1.data, f2 = frame2.data;
+              // Compute motion score for 3 horizontal zones (left/center/right)
+              const scores = [0, 0, 0];
+              const W = 160, H = 90;
+              const zoneW = Math.floor(W / 3);
+              for (let y = 0; y < H; y++) {
+                for (let x = 0; x < W; x++) {
+                  const idx = (y * W + x) * 4;
+                  const diff = Math.abs(f1[idx] - f2[idx]) + Math.abs(f1[idx+1] - f2[idx+1]) + Math.abs(f1[idx+2] - f2[idx+2]);
+                  const zone = Math.min(2, Math.floor(x / zoneW));
+                  scores[zone] += diff;
+                }
+              }
+              const maxZone = scores.indexOf(Math.max(...scores));
+              // Return center X percentage: 0.17 (left), 0.5 (center), 0.83 (right)
+              resolve([0.17, 0.50, 0.83][maxZone]);
+            } catch { resolve(0.5); }
+          }
+        };
+      });
+    };
+
+    const autoCenterX = await analyzeMotion().catch(() => 0.5);
+    renderPreview(autoCenterX);
+    if (fileOrUrl.startsWith("blob:") && reel.files[0]) URL.revokeObjectURL(fileOrUrl);
   };
 
   const handleDownloadTitlePNG = async () => {
@@ -1552,6 +1928,281 @@ export default function ExportPage() {
                 style={{ background: "rgba(239,68,68,0.12)", color: "#EF4444", border: "1px solid rgba(239,68,68,0.3)" }}>Try Again</button>
             </div>
           )}
+        </div>
+
+        {/* ── COACH READY SCORE ── */}
+        {(() => {
+          const scoreData = calcCoachReadyScore({
+            reelLength: reel.reelLength || 3,
+            sport: reel.sport || "",
+            musicTrackId: reel.musicTrackId || "no-music",
+            includeStatsCard: reel.includeStatsCard,
+            gradYear: reel.gradYear || "",
+            heightFt: reel.heightFt || "",
+            weight: reel.weight || "",
+            email: reel.email || "",
+            gpa: reel.gpa || "",
+            fontStyle: reel.fontStyle || "Modern",
+            transition: reel.transition || "Hard Cut",
+            firstName: reel.firstName || "",
+            school: reel.school || "",
+            position: reel.position || "",
+            jerseyNumber: reel.jerseyNumber || "",
+          });
+          const gradeColor = scoreData.score >= 90 ? "#22C55E" : scoreData.score >= 80 ? "#00A3FF" : scoreData.score >= 70 ? "#F59E0B" : "#EF4444";
+          const circumference = 2 * Math.PI * 44;
+          const dash = (scoreData.score / 110) * circumference;
+          return (
+            <div className="rounded-2xl p-5" style={cardBase}>
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <p className="text-sm font-bold text-white mb-0.5">Coach Ready Score</p>
+                  <p className="text-xs text-slate-500">How professional does your reel look to coaches?</p>
+                </div>
+                <button type="button" onClick={() => setShowCoachScore((o) => !o)}
+                  className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
+                  style={{ background: `${accentHex}14`, color: accentHex, border: `1px solid ${accentHex}30` }}>
+                  {showCoachScore ? "Hide" : "Show Details"}
+                </button>
+              </div>
+
+              {/* Score circle + grade */}
+              <div className="flex items-center gap-6 mb-4">
+                <div className="relative shrink-0" style={{ width: 100, height: 100 }}>
+                  <svg width="100" height="100" viewBox="0 0 100 100">
+                    <circle cx="50" cy="50" r="44" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="8" />
+                    <circle cx="50" cy="50" r="44" fill="none" stroke={gradeColor} strokeWidth="8"
+                      strokeDasharray={`${dash} ${circumference}`} strokeDashoffset={circumference * 0.25}
+                      strokeLinecap="round" style={{ transition: "stroke-dasharray 0.5s ease", filter: `drop-shadow(0 0 6px ${gradeColor}60)` }} />
+                  </svg>
+                  <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                    <span style={{ fontSize: 28, fontWeight: 900, color: gradeColor, lineHeight: 1 }}>{scoreData.grade}</span>
+                    <span style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{scoreData.score}/100</span>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-lg font-black text-white mb-1">{scoreData.gradeLabel}</p>
+                  <div className="flex flex-col gap-1">
+                    {scoreData.bonuses.filter((b) => b.applies).map((b, i) => (
+                      <div key={i} className="flex items-center gap-2 text-xs text-green-400">
+                        <span style={{ fontSize: 10 }}>✓</span> {b.label}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {showCoachScore && (
+                <div className="flex flex-col gap-3">
+                  {scoreData.deductions.filter((d) => d.applies).length > 0 && (
+                    <div>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">What&apos;s Hurting Your Score</p>
+                      <div className="flex flex-col gap-2">
+                        {scoreData.deductions.filter((d) => d.applies).map((d, i) => (
+                          <div key={i} className="rounded-lg px-3 py-2.5" style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.2)" }}>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-xs font-semibold text-red-400">{d.label}</span>
+                              <span className="text-xs font-bold text-red-400">{d.delta}</span>
+                            </div>
+                            {d.fix && <p className="text-[10px] text-slate-500 leading-snug">→ {d.fix}</p>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {scoreData.deductions.filter((d) => !d.applies).length > 0 && (
+                    <div>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">What&apos;s Looking Good</p>
+                      <div className="flex flex-col gap-1.5">
+                        {scoreData.deductions.filter((d) => !d.applies).map((d, i) => (
+                          <div key={i} className="flex items-center gap-2 text-xs text-green-400 pl-1">
+                            <span style={{ fontSize: 10 }}>✓</span> {d.label.replace("Missing ", "Has ")}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* ── 9:16 SMART CROP (social vertical export) ── */}
+        {aspectRatio === "9:16" && (
+          <div className="rounded-2xl p-5" style={cardBase}>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-sm font-bold text-white mb-0.5">Smart Crop — follows the action automatically</p>
+                <p className="text-xs text-slate-500">Analyzes motion to crop the best part of each frame</p>
+              </div>
+              <button type="button" onClick={() => { setShowSmartCropPanel((o) => !o); if (!showSmartCropPanel) handleSmartCropPreview(); }}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
+                style={{ background: `${accentHex}14`, color: accentHex, border: `1px solid ${accentHex}30` }}>
+                {showSmartCropPanel ? "Hide" : "Preview Crop"}
+              </button>
+            </div>
+            {showSmartCropPanel && (
+              <div className="flex flex-col gap-4">
+                <div className="flex items-start gap-4">
+                  {/* Preview */}
+                  <div className="shrink-0 rounded-xl overflow-hidden" style={{ width: 108, height: 192, background: "#0A1628", border: `1px solid ${accentHex}30` }}>
+                    {smartCropPreviewUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={smartCropPreviewUrl} alt="Smart crop preview" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <span className="text-slate-600 text-xs text-center px-2">Loading preview...</span>
+                      </div>
+                    )}
+                  </div>
+                  {/* Controls */}
+                  <div className="flex-1">
+                    <p className="text-xs text-slate-400 mb-3">Adjust crop position if the auto-crop misses the action:</p>
+                    <div className="mb-2">
+                      <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
+                        <span>← Left</span><span>Center</span><span>Right →</span>
+                      </div>
+                      <input type="range" min={-50} max={50} step={5} value={smartCropOffset}
+                        onChange={(e) => { const v = Number(e.target.value); setSmartCropOffset(v); smartCropOffsetRef.current = v; setTimeout(handleSmartCropPreview, 50); }}
+                        className="w-full" style={{ accentColor: accentHex }} />
+                    </div>
+                    <p className="text-xs text-slate-600 mb-3">{smartCropOffset === 0 ? "Auto center crop" : `Shifted ${Math.abs(smartCropOffset)}% ${smartCropOffset < 0 ? "left" : "right"}`}</p>
+                    <button type="button" onClick={handleSmartCropPreview}
+                      className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
+                      style={{ background: `${accentHex}18`, color: accentHex }}>
+                      Refresh Preview
+                    </button>
+                  </div>
+                </div>
+                <div className="rounded-lg px-3 py-2 text-xs text-slate-500" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  The Smart Crop offset is applied during export. Use the slider to put the athlete at the center of frame.
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── REEL COMPARISON ── */}
+        {(() => {
+          const bench = getBenchmark(reel.sport || "", reel.position || "");
+          if (!bench) return null;
+          const myMin = reel.reelLength || 3;
+          const myClips = reel.files.length || storedClipCount || 0;
+          const minDiff = myMin - bench.avgReelMin;
+          const clipsInRange = myClips >= bench.idealClips[0] && myClips <= bench.idealClips[1];
+          return (
+            <div className="rounded-2xl p-5" style={cardBase}>
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <p className="text-sm font-bold text-white mb-0.5">See How You Compare</p>
+                  <p className="text-xs text-slate-500">Benchmarks for recruited {reel.position || "athletes"}</p>
+                </div>
+                <button type="button" onClick={() => setShowComparison((o) => !o)}
+                  className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
+                  style={{ background: `${accentHex}14`, color: accentHex, border: `1px solid ${accentHex}30` }}>
+                  {showComparison ? "Hide" : "Compare"}
+                </button>
+              </div>
+              {showComparison && (
+                <div className="flex flex-col gap-3">
+                  {/* Reel length */}
+                  <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                    <div className="flex items-start justify-between mb-2">
+                      <div>
+                        <p className="text-xs font-bold text-white">Reel Length</p>
+                        <p className="text-[10px] text-slate-500">Your reel: {myMin} min · Average: {bench.avgReelMin} min</p>
+                      </div>
+                      <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{
+                        background: Math.abs(minDiff) <= 0.5 ? "rgba(34,197,94,0.12)" : "rgba(251,191,36,0.12)",
+                        color: Math.abs(minDiff) <= 0.5 ? "#22C55E" : "#F59E0B",
+                      }}>
+                        {Math.abs(minDiff) <= 0.5 ? "On target" : minDiff > 0 ? `+${minDiff.toFixed(1)} min long` : `${Math.abs(minDiff).toFixed(1)} min short`}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 leading-relaxed">
+                      {Math.abs(minDiff) <= 0.5
+                        ? `Your reel is ${myMin} min — perfect for a ${reel.position}. Recruited ${reel.position}s average ${bench.avgReelMin} min.`
+                        : minDiff > 0.5
+                        ? `Your reel is ${myMin} min. Consider trimming — coaches stop watching after ${bench.avgReelMin.toFixed(1)} min for most ${reel.position}s.`
+                        : `Your reel is ${myMin} min. Recruited ${reel.position}s average ${bench.avgReelMin} min — you may have room for more clips.`}
+                    </p>
+                  </div>
+                  {/* Clip count */}
+                  {myClips > 0 && (
+                    <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                      <div className="flex items-start justify-between mb-2">
+                        <div>
+                          <p className="text-xs font-bold text-white">Clip Count</p>
+                          <p className="text-[10px] text-slate-500">You: {myClips} clips · Ideal range: {bench.idealClips[0]}–{bench.idealClips[1]}</p>
+                        </div>
+                        <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{
+                          background: clipsInRange ? "rgba(34,197,94,0.12)" : "rgba(251,191,36,0.12)",
+                          color: clipsInRange ? "#22C55E" : "#F59E0B",
+                        }}>
+                          {clipsInRange ? "Great range" : myClips < bench.idealClips[0] ? "Add more clips" : "Consider trimming"}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400">
+                        You included {myClips} clip{myClips !== 1 ? "s" : ""}. Coaches typically want {bench.idealClips[0]}–{bench.idealClips[1]} for a {reel.position}.
+                      </p>
+                    </div>
+                  )}
+                  {/* GPA benchmark */}
+                  <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                    <p className="text-xs font-bold text-white mb-1">Average GPA of Recruited {reel.position}s</p>
+                    <div className="flex items-center justify-between">
+                      <span className="text-2xl font-black" style={{ color: accentHex }}>{bench.avgGpa.toFixed(1)}</span>
+                      <span className="text-xs text-slate-500">{reel.gpa ? `Your GPA: ${reel.gpa}` : "Add your GPA in Customize →"}</span>
+                    </div>
+                  </div>
+                  {/* Most wanted clips */}
+                  <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                    <p className="text-xs font-bold text-white mb-1">Coaches Most Request</p>
+                    <p className="text-xs text-slate-400">{bench.topClips}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* ── RECRUITING CARD ── */}
+        <div className="rounded-2xl p-5" style={cardBase}>
+          <div className="flex items-start gap-4 mb-4">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0" style={{ background: `${accentHex}18`, color: accentHex }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="4" width="18" height="16" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-bold text-white mb-0.5">Recruiting Card — send this to coaches with your reel</p>
+              <p className="text-xs text-slate-500">One-page 1200×800 PNG with all your stats, measurables & contact info</p>
+            </div>
+          </div>
+          {recruitingCardUrl && (
+            <div className="rounded-xl overflow-hidden mb-3" style={{ border: `1px solid ${accentHex}30` }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={recruitingCardUrl} alt="Recruiting card preview" className="w-full" />
+            </div>
+          )}
+          <button type="button" onClick={handleGenerateRecruitingCard} disabled={generatingCard}
+            className="w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all hover:opacity-90"
+            style={{ background: generatingCard ? "rgba(255,255,255,0.06)" : `${accentHex}18`, color: accentHex, border: `1px solid ${accentHex}30` }}>
+            {generatingCard ? (
+              <><span style={{ fontSize: 14 }}>⏳</span> Generating Card...</>
+            ) : (
+              <><DownloadIcon /> Generate Recruiting Card</>
+            )}
+          </button>
+          <p className="text-[10px] text-slate-600 mt-2 text-center">Downloads as PNG · share via email or DM alongside your reel</p>
+        </div>
+
+        {/* ── Title Card Preview ── */}
+        <div className="rounded-2xl p-5" style={cardBase}>
+          <p className="text-sm font-bold text-white mb-1">Title Card Preview</p>
+          <p className="text-xs text-slate-500 mb-3">Verify your opening card before exporting</p>
+          <TitleCardPreview info={buildInfo()} accent={accentHex} template={reel.titleCardTemplate || "espn-classic"} />
         </div>
 
         {/* ── Quick downloads ── */}

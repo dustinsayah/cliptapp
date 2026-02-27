@@ -388,19 +388,32 @@ export default function ProcessPage() {
         : generateMockClips(job.sport, job.jerseyNumber, job.position);
       localStorage.setItem("clipSource", "ai");
       localStorage.setItem("aiGeneratedClips", JSON.stringify(clips));
+      localStorage.setItem("reviewComplete", "false");
       localStorage.setItem("aiJobMeta", JSON.stringify({
         jerseyNumber: job.jerseyNumber,
         firstName:    job.firstName,
         sport:        job.sport,
       }));
+      // Store job ID so review page can save reviewed_clips to Supabase
+      if (job.id && job.id !== "demo") {
+        localStorage.setItem("currentJobId", job.id);
+      }
+      // Store blob URL of uploaded file for clip preview in review page
+      try {
+        const blobUrl = localStorage.getItem("originalVideoUrl");
+        if (!blobUrl && tab === "upload" && uploadFile) {
+          const url = URL.createObjectURL(uploadFile);
+          localStorage.setItem("originalVideoUrl", url);
+        }
+      } catch { /* ignore */ }
       setClipsSaved(true);
     }
-  }, [job?.status, clipsSaved, job]);
+  }, [job?.status, clipsSaved, job]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-navigate to /customize when complete
+  // Auto-navigate to /review when complete (review page is new step between AI and customize)
   useEffect(() => {
     if (job?.status === "complete" && clipsSaved) {
-      const timer = setTimeout(() => router.push("/customize"), 2500);
+      const timer = setTimeout(() => router.push("/review"), 2500);
       return () => clearTimeout(timer);
     }
   }, [job?.status, clipsSaved, router]);
@@ -616,13 +629,13 @@ export default function ProcessPage() {
                     <span className="font-black" style={{ color: "#00A3FF" }}>#{job.jerseyNumber}</span> — sorted by quality.
                   </p>
                   <p className="text-slate-500 text-xs mb-2">Completed in {fmtElapsed(elapsed)}</p>
-                  <p className="text-slate-600 text-xs mb-8">Taking you to your reel...</p>
+                  <p className="text-slate-600 text-xs mb-8">Taking you to review your clips...</p>
                   <div className="flex flex-col sm:flex-row gap-3 justify-center">
                     <button
-                      onClick={() => router.push("/customize")}
+                      onClick={() => router.push("/review")}
                       className="px-8 py-3.5 rounded-xl font-bold text-sm text-white transition-all hover:scale-[1.02]"
                       style={{ background: "linear-gradient(135deg, #0055EE 0%, #00A3FF 100%)", boxShadow: "0 0 28px rgba(0,120,255,0.35)" }}>
-                      View Your Clips →
+                      Review Your Clips →
                     </button>
                     <button onClick={() => { setPhase("input"); setJob(null); setElapsed(0); setClipsSaved(false); }}
                       className="px-8 py-3.5 rounded-xl font-bold text-sm text-slate-400 hover:text-white transition-all"
@@ -777,11 +790,12 @@ export default function ProcessPage() {
         </div>
 
         {/* ── How It Works ── */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-10 sm:mb-12">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-10 sm:mb-12">
           {[
             { n: "1", icon: <UploadIcon />,            title: "Submit Your Film",    desc: "Paste a YouTube link or upload your game film." },
-            { n: "2", icon: <SparkleIcon size={32} />, title: "AI Scans For You",    desc: `Our model detects jersey #${jerseyNumber || "?"} in every frame.` },
-            { n: "3", icon: <FilmIcon size={32} />,    title: "Get Your Highlights", desc: "Review your top plays and export your recruiting reel." },
+            { n: "2", icon: <SparkleIcon size={32} />, title: "AI Finds Your Clips", desc: `Our model detects jersey #${jerseyNumber || "?"} in every frame.` },
+            { n: "3", icon: <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>, title: "Review & Approve", desc: "Watch each clip, keep your best plays, remove the rest." },
+            { n: "4", icon: <FilmIcon size={32} />,    title: "Build Your Reel",     desc: "Customize and export your professional recruiting reel." },
           ].map(({ n, icon, title, desc }) => (
             <div key={n} className="relative p-4 sm:p-5 rounded-2xl flex flex-col gap-3"
               style={{ background: "#0A1628", border: "1px solid rgba(255,255,255,0.07)" }}>

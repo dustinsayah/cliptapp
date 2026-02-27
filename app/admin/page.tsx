@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
-import { supabase } from "@/lib/supabase";
+import { useRouter } from "next/navigation";
+import { supabase, isConfigured as supabaseConfigured, configError as supabaseConfigError } from "@/lib/supabase";
 import { SPORTS_CONFIG } from "@/lib/sportsConfig";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -119,6 +120,8 @@ const IS: React.CSSProperties = {
 // ── Main Component ─────────────────────────────────────────────────────────
 
 export default function AdminPage() {
+  const router = useRouter();
+
   // ── Jobs ──────────────────────────────────────────────────────────────────
   const [jobs,        setJobs]        = useState<JobRow[]>([]);
   const [jobsLoading, setJobsLoading] = useState(true);
@@ -143,6 +146,83 @@ export default function AdminPage() {
   const [simJob,         setSimJob]         = useState<SimJob | null>(null);
   const simPollRef   = useRef<ReturnType<typeof setInterval> | null>(null);
   const simElapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ── Review flow test ─────────────────────────────────────────────────────
+  const [reviewSport,    setReviewSport]    = useState("Basketball");
+  const [reviewPosition, setReviewPosition] = useState("Point Guard");
+  const [apiTestResult,  setApiTestResult]  = useState<{ ok: boolean; message: string } | null>(null);
+  const [apiTesting,     setApiTesting]     = useState(false);
+
+  const handleLoadMockReview = () => {
+    const sportCfg = SPORTS_CONFIG[reviewSport];
+    const playDefs = sportCfg
+      ? sportCfg.getClipTypes(reviewPosition).map((c) => ({ playType: c.label, confidence: c.confidence }))
+      : [
+          { playType: "Highlight Play", confidence: 0.93 },
+          { playType: "Big Play",       confidence: 0.89 },
+          { playType: "Key Play",       confidence: 0.85 },
+          { playType: "Athletic Play",  confidence: 0.81 },
+          { playType: "Impact Play",    confidence: 0.77 },
+          { playType: "Great Play",     confidence: 0.73 },
+          { playType: "Scoring Play",   confidence: 0.70 },
+          { playType: "Fast Break",     confidence: 0.67 },
+        ];
+    let cursor = 45;
+    const mockClips = playDefs.slice(0, 8).map(({ playType, confidence }, i) => {
+      const startTime = cursor;
+      const dur = Math.round((4 + Math.random() * 5) * 10) / 10;
+      const endTime = Math.round((startTime + dur) * 10) / 10;
+      cursor = endTime + 55 + Math.floor(Math.random() * 40);
+      return {
+        id: `mock-${i + 1}`,
+        clipNumber: i + 1,
+        playType,
+        startTime,
+        endTime,
+        duration: dur,
+        confidenceScore: confidence,
+        jerseyVisible: true,
+        aiPicked: true,
+        sport: reviewSport,
+        jerseyNumber: 23,
+        thumbnailUrl: null,
+      };
+    });
+    localStorage.setItem("clipSource", "ai");
+    localStorage.setItem("aiGeneratedClips", JSON.stringify(mockClips));
+    localStorage.setItem("aiJobMeta", JSON.stringify({ jerseyNumber: 23, firstName: "Marcus", sport: reviewSport }));
+    localStorage.setItem("reviewComplete", "false");
+    router.push("/review");
+  };
+
+  const handleTestGoogleApi = async () => {
+    setApiTesting(true);
+    setApiTestResult(null);
+    try {
+      const res = await fetch("/api/classify-clips", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+          clips: [{ startTime: 0, endTime: 5, confidence: 0.9 }],
+          sport: "Basketball",
+          position: "Point Guard",
+          _testOnly: true,
+        }),
+      });
+      const data = await res.json();
+      if (data.fallback) {
+        setApiTestResult({ ok: false, message: `Google API not configured — using fallback. ${data.fallbackReason ?? ""}` });
+      } else if (data.error) {
+        setApiTestResult({ ok: false, message: data.error });
+      } else {
+        setApiTestResult({ ok: true, message: `Google Video Intelligence responded. Classified ${data.clips?.length ?? 0} clip(s).` });
+      }
+    } catch (e) {
+      setApiTestResult({ ok: false, message: e instanceof Error ? e.message : "Network error" });
+    }
+    setApiTesting(false);
+  };
 
   // Clear sim position when sport changes
   useEffect(() => { setSimPosition(""); }, [simSport]);
@@ -350,6 +430,11 @@ export default function AdminPage() {
               className="flex items-center gap-2.5 px-5 py-3 rounded-xl text-sm font-bold transition-all hover:scale-[1.02]"
               style={{ background: "#0A1628", border: "1px solid rgba(255,255,255,0.1)", color: "#e2e8f0" }}>
               Test Export
+            </Link>
+            <Link href="/review"
+              className="flex items-center gap-2.5 px-5 py-3 rounded-xl text-sm font-bold transition-all hover:scale-[1.02]"
+              style={{ background: "#0A1628", border: "1px solid rgba(168,85,247,0.3)", color: "#A855F7" }}>
+              Test Review Page
             </Link>
           </div>
         </section>
@@ -611,6 +696,84 @@ export default function AdminPage() {
             </div>
           )}
         </section>
+
+        {/* ── Supabase Config Status ── */}
+        {!supabaseConfigured && (
+          <section className="rounded-2xl p-6" style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.25)" }}>
+            <h2 className="text-sm font-black text-red-400 uppercase tracking-widest mb-2">Database Not Configured</h2>
+            <p className="text-red-300 text-sm leading-relaxed">{supabaseConfigError}</p>
+            <p className="text-slate-500 text-xs mt-3">
+              Add your real Supabase credentials to <code className="text-slate-400">.env.local</code> (local) or Vercel Environment Variables (production), then restart the dev server.
+            </p>
+          </section>
+        )}
+
+        {/* ── Test Clip Review Flow ── */}
+        <section className="rounded-2xl overflow-hidden" style={{ background: "#0A1628", border: "1px solid rgba(168,85,247,0.25)" }}>
+          <div className="px-6 py-5 border-b border-white/[0.05] flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-black text-white">Test Clip Review Flow</h2>
+              <p className="text-slate-500 text-xs mt-0.5">Generate mock clips and jump straight to /review — no AI processing needed</p>
+            </div>
+            <div className="px-3 py-1 rounded-full text-xs font-bold" style={{ background: "rgba(168,85,247,0.12)", color: "#A855F7", border: "1px solid rgba(168,85,247,0.25)" }}>
+              UI Test
+            </div>
+          </div>
+          <div className="p-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
+              <div>
+                <label className="text-xs text-slate-400 font-medium block mb-1.5">Sport</label>
+                <select value={reviewSport} onChange={(e) => { setReviewSport(e.target.value); setReviewPosition(""); }}
+                  style={{ ...IS, appearance: "none" } as React.CSSProperties}>
+                  {Object.entries(SPORTS_CONFIG).map(([name, cfg]) => (
+                    <option key={name} value={name} style={{ background: "#0A1628" }}>{cfg.icon} {name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-slate-400 font-medium block mb-1.5">Position</label>
+                <select value={reviewPosition} onChange={(e) => setReviewPosition(e.target.value)}
+                  style={{ ...IS, appearance: "none" } as React.CSSProperties}>
+                  {(SPORTS_CONFIG[reviewSport]?.positions ?? []).map((p) => (
+                    <option key={p} value={p} style={{ background: "#0A1628" }}>{p}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <button onClick={handleLoadMockReview}
+              className="px-7 py-3 rounded-xl font-bold text-sm text-white transition-all hover:scale-[1.02]"
+              style={{ background: "linear-gradient(135deg, #7C3AED, #A855F7)", boxShadow: "0 0 24px rgba(168,85,247,0.3)" }}>
+              Load Mock Clips into Review →
+            </button>
+          </div>
+        </section>
+
+        {/* ── Test Google API Connection ── */}
+        <section className="rounded-2xl overflow-hidden" style={{ background: "#0A1628", border: "1px solid rgba(34,197,94,0.2)" }}>
+          <div className="px-6 py-5 border-b border-white/[0.05]">
+            <h2 className="text-base font-black text-white">Test Google Video Intelligence API</h2>
+            <p className="text-slate-500 text-xs mt-0.5">Verifies GOOGLE_APPLICATION_CREDENTIALS is configured and the API responds</p>
+          </div>
+          <div className="p-6 flex items-start gap-4 flex-wrap">
+            <button onClick={handleTestGoogleApi} disabled={apiTesting}
+              className="px-7 py-3 rounded-xl font-bold text-sm text-white transition-all hover:scale-[1.02] disabled:opacity-50"
+              style={{ background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.3)", color: "#22C55E" }}>
+              {apiTesting ? "Testing..." : "Test Google API Connection"}
+            </button>
+            {apiTestResult && (
+              <div className="flex-1 min-w-0 px-4 py-3 rounded-xl text-sm"
+                style={{
+                  background: apiTestResult.ok ? "rgba(34,197,94,0.07)" : "rgba(239,68,68,0.07)",
+                  border: `1px solid ${apiTestResult.ok ? "rgba(34,197,94,0.25)" : "rgba(239,68,68,0.25)"}`,
+                  color: apiTestResult.ok ? "#22C55E" : "#F87171",
+                }}>
+                {apiTestResult.ok ? "✓ " : "✗ "}{apiTestResult.message}
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* ── Quick Links — add Review ── */}
 
         {/* ── Footer ── */}
         <div className="text-center text-slate-700 text-xs pb-4">

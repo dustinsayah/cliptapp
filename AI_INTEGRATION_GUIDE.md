@@ -19,7 +19,7 @@ lib/videoProcessor.ts → processVideo(job)  [fire-and-forget on Node.js]
         ├─ Step 1: downloadVideo(url)           → Buffer
         │    └── Update status: "downloading"
         │
-        ├─ Step 2: detectJerseyInFrames(buffer, jerseyNumber, sport)  ← YOUR AI GOES HERE
+        ├─ Step 2: detectJerseyInFrames(buffer, jerseyNumber, sport, jerseyColor)  ← YOUR AI GOES HERE
         │    └── Update status: "scanning"
         │
         ├─ Step 3: scoreAndRankClips(detections, sport)
@@ -33,7 +33,7 @@ lib/videoProcessor.ts → processVideo(job)  [fire-and-forget on Node.js]
                  + Insert email into waitlist table (source: "ai_processing_complete")
 
 Client polls GET /api/process-video/status?jobId=UUID every 5 seconds
-When status === "complete" → clips saved to localStorage → navigate to /customize
+When status === "complete" → clips saved to localStorage → navigate to /review (athlete approves clips) → /customize
 ```
 
 ---
@@ -56,8 +56,20 @@ Replace the stub body with your real model call. The function signature is:
 export async function detectJerseyInFrames(
   videoBuffer: Buffer,      // Raw video bytes (MP4, MOV, etc.)
   jerseyNumber: number,     // Integer 0–99: the target jersey number
-  sport: string             // "Basketball" | "Football" | etc.
+  sport: string,            // "Basketball" | "Football" | etc.
+  jerseyColor: string       // Hex code e.g. "#FF0000" or color name e.g. "royal blue"
 ): Promise<DetectedFrame[]>
+```
+
+### Python equivalent signature (for Farhan's jersey detection script)
+
+```python
+def detect_jersey_in_frames(
+    video_url: str,
+    jersey_number: int,
+    jersey_color: str,  # hex code e.g. "#FF0000" or color name e.g. "royal blue"
+    sport: str  # "basketball", "football", or "lacrosse"
+) -> list[dict]
 ```
 
 ### Expected Output
@@ -183,7 +195,55 @@ Option B — **Fine-tune YOLOv8 yourself** (most accurate, ~2 days of work):
    ```
 3. Push the trained model to Replicate
 
-### Step 2: Frame extraction
+### Step 2: Color masking with `jersey_color`
+
+Before running the number detector on each frame, apply a jersey color mask to dramatically reduce noise and improve accuracy. Convert the `jersey_color` hex code to an HSV range using OpenCV, create a binary mask that isolates only the regions matching the jersey color, and run number detection only within those masked regions.
+
+**Why this matters:**
+- A basketball court has many numbers (scoreboard, shot clock, opponent jerseys). Without color filtering, false positives are high.
+- Restricting detection to the jersey color reduces the search region by ~90%, making the model faster and more accurate.
+
+```python
+import cv2
+import numpy as np
+
+def hex_to_hsv_range(hex_color: str, tolerance: int = 20) -> tuple:
+    """Convert a hex color string to an HSV lower/upper bound pair for cv2.inRange."""
+    hex_color = hex_color.lstrip("#")
+    r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+    bgr = np.uint8([[[b, g, r]]])
+    hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)[0][0]
+    h, s, v = int(hsv[0]), int(hsv[1]), int(hsv[2])
+    lower = np.array([max(0, h - tolerance), max(0, s - 60), max(0, v - 60)])
+    upper = np.array([min(179, h + tolerance), min(255, s + 60), min(255, v + 60)])
+    return lower, upper
+
+def apply_jersey_color_mask(frame_bgr: np.ndarray, jersey_color: str) -> np.ndarray:
+    """
+    Step 2 — Convert jersey_color hex code to HSV range using OpenCV.
+    Use this color range to create a mask that filters each frame to only
+    the regions matching the jersey color. Run number detection only within
+    these masked regions. This dramatically improves accuracy and speed.
+    """
+    hsv_frame = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
+    lower, upper = hex_to_hsv_range(jersey_color)
+    mask = cv2.inRange(hsv_frame, lower, upper)
+    # Dilate mask slightly to capture jersey number digits near the color boundary
+    kernel = np.ones((5, 5), np.uint8)
+    mask = cv2.dilate(mask, kernel, iterations=2)
+    # Apply mask: set non-jersey regions to black
+    masked_frame = cv2.bitwise_and(frame_bgr, frame_bgr, mask=mask)
+    return masked_frame
+```
+
+Use this before passing each frame to your YOLO or OCR model:
+
+```python
+masked = apply_jersey_color_mask(frame, jersey_color)
+detections = model.predict(masked, jersey_number=jersey_number)
+```
+
+### Step 3: Frame extraction
 
 Install fluent-ffmpeg to extract frames from the video buffer:
 
@@ -222,7 +282,7 @@ async function extractFrames(videoBuffer: Buffer, fps = 2): Promise<string[]> {
 
 At 2fps, a 60-minute game film produces ~7,200 frames. Process in batches of 50.
 
-### Step 3: Replace the stub
+### Step 4: Replace the stub
 
 Here is the complete implementation for `detectJerseyInFrames` using Replicate:
 
@@ -237,7 +297,8 @@ const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
 export async function detectJerseyInFrames(
   videoBuffer: Buffer,
   jerseyNumber: number,
-  sport: string
+  sport: string,
+  jerseyColor: string       // e.g. "#FF0000" — used by Python script for HSV masking
 ): Promise<DetectedFrame[]> {
   // 1. Extract frames at 2fps
   const framePaths = await extractFrames(videoBuffer, 2);
@@ -263,6 +324,7 @@ export async function detectJerseyInFrames(
           input: {
             image: imageUri,
             jersey_number: jerseyNumber,
+            jersey_color: jerseyColor,     // pass hex to model for HSV masking
             confidence_threshold: 0.5,
           }
         }
@@ -300,7 +362,8 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 export async function detectJerseyInFrames(
   videoBuffer: Buffer,
   jerseyNumber: number,
-  sport: string
+  sport: string,
+  jerseyColor: string       // e.g. "#FF0000" — include in prompt for better accuracy
 ): Promise<DetectedFrame[]> {
   const framePaths = await extractFrames(videoBuffer, 1);  // 1fps for cost control
   const detections: DetectedFrame[] = [];
@@ -329,7 +392,7 @@ export async function detectJerseyInFrames(
               },
               {
                 type: "text",
-                text: `Is jersey number ${jerseyNumber} clearly visible on a player in this ${sport} game footage? Reply with JSON only: {"visible": boolean, "confidence": 0.0-1.0}`
+                text: `Is jersey number ${jerseyNumber} (jersey color: ${jerseyColor}) clearly visible on a player in this ${sport} game footage? Focus on jerseys matching the specified color. Reply with JSON only: {"visible": boolean, "confidence": 0.0-1.0}`
               }
             ]
           }
@@ -372,16 +435,51 @@ export async function detectJerseyInFrames(
 
 ---
 
+## Example API Call — POST /api/process-video
+
+This is the request the Clipt frontend sends when an athlete submits their film. The `jersey_color` field is now required and passed through the entire pipeline to the jersey detection model.
+
+```bash
+curl -X POST https://your-app.vercel.app/api/process-video \
+  -H "Content-Type: application/json" \
+  -d '{
+    "videoUrl":     "https://www.youtube.com/watch?v=example123",
+    "firstName":    "Marcus",
+    "lastName":     "Johnson",
+    "jerseyNumber": 23,
+    "jerseyColor":  "#0000FF",
+    "position":     "Point Guard",
+    "sport":        "Basketball",
+    "school":       "Westlake High School",
+    "email":        "marcus@example.com"
+  }'
+```
+
+**Response (201 Created):**
+```json
+{
+  "jobId": "a3f2c1d0-4b5e-6f7a-8b9c-0d1e2f3a4b5c",
+  "status": "queued",
+  "queuePosition": 1
+}
+```
+
+The client then polls `GET /api/process-video/status?jobId=<jobId>` every 3–5 seconds until `status === "complete"`.
+
+---
+
 ## How Completed Clips Flow Back to the Clipt UI
 
 1. **processVideo** saves `result_clips` as JSONB to `processing_jobs.result_clips`
 2. **GET /api/process-video/status** returns the full row including `result_clips`
 3. **Client** saves clips to `localStorage.aiGeneratedClips` when status === "complete"
-4. **Auto-navigation** fires after 2.5 seconds: `router.push("/customize")`
-5. **Customize page** reads `aiGeneratedClips` on mount
-6. **AI banner** appears: "AI found N clips featuring jersey #XX"
-7. **Clip cards** show gold "AI PICK" badge and confidence percentage
-8. User can remove individual clips or dismiss and use manual clips
+4. **Auto-navigation** fires after 2.5 seconds: `router.push("/review")`
+5. **Review page** (`/review`) loads clips — athlete watches each clip, removes unwanted ones, drag-reorders, then clicks "Build My Reel"
+6. **Build My Reel** saves kept clips back to Supabase as `reviewed_clips` JSONB, sets `localStorage.clipSource = "ai"`, navigates to `/customize`
+7. **Customize page** reads `aiGeneratedClips` on mount
+8. **AI banner** appears: "AI found N clips featuring jersey #XX"
+9. **Clip cards** show gold "AI PICK" badge and confidence percentage
+10. User can remove individual clips, reorder, or dismiss and use manual clips
 
 ### Expected `result_clips` JSON shape
 

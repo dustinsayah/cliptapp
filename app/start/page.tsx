@@ -170,11 +170,29 @@ export default function StartPage() {
             </div>
 
             <h2 className="text-2xl font-black text-white mb-3 relative z-10">AI Finds Your Best Plays</h2>
-            <p className="text-slate-400 text-[15px] leading-relaxed relative z-10 max-w-[320px]">
+            <p className="text-slate-400 text-[15px] leading-relaxed relative z-10 max-w-[320px] mb-5">
               Submit a YouTube link or full game film. Our AI scans for your jersey number and pulls your best plays automatically.
             </p>
 
-            <div className="flex items-center gap-2 mt-10 relative z-10">
+            {/* 4-step flow */}
+            <div className="flex flex-col gap-2 relative z-10">
+              {[
+                "Submit Game Film",
+                "AI Finds Your Clips",
+                "Review & Approve",
+                "Build Your Reel",
+              ].map((step, i) => (
+                <div key={step} className="flex items-center gap-2.5">
+                  <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shrink-0"
+                    style={{ background: "rgba(168,85,247,0.18)", border: "1px solid rgba(168,85,247,0.35)", color: "#A855F7" }}>
+                    {i + 1}
+                  </div>
+                  <span className="text-xs font-semibold text-slate-400">{step}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-2 mt-6 relative z-10">
               <span className="text-sm font-bold text-slate-500 group-hover:text-[#a855f7] transition-colors duration-300">Get Notified</span>
               <span className="text-slate-500 group-hover:text-[#a855f7] transition-all duration-200 group-hover:translate-x-1" style={{ display: "inline-block" }}>→</span>
             </div>

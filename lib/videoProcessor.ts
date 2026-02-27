@@ -119,6 +119,8 @@ export interface ProcessingJob {
   firstName: string;
   lastName: string;
   jerseyNumber: number;
+  /** Hex code (e.g. "#FF0000") or color name (e.g. "royal blue") for HSV masking in the CV model */
+  jerseyColor?: string;
   position: string;
   sport: string;
   school: string;
@@ -226,6 +228,7 @@ export async function downloadVideo(url: string): Promise<Buffer> {
  * ║    videoBuffer   — raw video file as a Node.js Buffer                    ║
  * ║    jerseyNumber  — integer jersey number to search for (e.g. 23)         ║
  * ║    sport         — sport context for model tuning ("Football", etc.)     ║
+ * ║    jerseyColor   — hex code or color name for HSV masking ("#FF0000")    ║
  * ║                                                                          ║
  * ║  OUTPUT:                                                                  ║
  * ║    Array of { timestamp, confidence } where jersey was visible           ║
@@ -260,10 +263,11 @@ export async function downloadVideo(url: string): Promise<Buffer> {
 export async function detectJerseyInFrames(
   videoBuffer: Buffer,
   jerseyNumber: number,
-  sport: string
+  sport: string,
+  jerseyColor: string = "#FFFFFF"
 ): Promise<DetectedFrame[]> {
   console.log(
-    `[detectJerseyInFrames] STUB — scanning for jersey #${jerseyNumber} in ${sport} game film`
+    `[detectJerseyInFrames] STUB — scanning for jersey #${jerseyNumber} (${jerseyColor}) in ${sport} game film`
   );
   console.log(
     `[detectJerseyInFrames] Video buffer size: ${videoBuffer.length} bytes`
@@ -397,19 +401,20 @@ export async function scoreAndRankClips(
  *   • Simple: Trigger.dev, Inngest, or similar managed queue
  */
 export async function processVideo(job: ProcessingJob): Promise<void> {
-  const { id: jobId, videoUrl, jerseyNumber, sport } = job;
+  const { id: jobId, videoUrl, jerseyNumber, sport, jerseyColor = "#FFFFFF" } = job;
 
   try {
     // Step 1: Download
     await updateJobStatus(jobId, "downloading");
     const videoBuffer = await downloadVideo(videoUrl);
 
-    // Step 2: Scan for jersey
+    // Step 2: Scan for jersey (jersey color passed for HSV masking in CV model)
     await updateJobStatus(jobId, "scanning");
     const detectedFrames = await detectJerseyInFrames(
       videoBuffer,
       jerseyNumber,
-      sport
+      sport,
+      jerseyColor
     );
 
     // Step 3: Score and rank

@@ -296,11 +296,6 @@ function checkDiversity(labels: string[]): string | null {
   return null;
 }
 
-function fmtDuration(s: number): string {
-  const m = Math.floor(s / 60);
-  const sec = Math.round(s % 60);
-  return `${m}:${sec.toString().padStart(2, "0")}`;
-}
 
 // ── Title Card Templates ───────────────────────────────────────────────────────
 
@@ -795,6 +790,407 @@ function OnboardTooltip({
   );
 }
 
+// ── Position Guide Data ────────────────────────────────────────────────────────
+
+interface ClipWeight { label: string; pct: number; emoji: string }
+interface PosGuide { weights: ClipWeight[]; checklist: string[]; coachTip: string }
+
+const POSITION_GUIDES: Record<string, Record<string, PosGuide>> = {
+  Basketball: {
+    "Point Guard": {
+      weights: [
+        { label: "Ball Handling & Passing", pct: 30, emoji: "🎯" },
+        { label: "Scoring Ability", pct: 25, emoji: "🏀" },
+        { label: "Defense", pct: 20, emoji: "🛡️" },
+        { label: "Court Vision", pct: 15, emoji: "👁️" },
+        { label: "Athleticism", pct: 10, emoji: "⚡" },
+      ],
+      checklist: ["At least 2 assist highlights", "1+ steal or deflection", "Shooting off the dribble", "Running the offense", "Pick-and-roll play"],
+      coachTip: "College coaches want to see you make your teammates better. Start with your best assist play.",
+    },
+    "Shooting Guard": {
+      weights: [
+        { label: "Scoring (all areas)", pct: 35, emoji: "🏀" },
+        { label: "Three-Point Shooting", pct: 25, emoji: "🎯" },
+        { label: "Off-Ball Movement", pct: 20, emoji: "🏃" },
+        { label: "Defense", pct: 15, emoji: "🛡️" },
+        { label: "Ball Handling", pct: 5, emoji: "✋" },
+      ],
+      checklist: ["Pull-up jump shot", "Catch-and-shoot three", "Backdoor cut finish", "Defensive stop or steal", "Mid-range scoring"],
+      coachTip: "Scoring variety is key. Show you can score off the dribble AND off the catch.",
+    },
+    "Small Forward": {
+      weights: [
+        { label: "Versatility & Skill", pct: 30, emoji: "🔀" },
+        { label: "Scoring", pct: 25, emoji: "🏀" },
+        { label: "Defense (multiple positions)", pct: 20, emoji: "🛡️" },
+        { label: "Athleticism", pct: 15, emoji: "⚡" },
+        { label: "Playmaking", pct: 10, emoji: "🎯" },
+      ],
+      checklist: ["Scoring in transition", "Post or mid-range score", "Defending a guard OR big", "Attacking the rim", "Assist from wing"],
+      coachTip: "Show you can guard multiple positions. Versatility gets forwards recruited.",
+    },
+    "Power Forward": {
+      weights: [
+        { label: "Post Play & Scoring", pct: 30, emoji: "🏀" },
+        { label: "Rebounding", pct: 25, emoji: "💪" },
+        { label: "Interior Defense", pct: 20, emoji: "🛡️" },
+        { label: "Mid-Range Game", pct: 15, emoji: "🎯" },
+        { label: "Passing & Vision", pct: 10, emoji: "👁️" },
+      ],
+      checklist: ["Post move to score", "Offensive rebound & putback", "Blocked shot or contest", "Pick-and-pop or pop-three", "Outlet pass or assist"],
+      coachTip: "Lead with your toughest post move. Rebounding and defense win you a college roster spot.",
+    },
+    "Center": {
+      weights: [
+        { label: "Post Scoring", pct: 35, emoji: "🏀" },
+        { label: "Rebounding", pct: 25, emoji: "💪" },
+        { label: "Rim Protection", pct: 25, emoji: "🛡️" },
+        { label: "Screen Setting", pct: 8, emoji: "💥" },
+        { label: "Passing", pct: 7, emoji: "🎯" },
+      ],
+      checklist: ["Drop step or up-and-under", "2+ offensive rebounds", "Block or forced miss", "Ball screen leading to score", "Footwork in the post"],
+      coachTip: "Start with your most dominant post sequence. Show a block AND a score in your first 3 clips.",
+    },
+  },
+  Football: {
+    "Quarterback": {
+      weights: [
+        { label: "Arm Strength & Distance", pct: 25, emoji: "💪" },
+        { label: "Accuracy & Touch", pct: 25, emoji: "🎯" },
+        { label: "Pocket Presence", pct: 20, emoji: "🧠" },
+        { label: "Decision Making", pct: 20, emoji: "⚡" },
+        { label: "Mobility & Scramble", pct: 10, emoji: "🏃" },
+      ],
+      checklist: ["Deep ball (30+ yards)", "Throw on the run", "Reading coverage & checking down", "Scramble for first down", "Red zone touchdown"],
+      coachTip: "Open with your best deep ball. Then show accuracy on short/intermediate routes. Decision-making under pressure seals it.",
+    },
+    "Running Back": {
+      weights: [
+        { label: "Rushing Highlights", pct: 35, emoji: "🏃" },
+        { label: "Vision & Burst", pct: 25, emoji: "👁️" },
+        { label: "Receiving Ability", pct: 20, emoji: "🤲" },
+        { label: "Pass Protection", pct: 10, emoji: "🛡️" },
+        { label: "Special Teams", pct: 10, emoji: "⚡" },
+      ],
+      checklist: ["Long touchdown run", "Juke or spin move in space", "Catch out of the backfield", "Blitz pickup", "Yards after contact"],
+      coachTip: "Show explosion on your first run. Then prove you can catch — receiving RBs get more opportunities at next level.",
+    },
+    "Wide Receiver": {
+      weights: [
+        { label: "Route Running", pct: 30, emoji: "🔀" },
+        { label: "Highlight Catches", pct: 25, emoji: "🤲" },
+        { label: "Separation", pct: 20, emoji: "⚡" },
+        { label: "YAC & After-Catch", pct: 15, emoji: "🏃" },
+        { label: "Blocking", pct: 10, emoji: "💪" },
+      ],
+      checklist: ["Contested catch", "Touchdown reception", "Deep ball over defender", "Slant/crossing route separation", "YAC run"],
+      coachTip: "Coaches watch your routes, not just catches. Show clean releases at the line and precise cuts.",
+    },
+    "Tight End": {
+      weights: [
+        { label: "Receiving in Traffic", pct: 30, emoji: "🤲" },
+        { label: "Blocking", pct: 25, emoji: "💪" },
+        { label: "Seam Route", pct: 20, emoji: "🔀" },
+        { label: "Red Zone Targets", pct: 15, emoji: "🏈" },
+        { label: "After-Catch Run", pct: 10, emoji: "🏃" },
+      ],
+      checklist: ["Block in run game", "Seam catch over middle", "Red zone touchdown", "Run after catch", "Chip and release"],
+      coachTip: "TEs get recruited for blocking AND receiving. Show both early — don't ignore the blocking clips.",
+    },
+    "Linebacker": {
+      weights: [
+        { label: "Tackle Production", pct: 30, emoji: "💥" },
+        { label: "Pass Rush & Blitz", pct: 25, emoji: "⚡" },
+        { label: "Coverage", pct: 25, emoji: "🛡️" },
+        { label: "Run Fit & Discipline", pct: 15, emoji: "🧠" },
+        { label: "Leadership Plays", pct: 5, emoji: "👊" },
+      ],
+      checklist: ["TFL or sack", "Open-field tackle", "Coverage on RB or TE", "Blitz pickup", "Interception or PBU"],
+      coachTip: "Lead with your best pass rush clip. Then show you can cover. A linebacker who can do both gets scholarship offers.",
+    },
+    "Cornerback": {
+      weights: [
+        { label: "Man Coverage", pct: 35, emoji: "🛡️" },
+        { label: "Ball Skills & INTs", pct: 25, emoji: "🤲" },
+        { label: "Zone Awareness", pct: 20, emoji: "👁️" },
+        { label: "Tackling in Run Game", pct: 15, emoji: "💥" },
+        { label: "Press Coverage", pct: 5, emoji: "💪" },
+      ],
+      checklist: ["Pass breakup in coverage", "Interception or INT return", "Press at the line", "Open-field tackle", "Zone drop with ball awareness"],
+      coachTip: "Show your hips. Start with your best coverage rep. Then show you can tackle — CBs who avoid run game get benched.",
+    },
+    "Safety": {
+      weights: [
+        { label: "Range & Athleticism", pct: 30, emoji: "⚡" },
+        { label: "Coverage & Ball Skills", pct: 25, emoji: "🛡️" },
+        { label: "Tackling", pct: 25, emoji: "💥" },
+        { label: "Run Support", pct: 15, emoji: "💪" },
+        { label: "Communication", pct: 5, emoji: "🧠" },
+      ],
+      checklist: ["Down-field tackle", "Ball hawking play", "Deep coverage over top", "Blitz or pressure", "Run fit near the LOS"],
+      coachTip: "Safeties must show RANGE. Open with your deepest coverage rep. Then show violent tackling.",
+    },
+    "Defensive End": {
+      weights: [
+        { label: "Pass Rush Moves", pct: 35, emoji: "⚡" },
+        { label: "Sacks & Pressures", pct: 30, emoji: "💥" },
+        { label: "Run Defense", pct: 20, emoji: "💪" },
+        { label: "First Step Quickness", pct: 10, emoji: "🏃" },
+        { label: "Motor & Effort", pct: 5, emoji: "🔥" },
+      ],
+      checklist: ["Clean sack", "TFL in run game", "Speed rush move", "Power move into backfield", "Effort play chasing QB"],
+      coachTip: "Show your first step. Coaches want to see your get-off at the snap — include film where that shows clearly.",
+    },
+    "Kicker": {
+      weights: [
+        { label: "Kickoffs & Touchbacks", pct: 35, emoji: "💨" },
+        { label: "Field Goal Distance", pct: 30, emoji: "🎯" },
+        { label: "Field Goal Accuracy", pct: 25, emoji: "✅" },
+        { label: "PAT Consistency", pct: 10, emoji: "📍" },
+      ],
+      checklist: ["50+ yard field goal", "Multiple touchbacks", "Kick from different angles", "Clutch situation FG", "Consistent PAT"],
+      coachTip: "Accuracy matters more than one big kick. Show consistency. Include kickoffs — coaches need a kickoff specialist.",
+    },
+  },
+  Soccer: {
+    "Goalkeeper": {
+      weights: [
+        { label: "Shot Stopping", pct: 35, emoji: "🧤" },
+        { label: "Distribution", pct: 25, emoji: "🎯" },
+        { label: "Cross Claiming", pct: 20, emoji: "✋" },
+        { label: "Communication & Positioning", pct: 15, emoji: "🧠" },
+        { label: "One-on-One", pct: 5, emoji: "⚡" },
+      ],
+      checklist: ["Diving save to the corner", "One-on-one stop", "Claim of a cross", "Long distribution to trigger attack", "Penalty save if available"],
+      coachTip: "Show clean distribution — college coaches want GKs who start the attack. Include your best long throw or kick.",
+    },
+    "Striker": {
+      weights: [
+        { label: "Finishing & Goals", pct: 35, emoji: "⚽" },
+        { label: "Hold-up Play", pct: 20, emoji: "💪" },
+        { label: "Movement & Runs", pct: 20, emoji: "🏃" },
+        { label: "Assists & Link-up", pct: 15, emoji: "🎯" },
+        { label: "Pressing Defense", pct: 10, emoji: "🔥" },
+      ],
+      checklist: ["Goal from inside the box", "Goal from range", "Back-to-goal hold-up", "Assist for teammate", "Press leading to turnover"],
+      coachTip: "Open with your best goal. Then show movement OFF the ball — coaches watch how you create space, not just how you score.",
+    },
+    "Center Back": {
+      weights: [
+        { label: "Aerial Duels", pct: 30, emoji: "💪" },
+        { label: "Tackling & Intercepting", pct: 25, emoji: "🛡️" },
+        { label: "Ball Playing Ability", pct: 25, emoji: "🎯" },
+        { label: "Positioning", pct: 15, emoji: "🧠" },
+        { label: "Leadership", pct: 5, emoji: "👊" },
+      ],
+      checklist: ["Aerial win in defense", "Clean tackle or interception", "Progressive pass to midfield", "Cover run for teammate", "Clearance under pressure"],
+      coachTip: "Show you can PLAY — college coaches want ball-playing defenders. Lead with your best passing sequence.",
+    },
+    "Central Midfielder": {
+      weights: [
+        { label: "Passing Range & Vision", pct: 30, emoji: "👁️" },
+        { label: "Ball Winning", pct: 25, emoji: "💥" },
+        { label: "Goals & Shooting", pct: 20, emoji: "⚽" },
+        { label: "Dribbling Under Pressure", pct: 15, emoji: "🔀" },
+        { label: "Box-to-Box Runs", pct: 10, emoji: "🏃" },
+      ],
+      checklist: ["Long progressive pass", "Tackle or press winning ball", "Shot from range or goal", "Dribble out of pressure", "Late run into the box"],
+      coachTip: "Show defensive work AND offensive creation. One-sided midfielders don't make college rosters.",
+    },
+    "Right Winger": {
+      weights: [
+        { label: "Dribbling & 1v1", pct: 30, emoji: "🔀" },
+        { label: "Crossing & Delivery", pct: 25, emoji: "🎯" },
+        { label: "Goals", pct: 25, emoji: "⚽" },
+        { label: "Pressing High", pct: 15, emoji: "🔥" },
+        { label: "Link-up Play", pct: 5, emoji: "🤝" },
+      ],
+      checklist: ["Beat a defender 1v1", "Accurate cross for a chance", "Goal from the wing", "Cutback assist", "High press regain"],
+      coachTip: "Show your best 1v1 dribble first. Coaches want to see if you can beat someone — everything else follows.",
+    },
+    "Left Winger": {
+      weights: [
+        { label: "Dribbling & 1v1", pct: 30, emoji: "🔀" },
+        { label: "Crossing & Delivery", pct: 25, emoji: "🎯" },
+        { label: "Goals", pct: 25, emoji: "⚽" },
+        { label: "Pressing High", pct: 15, emoji: "🔥" },
+        { label: "Link-up Play", pct: 5, emoji: "🤝" },
+      ],
+      checklist: ["Beat a defender 1v1", "Accurate cross for a chance", "Goal from the wing", "Cutback assist", "High press regain"],
+      coachTip: "Show your best 1v1 dribble first. Coaches want to see if you can beat someone — everything else follows.",
+    },
+    "Defensive Midfielder": {
+      weights: [
+        { label: "Ball Winning & Tackling", pct: 35, emoji: "💥" },
+        { label: "Passing Accuracy & Range", pct: 30, emoji: "🎯" },
+        { label: "Pressing & Intensity", pct: 20, emoji: "🔥" },
+        { label: "Positioning & Discipline", pct: 15, emoji: "🧠" },
+      ],
+      checklist: ["Tackle or interception", "Long ball switching play", "Press leading to turnover", "Simple safe pass under pressure", "Screening the defense"],
+      coachTip: "The 6 is the engine. Show your defensive work but ALSO show clean distribution under pressure.",
+    },
+  },
+  Baseball: {
+    "Pitcher": {
+      weights: [
+        { label: "Fastball Velocity & Movement", pct: 30, emoji: "🔥" },
+        { label: "Breaking Ball / Offspeed", pct: 25, emoji: "🌀" },
+        { label: "Strikeouts", pct: 25, emoji: "⚡" },
+        { label: "Control & Command", pct: 15, emoji: "🎯" },
+        { label: "Mechanics & Delivery", pct: 5, emoji: "📐" },
+      ],
+      checklist: ["Full-speed radar gun clip", "Strikeout on breaking ball", "Strikeout looking (command)", "1-2-3 inning", "Pickoff or holding runners"],
+      coachTip: "Lead with your highest velo pitch on the radar gun. Then show your secondary pitch bite. Command clips prove you're coachable.",
+    },
+    "Catcher": {
+      weights: [
+        { label: "Throwing to Second", pct: 30, emoji: "💪" },
+        { label: "Blocking & Receiving", pct: 25, emoji: "🧤" },
+        { label: "Hitting & Power", pct: 25, emoji: "⚾" },
+        { label: "Framing & Pitch Management", pct: 15, emoji: "🎯" },
+        { label: "Leadership", pct: 5, emoji: "👊" },
+      ],
+      checklist: ["Pop time throw to second", "Block of dirt ball", "Framed pitch for strike call", "RBI hit or home run", "Steal of third or second"],
+      coachTip: "Pop time and blocking are everything for catchers. Record your best throw — college coaches want to see that arm.",
+    },
+    "Shortstop": {
+      weights: [
+        { label: "Range & Athleticism", pct: 30, emoji: "⚡" },
+        { label: "Throwing Arm", pct: 25, emoji: "💪" },
+        { label: "Hitting & Exit Velocity", pct: 25, emoji: "⚾" },
+        { label: "Double Play Turns", pct: 15, emoji: "🔀" },
+        { label: "Leadership", pct: 5, emoji: "👊" },
+      ],
+      checklist: ["Backhand play in the hole", "Double play turn", "Diving stop", "RBI hit or extra base hit", "Arm strength throw from deep SS"],
+      coachTip: "Show range FIRST. College coaches can see your arm on any throw — but range separates SS prospects.",
+    },
+    "Outfielder": {
+      weights: [
+        { label: "Hitting & Power", pct: 35, emoji: "⚾" },
+        { label: "Arm Strength & Accuracy", pct: 25, emoji: "💪" },
+        { label: "Range & Route Running", pct: 25, emoji: "⚡" },
+        { label: "Speed & Base Running", pct: 15, emoji: "🏃" },
+      ],
+      checklist: ["Home run or extra base hit", "Outfield assist (throw home or 3B)", "Diving or running catch", "Speed from 1st to 3rd", "Gap hit with good route"],
+      coachTip: "Lead with your best hit. Then show your arm on a throw. OF prospects are judged on bat FIRST.",
+    },
+    "Designated Hitter": {
+      weights: [
+        { label: "Power & Exit Velocity", pct: 40, emoji: "💥" },
+        { label: "Batting Average", pct: 30, emoji: "🎯" },
+        { label: "RBI Situations", pct: 20, emoji: "⚾" },
+        { label: "Plate Discipline", pct: 10, emoji: "🧠" },
+      ],
+      checklist: ["Home run swing with exit velo", "Two-strike hit", "RBI situation at-bat", "Oppo field hit or line drive", "Deep at-bat working count"],
+      coachTip: "Your bat is your ticket. Every clip should be about offensive production.",
+    },
+  },
+  Lacrosse: {
+    "Attack": {
+      weights: [
+        { label: "Goals & Finishing", pct: 35, emoji: "🥍" },
+        { label: "Dodging & 1v1", pct: 25, emoji: "🔀" },
+        { label: "Assists & Vision", pct: 20, emoji: "👁️" },
+        { label: "Groundballs", pct: 12, emoji: "💪" },
+        { label: "Man-up Situations", pct: 8, emoji: "⚡" },
+      ],
+      checklist: ["Goal from in close", "Goal from outside or shot fake", "Dodge beat to the cage", "Behind-the-back or trick shot (if reliable)", "Groundball pickup"],
+      coachTip: "Lead with your most athletic goal. Show multiple finishing moves — a one-trick attack doesn't get recruited.",
+    },
+    "Midfield": {
+      weights: [
+        { label: "Transition Play", pct: 30, emoji: "🏃" },
+        { label: "Goals & Shooting", pct: 25, emoji: "🥍" },
+        { label: "Defense & Groundballs", pct: 20, emoji: "🛡️" },
+        { label: "Dodging", pct: 15, emoji: "🔀" },
+        { label: "Faceoff (if applicable)", pct: 10, emoji: "⚡" },
+      ],
+      checklist: ["Transition goal or assist", "Shot from distance", "Defensive groundball", "Midfield dodge to cage", "Man-up goal"],
+      coachTip: "Two-way midfielders get recruited. Balance offensive highlights with 2-3 defensive clips.",
+    },
+    "Defense": {
+      weights: [
+        { label: "Caused Turnovers", pct: 30, emoji: "💥" },
+        { label: "Groundballs", pct: 25, emoji: "💪" },
+        { label: "Man Defense (1v1)", pct: 25, emoji: "🛡️" },
+        { label: "Clears", pct: 15, emoji: "🎯" },
+        { label: "Help & Communication", pct: 5, emoji: "🧠" },
+      ],
+      checklist: ["Caused turnover stripping or check", "Groundball in traffic", "Man-on-man stop without foul", "Clear initiation", "Slide and save the crease"],
+      coachTip: "Caused turnovers and groundballs win you a spot. Show your stick work is CLEAN — no cheap fouls.",
+    },
+    "Goalkeeper": {
+      weights: [
+        { label: "Shot Stopping", pct: 40, emoji: "🧤" },
+        { label: "Outlet Passes & Distribution", pct: 25, emoji: "🎯" },
+        { label: "Communication", pct: 20, emoji: "🧠" },
+        { label: "Man-Down Saves", pct: 15, emoji: "💥" },
+      ],
+      checklist: ["Big save from close range", "Low save diving", "Man-down situation stop", "Fast outlet pass starting clear", "Save on a bounce shot"],
+      coachTip: "Start with your most athletic save. Then show a fast outlet — college coaches want GKs who initiate offense.",
+    },
+  },
+};
+
+function getPositionGuide(sport: string, position: string): PosGuide | null {
+  // Try exact position match first
+  const guide = POSITION_GUIDES[sport]?.[position];
+  if (guide) return guide;
+  // Football: map defensive positions
+  if (sport === "Football") {
+    if (["Defensive Tackle"].includes(position)) return POSITION_GUIDES.Football["Defensive End"] ?? null;
+    if (["Punter"].includes(position)) return POSITION_GUIDES.Football["Kicker"] ?? null;
+    if (["Offensive Lineman"].includes(position)) return {
+      weights: [
+        { label: "Run Blocking", pct: 35, emoji: "💪" },
+        { label: "Pass Protection", pct: 35, emoji: "🛡️" },
+        { label: "Technique & Footwork", pct: 20, emoji: "📐" },
+        { label: "Pulling & Traps", pct: 10, emoji: "🏃" },
+      ],
+      checklist: ["Pancake block in run game", "Hold edge in pass pro", "Pulling run lead", "Double-team to second level", "Quick set vs speed rusher"],
+      coachTip: "Film angles matter — coaches need to see your feet. Request sideline film that shows your technique.",
+    };
+  }
+  // Soccer: handle similar positions
+  if (sport === "Soccer") {
+    if (["Right Back", "Left Back"].includes(position)) {
+      return {
+        weights: [
+          { label: "Defending 1v1", pct: 30, emoji: "🛡️" },
+          { label: "Overlapping Runs & Crosses", pct: 30, emoji: "🏃" },
+          { label: "Tackling & Positioning", pct: 25, emoji: "💥" },
+          { label: "Link-up Play", pct: 15, emoji: "🎯" },
+        ],
+        checklist: ["Solid 1v1 defensive stop", "Overlapping run with cross", "Tackle or interception", "Assist from wide area", "Defensive recovery run"],
+        coachTip: "Modern fullbacks must attack. Show your overlap runs — defending alone won't get you recruited at D1.",
+      };
+    }
+    if (["Forward"].includes(position)) return POSITION_GUIDES.Soccer["Striker"] ?? null;
+    if (["Attacking Midfielder"].includes(position)) return POSITION_GUIDES.Soccer["Central Midfielder"] ?? null;
+  }
+  // Lacrosse
+  if (sport === "Lacrosse" && position === "Long Stick Midfielder") return POSITION_GUIDES.Lacrosse["Defense"] ?? null;
+  // Baseball outfield positions
+  if (sport === "Baseball" && ["Left Field", "Center Field", "Right Field"].includes(position)) {
+    return POSITION_GUIDES.Baseball["Outfielder"] ?? null;
+  }
+  if (sport === "Baseball" && ["First Base", "Second Base", "Third Base"].includes(position)) {
+    return {
+      weights: [
+        { label: "Hitting & Power", pct: 35, emoji: "⚾" },
+        { label: "Fielding & Range", pct: 25, emoji: "🧤" },
+        { label: "Arm Strength & Accuracy", pct: 20, emoji: "💪" },
+        { label: "Double Plays", pct: 15, emoji: "🔀" },
+        { label: "Speed", pct: 5, emoji: "🏃" },
+      ],
+      checklist: ["RBI hit or home run", "Defensive play showing range", "Strong throw across diamond", "Turn a double play", "Extra base hit"],
+      coachTip: "Your bat matters most at a corner position. Put your best offensive clips first.",
+    };
+  }
+  return null;
+}
+
 // ── AI Clip type (matches process page output) ─────────────────────────────────
 
 interface AiClip {
@@ -885,6 +1281,74 @@ export default function CustomizePage() {
     }
   }, [aiClips]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Clip thumbnails ──────────────────────────────────────────────────────
+  const [clipThumbMap, setClipThumbMap] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let cancelled = false;
+    const ownedUrls: string[] = [];
+
+    const captureThumb = (src: string, name: string, owned: boolean): Promise<void> =>
+      new Promise((resolve) => {
+        const video = document.createElement("video");
+        video.muted = true;
+        video.preload = "metadata";
+        video.crossOrigin = "anonymous";
+        video.src = src;
+        video.onloadedmetadata = () => { video.currentTime = Math.min(1.5, video.duration * 0.12); };
+        video.onseeked = () => {
+          if (!cancelled) {
+            try {
+              const c = document.createElement("canvas");
+              c.width = 80; c.height = 45;
+              const ctx = c.getContext("2d");
+              if (ctx) {
+                ctx.fillStyle = "#0A1628";
+                ctx.fillRect(0, 0, 80, 45);
+                ctx.drawImage(video, 0, 0, 80, 45);
+                const thumb = c.toDataURL("image/jpeg", 0.5);
+                setClipThumbMap((prev) => ({ ...prev, [name]: thumb }));
+              }
+            } catch { /* ignore CORS or draw errors */ }
+          }
+          if (owned) URL.revokeObjectURL(src);
+          resolve();
+        };
+        video.onerror = () => { if (owned) URL.revokeObjectURL(src); resolve(); };
+      });
+
+    (async () => {
+      if (reel.files.length > 0) {
+        for (const file of reel.files) {
+          if (cancelled) break;
+          const supported = file.type.startsWith("video/") || /\.(mp4|mov|m4v|avi|mkv|webm)$/i.test(file.name);
+          if (!supported) continue;
+          const url = URL.createObjectURL(file);
+          ownedUrls.push(url);
+          await captureThumb(url, file.name, true);
+        }
+      } else {
+        try {
+          const raw = localStorage.getItem("clipt_blob_urls");
+          const names = reel.clipNames;
+          if (raw) {
+            const urls: string[] = JSON.parse(raw);
+            for (let i = 0; i < urls.length; i++) {
+              if (cancelled) break;
+              await captureThumb(urls[i], names[i] ?? `Clip ${i + 1}`, false);
+            }
+          }
+        } catch { /* ignore */ }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      ownedUrls.forEach((u) => URL.revokeObjectURL(u));
+    };
+  }, [reel.files.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Drag reorder ──────────────────────────────────────────────────────────
   const dragIdx = useRef<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
@@ -956,6 +1420,16 @@ export default function CustomizePage() {
   const [highlightBest,   setHighlightBest]  = useState(reel.highlightBestPlay || false);
   const [slowMo,          setSlowMo]         = useState(reel.slowMotionReplay || false);
 
+  // Guide checklist
+  const [guideChecks, setGuideChecks] = useState<boolean[]>([]);
+  const toggleGuideCheck = (i: number) => {
+    setGuideChecks((prev) => {
+      const next = [...prev];
+      next[i] = !next[i];
+      return next;
+    });
+  };
+
   // Computed
   const isLight   = isLightColor(accentHex);
   const btnColor  = isLight ? "#050A14" : "#ffffff";
@@ -966,12 +1440,8 @@ export default function CustomizePage() {
   const clipLabelOpts = SPORTS_CONFIG[sport]?.clipLabels ?? getClipLabels(sport);
   const diversityWarn = checkDiversity(clips.map((c) => c.label));
 
-  // Duration
-  const overhead        = 4 + (includeStatsCard ? 4 : 0) + (showMeasurables ? 3 : 0) + 5;
-  const estimatedSec    = reelLength * 60 + overhead;
-  const limitSec        = SPORTS_CONFIG[sport]?.recommendedLength.warnAt ?? 300;
-  const durationColor   = estimatedSec < limitSec ? "#22C55E" : estimatedSec < limitSec + 60 ? "#F59E0B" : "#EF4444";
-  const durationFillPct = Math.min((estimatedSec / limitSec) * 100, 100);
+  // Duration limit for this sport
+  const sportMaxMin = SPORTS_CONFIG[sport]?.recommendedLength.max ?? 5;
 
   // Onboarding
   const [onboardStep, setOnboardStep] = useState(0);
@@ -1178,8 +1648,16 @@ export default function CustomizePage() {
             <div className="sticky top-28 rounded-2xl overflow-hidden" style={cardBase}>
               <div className="px-4 py-4">
                 <div className="flex items-center justify-between mb-3">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                    Clips ({clips.length})
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                    Clips
+                    {clips.length >= 3 ? (
+                      <span className="flex items-center gap-0.5 text-green-400">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                        {clips.length}
+                      </span>
+                    ) : (
+                      <span style={{ color: "#F59E0B" }}>({clips.length} — add more)</span>
+                    )}
                   </p>
                   {aiClips && aiClips.length > 0 && (
                     <span className="text-[9px] font-black px-2 py-0.5 rounded-full"
@@ -1201,10 +1679,21 @@ export default function CustomizePage() {
                           background: dragOver === i ? `${accentHex}12` : (clip.aiClip ? "rgba(0,163,255,0.04)" : "transparent"),
                           border: `1px solid ${dragOver === i ? accentHex + "40" : (clip.aiClip ? "rgba(0,163,255,0.12)" : "transparent")}`,
                         }}>
-                        <span className="text-slate-600 shrink-0 mt-0.5"><GripIcon /></span>
+                        {/* Thumbnail */}
+                        <div className="shrink-0 rounded overflow-hidden"
+                          style={{ width: 48, height: 27, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                          {clipThumbMap[clip.name] ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={clipThumbMap[clip.name]} alt="" style={{ width: 48, height: 27, objectFit: "cover", display: "block" }} />
+                          ) : (
+                            <div style={{ width: 48, height: 27, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                              <PlayIconSm />
+                            </div>
+                          )}
+                        </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <p className="text-xs text-slate-300 truncate">{clip.name}</p>
+                            <p className="text-xs text-slate-300 truncate">{clip.name.length > 25 ? clip.name.slice(0, 22) + "…" : clip.name}</p>
                             {clip.aiClip?.aiPicked && (
                               <span className="shrink-0 text-[8px] font-black px-1.5 py-px rounded"
                                 style={{ background: "rgba(251,191,36,0.18)", color: "#FBBF24", border: "1px solid rgba(251,191,36,0.3)" }}>
@@ -1234,16 +1723,20 @@ export default function CustomizePage() {
                               <StarIcon filled={bestPlayIdx === i} />
                             </button>
                           )}
-                          {/* Remove clip button for AI clips */}
-                          {clip.aiClip && (
-                            <button type="button"
-                              onClick={() => setClips((prev) => prev.filter((_, idx) => idx !== i))}
-                              className="text-slate-600 hover:text-red-400 transition-colors" title="Remove clip">
-                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
-                                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                              </svg>
-                            </button>
-                          )}
+                          {/* Remove clip button — works for both AI and manual clips */}
+                          <button type="button"
+                            onClick={() => {
+                              const removedName = clip.name;
+                              setClips((prev) => prev.filter((_, idx) => idx !== i));
+                              if (!clip.aiClip && reel.files.length > 0) {
+                                reel.update({ files: reel.files.filter((f) => f.name !== removedName) });
+                              }
+                            }}
+                            className="text-slate-600 hover:text-red-400 transition-colors" title="Remove clip">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+                              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                            </svg>
+                          </button>
                           <span className="text-[10px] font-bold text-slate-600">{i + 1}</span>
                         </div>
                       </div>
@@ -1763,23 +2256,114 @@ export default function CustomizePage() {
             </CollapsibleSection>
 
             {/* 10. DURATION */}
-            <CollapsibleSection title="Reel Duration" subtitle="Total length including cards" accent={accentHex} defaultOpen={false}>
+            <CollapsibleSection title="Reel Duration" subtitle="Target clip length for your reel" accent={accentHex} defaultOpen={false}>
               <div className="flex items-center justify-between mb-3">
-                <span className="text-sm font-semibold text-white">{reelLength} min of clips</span>
-                <span className="text-sm font-semibold tabular-nums" style={{ color: durationColor }}>
-                  ~{fmtDuration(estimatedSec)} total
+                <span className="text-sm font-semibold text-white">{reelLength} min target</span>
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: `${accentHex}18`, color: accentHex }}>
+                  Max {sportMaxMin} min recommended
                 </span>
               </div>
               <input type="range" min={1} max={5} step={0.5} value={reelLength}
                 onChange={(e) => setReelLength(Number(e.target.value))}
                 className="w-full mb-3" style={{ accentColor: accentHex }} />
-              <div className="h-1.5 rounded-full overflow-hidden mb-2" style={{ background: "rgba(255,255,255,0.06)" }}>
-                <div className="h-full rounded-full transition-all" style={{ width: `${durationFillPct}%`, background: durationColor }} />
-              </div>
               <p className="text-xs text-slate-500">
-                {sport === "Basketball" ? "Basketball: coaches prefer under 4 min" : sport === "Football" ? "Football: coaches prefer under 5 min" : "Keep it under 5 min"}
+                {sport === "Basketball" ? "Basketball coaches prefer under 4 min — quality over quantity." : sport === "Football" ? "Football coaches prefer under 5 min — put your best plays first." : "Keep it under 5 min — coaches stop watching after that."}
               </p>
             </CollapsibleSection>
+
+            {/* 11. WHAT COACHES WANT TO SEE */}
+            {(() => {
+              const guide = getPositionGuide(sport, position);
+              if (!guide) return null;
+              return (
+                <CollapsibleSection
+                  title="What Coaches Want to See"
+                  subtitle={`${position} · ${sport} — clip type priorities`}
+                  accent={accentHex}
+                  defaultOpen={false}
+                >
+                  {/* Coach tip */}
+                  <div className="rounded-xl px-4 py-3 mb-5 flex items-start gap-3"
+                    style={{ background: `${accentHex}10`, border: `1px solid ${accentHex}30` }}>
+                    <span style={{ fontSize: 18, flexShrink: 0 }}>🏆</span>
+                    <p className="text-xs text-slate-300 leading-relaxed">{guide.coachTip}</p>
+                  </div>
+
+                  {/* Priority bars */}
+                  <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mb-3">Clip Type Priorities</p>
+                  <div className="flex flex-col gap-3 mb-5">
+                    {guide.weights.map((w, i) => (
+                      <div key={i}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs text-white font-semibold flex items-center gap-1.5">
+                            <span style={{ fontSize: 14 }}>{w.emoji}</span> {w.label}
+                          </span>
+                          <span className="text-xs font-bold tabular-nums" style={{ color: accentHex }}>{w.pct}%</span>
+                        </div>
+                        <div className="h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
+                          <div
+                            className="h-full rounded-full transition-all duration-500"
+                            style={{ width: `${w.pct}%`, background: i === 0 ? accentHex : `${accentHex}${Math.round(80 - i * 12).toString(16).padStart(2,"0")}` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Checklist */}
+                  <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mb-3">Does your reel include these?</p>
+                  <div className="flex flex-col gap-2 mb-4">
+                    {guide.checklist.map((item, i) => {
+                      const checked = guideChecks[i] || false;
+                      return (
+                        <label key={i} className="flex items-start gap-3 cursor-pointer">
+                          <button
+                            type="button"
+                            onClick={() => toggleGuideCheck(i)}
+                            className="shrink-0 w-5 h-5 rounded-md mt-0.5 flex items-center justify-center transition-all"
+                            style={{
+                              background: checked ? accentHex : "rgba(255,255,255,0.05)",
+                              border: checked ? `2px solid ${accentHex}` : "2px solid rgba(255,255,255,0.12)",
+                            }}
+                          >
+                            {checked && (
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={isLightColor(accentHex) ? "#050A14" : "#fff"} strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="20 6 9 17 4 12" />
+                              </svg>
+                            )}
+                          </button>
+                          <span className="text-sm leading-snug" style={{ color: checked ? "#fff" : "#94a3b8" }}>
+                            {item}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+
+                  {/* Diversity banner */}
+                  {(() => {
+                    const checkedCount = guideChecks.slice(0, guide.checklist.length).filter(Boolean).length;
+                    if (checkedCount >= guide.checklist.length) return (
+                      <div className="rounded-lg px-3 py-2.5 mb-3" style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.25)" }}>
+                        <p className="text-xs text-green-400 font-semibold">Great reel diversity — coaches will love this.</p>
+                      </div>
+                    );
+                    if (checkedCount < 3) return (
+                      <div className="rounded-lg px-3 py-2.5 mb-3" style={{ background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.2)" }}>
+                        <p className="text-xs text-amber-400">Add more variety to your reel — check off at least 3 clip types.</p>
+                      </div>
+                    );
+                    return null;
+                  })()}
+
+                  <div className="rounded-lg px-3 py-2.5 text-xs" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                    <p className="text-slate-400 leading-relaxed">
+                      Check each box as you confirm your reel includes that clip type. Aiming for 4+ checkboxes gives coaches a complete picture of your game.
+                    </p>
+                  </div>
+                </CollapsibleSection>
+              );
+            })()}
 
             {/* Next button */}
             <button type="button" onClick={handleNext}
