@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Footer from "@/components/Footer";
 
 const ChevronIcon = ({ open }: { open: boolean }) => (
   <svg
@@ -170,7 +171,7 @@ export default function FaqPage() {
   const router = useRouter();
 
   return (
-    <div className="min-h-screen bg-[#050A14] text-white">
+    <div className="min-h-screen bg-[#050A14] text-white flex flex-col">
       {/* Background grid */}
       <div className="fixed inset-0 pointer-events-none z-0" style={{
         backgroundImage: `linear-gradient(rgba(0,163,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(0,163,255,0.02) 1px, transparent 1px)`,
@@ -235,6 +236,8 @@ export default function FaqPage() {
           </button>
         </div>
       </main>
+
+      <Footer />
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 import { SPORTS_CONFIG } from "@/lib/sportsConfig";
+import Footer from "@/components/Footer";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -817,6 +818,7 @@ export default function ReviewPage() {
         </div>
       </div>
 
+      <Footer />
     </div>
   );
 }

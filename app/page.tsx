@@ -405,7 +405,7 @@ export default function Home() {
             <div>
               <p className="text-xs font-black tracking-widest uppercase text-slate-400 mb-4">Product</p>
               <ul className="flex flex-col gap-2.5">
-                {[["Create Reel", "/start"], ["AI Processing", "/process"], ["How It Works", "/#how-it-works"]].map(([label, href]) => (
+                {[["Create Reel", "/start"], ["AI Processing", "/ai-processing"], ["How It Works", "/how-it-works"]].map(([label, href]) => (
                   <li key={label}>
                     <a href={href} className="text-slate-500 text-sm hover:text-white transition-colors">{label}</a>
                   </li>
@@ -417,7 +417,7 @@ export default function Home() {
             <div>
               <p className="text-xs font-black tracking-widest uppercase text-slate-400 mb-4">Support</p>
               <ul className="flex flex-col gap-2.5">
-                {[["FAQ", "/faq"], ["My Reels", "/history"], ["Contact", "#"]].map(([label, href]) => (
+                {[["FAQ", "/faq"], ["My Reels", "/my-reels"], ["Contact", "/contact"]].map(([label, href]) => (
                   <li key={label}>
                     <a href={href} className="text-slate-500 text-sm hover:text-white transition-colors">{label}</a>
                   </li>
@@ -429,7 +429,7 @@ export default function Home() {
             <div>
               <p className="text-xs font-black tracking-widest uppercase text-slate-400 mb-4">Legal</p>
               <ul className="flex flex-col gap-2.5">
-                {[["Privacy Policy", "#"], ["Terms of Service", "#"]].map(([label, href]) => (
+                {[["Privacy Policy", "/privacy-policy"], ["Terms of Service", "/terms-of-service"]].map(([label, href]) => (
                   <li key={label}>
                     <a href={href} className="text-slate-500 text-sm hover:text-white transition-colors">{label}</a>
                   </li>

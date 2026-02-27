@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import ComingSoonModal from "@/components/ComingSoonModal";
+import Footer from "@/components/Footer";
 
 // ── Icons ──────────────────────────────────────────────────────────────────
 
@@ -54,7 +55,7 @@ export default function StartPage() {
   const [showModal, setShowModal] = useState(false);
 
   return (
-    <div className="min-h-screen bg-[#050A14] text-white overflow-x-hidden">
+    <div className="min-h-screen bg-[#050A14] text-white overflow-x-hidden flex flex-col">
       {/* CSS keyframes for animated gradients */}
       <style>{`
         @keyframes blue-pulse {
@@ -76,7 +77,7 @@ export default function StartPage() {
         background: "radial-gradient(ellipse 80% 40% at 50% -10%, rgba(0,80,255,0.14) 0%, transparent 100%)",
       }} />
 
-      <main className="relative z-10 flex flex-col items-center px-6 pt-10 pb-24">
+      <main className="relative z-10 flex flex-col items-center px-6 pt-10 pb-24 flex-1">
         {/* Header */}
         <div className="text-center mb-10">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-[#00A3FF]/30 bg-[#00A3FF]/10 text-[#00A3FF] text-xs font-bold tracking-widest uppercase mb-7">
@@ -202,8 +203,8 @@ export default function StartPage() {
         {/* ── Stats row ── */}
         <div className="mt-10 flex flex-col sm:flex-row items-center gap-6 sm:gap-10">
           {[
-            { icon: <PeopleIcon />, value: "500+", label: "Athletes" },
-            { icon: <TrophyIcon />, value: "2",    label: "Sports" },
+            { icon: <PeopleIcon />, value: "2,000+", label: "Athletes" },
+            { icon: <TrophyIcon />, value: "5",      label: "Sports" },
             { icon: <ClockStatIcon />, value: "3 Min", label: "Avg Reel" },
           ].map(({ icon, value, label }) => (
             <div key={label} className="flex flex-col items-center gap-1.5">
@@ -218,10 +219,12 @@ export default function StartPage() {
       {/* ── AI Processing Modal ── */}
       {showModal && (
         <ComingSoonModal
-          source="start_page_modal"
+          source="start_page_ai_card"
           onClose={() => setShowModal(false)}
         />
       )}
+
+      <Footer />
     </div>
   );
 }

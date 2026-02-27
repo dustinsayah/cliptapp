@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import ComingSoonModal from "./ComingSoonModal";
 
 // Pages where the global nav should be hidden (they have their own step-based nav)
 const HIDDEN_PATHS = ["/upload", "/customize", "/export", "/editor"];
@@ -32,14 +31,14 @@ interface NavLink {
   label: string;
   href: string;
   isAnchor?: boolean;
-  isModal?: boolean;
+  anchorId?: string;
   badge?: string;
 }
 
 const NAV_LINKS: NavLink[] = [
   { label: "Create Reel", href: "/start" },
-  { label: "AI Processing", href: "/process", isModal: true, badge: "New" },
-  { label: "How It Works", href: "/#how-it-works", isAnchor: true },
+  { label: "AI Processing", href: "/ai-processing", badge: "New" },
+  { label: "How It Works", href: "/how-it-works", isAnchor: true, anchorId: "how-it-works" },
 ];
 
 export default function Navigation() {
@@ -47,7 +46,6 @@ export default function Navigation() {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const [showAiModal, setShowAiModal] = useState(false);
 
   // Hide on workflow pages
   const hidden = HIDDEN_PATHS.some((p) => pathname.startsWith(p));
@@ -74,14 +72,11 @@ export default function Navigation() {
 
   const handleLinkClick = (link: NavLink) => {
     setMenuOpen(false);
-    if (link.isModal) {
-      setShowAiModal(true);
-      return;
-    }
     if (link.isAnchor) {
-      if (pathname === "/") {
-        const id = link.href.replace("/#", "");
-        document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
+      // On homepage: scroll to the anchor section
+      // On any other page: navigate to the page route
+      if (pathname === "/" && link.anchorId) {
+        document.getElementById(link.anchorId)?.scrollIntoView({ behavior: "smooth" });
       } else {
         router.push(link.href);
       }
@@ -90,9 +85,10 @@ export default function Navigation() {
     }
   };
 
-  const isActive = (href: string) =>
-    !href.includes("#") && !NAV_LINKS.find(l => l.href === href)?.isModal &&
-    (pathname === href || pathname.startsWith(href + "/"));
+  const isActive = (link: NavLink) => {
+    if (link.isAnchor && pathname === "/" ) return false;
+    return pathname === link.href || pathname.startsWith(link.href + "/");
+  };
 
   return (
     <>
@@ -126,17 +122,15 @@ export default function Navigation() {
                 onClick={() => handleLinkClick(link)}
                 className="relative flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-150"
                 style={{
-                  color: isActive(link.href) ? "#00A3FF" : "#94a3b8",
-                  background: isActive(link.href)
-                    ? "rgba(0,163,255,0.08)"
-                    : "transparent",
+                  color: isActive(link) ? "#00A3FF" : "#94a3b8",
+                  background: isActive(link) ? "rgba(0,163,255,0.08)" : "transparent",
                 }}
                 onMouseEnter={(e) => {
-                  if (!isActive(link.href))
+                  if (!isActive(link))
                     (e.currentTarget as HTMLButtonElement).style.color = "#e2e8f0";
                 }}
                 onMouseLeave={(e) => {
-                  if (!isActive(link.href))
+                  if (!isActive(link))
                     (e.currentTarget as HTMLButtonElement).style.color = "#94a3b8";
                 }}
               >
@@ -209,10 +203,8 @@ export default function Navigation() {
               onClick={() => handleLinkClick(link)}
               className="flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all text-left"
               style={{
-                color: isActive(link.href) ? "#00A3FF" : "#94a3b8",
-                background: isActive(link.href)
-                  ? "rgba(0,163,255,0.08)"
-                  : "transparent",
+                color: isActive(link) ? "#00A3FF" : "#94a3b8",
+                background: isActive(link) ? "rgba(0,163,255,0.08)" : "transparent",
               }}
             >
               {link.label === "AI Processing" && <SparkleIcon />}
@@ -250,14 +242,6 @@ export default function Navigation() {
           <p className="text-slate-600 text-xs">Your Game. Your Reel. Your Future.</p>
         </div>
       </div>
-
-      {/* ── AI Processing Modal ── */}
-      {showAiModal && (
-        <ComingSoonModal
-          source="nav_ai_click"
-          onClose={() => setShowAiModal(false)}
-        />
-      )}
     </>
   );
 }

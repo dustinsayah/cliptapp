@@ -95,9 +95,24 @@ GOOGLE_CLOUD_PROJECT_ID=clipt-production
 ```
 
 In **Vercel** (production):
-1. Go to your Vercel project → **Settings → Environment Variables**
-2. Add `GOOGLE_APPLICATION_CREDENTIALS` — paste the **entire JSON file contents** as the value, then update `app/api/classify-clips/route.ts` to parse it from the env var as JSON instead of a file path
-3. Add `GOOGLE_CLOUD_PROJECT_ID` = `clipt-production`
+
+> **Important:** On Vercel the filesystem is read-only, so the JSON file path does NOT work.
+> Use the `GOOGLE_CREDENTIALS_JSON` variable instead — the app handles both automatically.
+
+1. Open `secrets/google-credentials.json` in a text editor
+2. Select all content (Ctrl+A / Cmd+A) and **copy the entire JSON**
+3. Go to your Vercel project → **Settings → Environment Variables**
+4. Add a new variable:
+   - **Name:** `GOOGLE_CREDENTIALS_JSON`
+   - **Value:** paste the entire JSON content (it will appear as one long line — that is correct)
+   - Select environments: **Production**, **Preview**, **Development** (check all three)
+5. Add another variable:
+   - **Name:** `GOOGLE_CLOUD_PROJECT_ID`
+   - **Value:** `clipt-production`
+6. Click **Save** for each, then go to **Deployments → Redeploy** your latest deployment
+
+> **Do NOT** add `GOOGLE_APPLICATION_CREDENTIALS` on Vercel — it won't work because the file is not deployed.
+> The app checks for `GOOGLE_CREDENTIALS_JSON` first and automatically uses inline credentials on Vercel.
 
 ---
 
@@ -114,7 +129,10 @@ console.log('Project:', process.env.GOOGLE_CLOUD_PROJECT_ID);
 "
 ```
 
-Or use the **Admin Panel** (`/admin`) → "Test Google API Connection" button.
+Or use the **Admin Panel** (`/admin`) → **"API Connections"** section → click **"Test All Connections"**.
+
+This button calls `GET /api/test-connections` which tests both Supabase and Google Video Intelligence
+simultaneously and shows a green checkmark or red error for each.
 
 ---
 

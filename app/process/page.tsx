@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { isValidYouTubeUrl, getYouTubeThumbnail, type YouTubeOEmbedData } from "@/lib/youtubeUtils";
+import Footer from "@/components/Footer";
 import { supabase } from "@/lib/supabase";
 import { SPORTS_CONFIG } from "@/lib/sportsConfig";
 
@@ -1098,11 +1099,13 @@ export default function ProcessPage() {
         {/* Footer hint */}
         <p className="text-center text-slate-600 text-xs mt-4">
           Already submitted?{" "}
-          <button onClick={() => router.push("/history")} className="text-slate-500 hover:text-[#00A3FF] transition-colors underline">
+          <button onClick={() => router.push("/my-reels")} className="text-slate-500 hover:text-[#00A3FF] transition-colors underline">
             Find my reels →
           </button>
         </p>
       </main>
+
+      <Footer />
     </div>
   );
 }

@@ -150,6 +150,12 @@ export default function AdminPage() {
   // ── Review flow test ─────────────────────────────────────────────────────
   const [reviewSport,    setReviewSport]    = useState("Basketball");
   const [reviewPosition, setReviewPosition] = useState("Point Guard");
+
+  // ── API Connections test ──────────────────────────────────────────────────
+  interface ConnResult { connected: boolean; message: string }
+  const [connTesting,   setConnTesting]   = useState(false);
+  const [connResults,   setConnResults]   = useState<{ supabase?: ConnResult; google?: ConnResult } | null>(null);
+  // Legacy single-test state (kept to avoid breaking the old handler reference)
   const [apiTestResult,  setApiTestResult]  = useState<{ ok: boolean; message: string } | null>(null);
   const [apiTesting,     setApiTesting]     = useState(false);
 
@@ -195,6 +201,28 @@ export default function AdminPage() {
     router.push("/review");
   };
 
+  // ── Test all API connections via /api/test-connections ────────────────────
+  const handleTestConnections = async () => {
+    setConnTesting(true);
+    setConnResults(null);
+    try {
+      const res = await fetch("/api/test-connections");
+      const data = await res.json();
+      setConnResults({
+        supabase: data.supabase,
+        google:   data.google,
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Network error";
+      setConnResults({
+        supabase: { connected: false, message: msg },
+        google:   { connected: false, message: msg },
+      });
+    }
+    setConnTesting(false);
+  };
+
+  // Legacy single Google-API test (kept for backwards compatibility)
   const handleTestGoogleApi = async () => {
     setApiTesting(true);
     setApiTestResult(null);
@@ -216,7 +244,7 @@ export default function AdminPage() {
       } else if (data.error) {
         setApiTestResult({ ok: false, message: data.error });
       } else {
-        setApiTestResult({ ok: true, message: `Google Video Intelligence responded. Classified ${data.clips?.length ?? 0} clip(s).` });
+        setApiTestResult({ ok: true, message: `Google Video Intelligence responded. ${data.message ?? ""}` });
       }
     } catch (e) {
       setApiTestResult({ ok: false, message: e instanceof Error ? e.message : "Network error" });
@@ -748,28 +776,97 @@ export default function AdminPage() {
           </div>
         </section>
 
-        {/* ── Test Google API Connection ── */}
-        <section className="rounded-2xl overflow-hidden" style={{ background: "#0A1628", border: "1px solid rgba(34,197,94,0.2)" }}>
-          <div className="px-6 py-5 border-b border-white/[0.05]">
-            <h2 className="text-base font-black text-white">Test Google Video Intelligence API</h2>
-            <p className="text-slate-500 text-xs mt-0.5">Verifies GOOGLE_APPLICATION_CREDENTIALS is configured and the API responds</p>
+        {/* ── API Connections ── */}
+        <section className="rounded-2xl overflow-hidden" style={{ background: "#0A1628", border: "1px solid rgba(0,163,255,0.2)" }}>
+          <div className="px-6 py-5 border-b border-white/[0.05] flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-black text-white">API Connections</h2>
+              <p className="text-slate-500 text-xs mt-0.5">
+                Verify Supabase and Google Video Intelligence are configured and reachable
+              </p>
+            </div>
+            <div className="px-3 py-1 rounded-full text-xs font-bold" style={{ background: "rgba(0,163,255,0.1)", color: "#00A3FF", border: "1px solid rgba(0,163,255,0.25)" }}>
+              Diagnostics
+            </div>
           </div>
-          <div className="p-6 flex items-start gap-4 flex-wrap">
-            <button onClick={handleTestGoogleApi} disabled={apiTesting}
-              className="px-7 py-3 rounded-xl font-bold text-sm text-white transition-all hover:scale-[1.02] disabled:opacity-50"
-              style={{ background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.3)", color: "#22C55E" }}>
-              {apiTesting ? "Testing..." : "Test Google API Connection"}
+          <div className="p-6">
+            <button
+              onClick={handleTestConnections}
+              disabled={connTesting}
+              className="px-7 py-3 rounded-xl font-bold text-sm text-white transition-all hover:scale-[1.02] disabled:opacity-50 mb-5"
+              style={{ background: "linear-gradient(135deg, #0055EE, #00A3FF)", boxShadow: "0 0 20px rgba(0,120,255,0.25)" }}
+            >
+              {connTesting ? (
+                <span className="flex items-center gap-2">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
+                  Testing Connections...
+                </span>
+              ) : "Test All Connections"}
             </button>
-            {apiTestResult && (
-              <div className="flex-1 min-w-0 px-4 py-3 rounded-xl text-sm"
-                style={{
-                  background: apiTestResult.ok ? "rgba(34,197,94,0.07)" : "rgba(239,68,68,0.07)",
-                  border: `1px solid ${apiTestResult.ok ? "rgba(34,197,94,0.25)" : "rgba(239,68,68,0.25)"}`,
-                  color: apiTestResult.ok ? "#22C55E" : "#F87171",
-                }}>
-                {apiTestResult.ok ? "✓ " : "✗ "}{apiTestResult.message}
+
+            {connResults && (
+              <div className="flex flex-col gap-3">
+                {/* Supabase */}
+                <div
+                  className="flex items-start gap-3 px-4 py-3.5 rounded-xl"
+                  style={{
+                    background: connResults.supabase?.connected ? "rgba(34,197,94,0.06)" : "rgba(239,68,68,0.06)",
+                    border: `1px solid ${connResults.supabase?.connected ? "rgba(34,197,94,0.25)" : "rgba(239,68,68,0.25)"}`,
+                  }}
+                >
+                  <span className="text-lg leading-none mt-0.5" style={{ color: connResults.supabase?.connected ? "#22C55E" : "#EF4444" }}>
+                    {connResults.supabase?.connected ? "✓" : "✗"}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold" style={{ color: connResults.supabase?.connected ? "#22C55E" : "#EF4444" }}>
+                      Supabase — {connResults.supabase?.connected ? "Connected" : "Not Connected"}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{connResults.supabase?.message}</p>
+                  </div>
+                </div>
+
+                {/* Google Video Intelligence */}
+                <div
+                  className="flex items-start gap-3 px-4 py-3.5 rounded-xl"
+                  style={{
+                    background: connResults.google?.connected ? "rgba(34,197,94,0.06)" : "rgba(239,68,68,0.06)",
+                    border: `1px solid ${connResults.google?.connected ? "rgba(34,197,94,0.25)" : "rgba(239,68,68,0.25)"}`,
+                  }}
+                >
+                  <span className="text-lg leading-none mt-0.5" style={{ color: connResults.google?.connected ? "#22C55E" : "#EF4444" }}>
+                    {connResults.google?.connected ? "✓" : "✗"}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold" style={{ color: connResults.google?.connected ? "#22C55E" : "#EF4444" }}>
+                      Google Video Intelligence — {connResults.google?.connected ? "Connected" : "Not Connected"}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{connResults.google?.message}</p>
+                  </div>
+                </div>
               </div>
             )}
+
+            {/* Legacy single test (kept for quick access) */}
+            <div className="mt-4 pt-4 border-t border-white/[0.04]">
+              <p className="text-xs text-slate-600 mb-2">Quick Google-only test (classify-clips route)</p>
+              <div className="flex items-start gap-3 flex-wrap">
+                <button onClick={handleTestGoogleApi} disabled={apiTesting}
+                  className="px-5 py-2 rounded-lg font-bold text-xs transition-all hover:scale-[1.02] disabled:opacity-50"
+                  style={{ background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.25)", color: "#22C55E" }}>
+                  {apiTesting ? "Testing..." : "Test Google Video Intelligence"}
+                </button>
+                {apiTestResult && (
+                  <div className="flex-1 min-w-0 px-3 py-2 rounded-lg text-xs"
+                    style={{
+                      background: apiTestResult.ok ? "rgba(34,197,94,0.06)" : "rgba(239,68,68,0.06)",
+                      border: `1px solid ${apiTestResult.ok ? "rgba(34,197,94,0.2)" : "rgba(239,68,68,0.2)"}`,
+                      color: apiTestResult.ok ? "#22C55E" : "#F87171",
+                    }}>
+                    {apiTestResult.ok ? "✓ " : "✗ "}{apiTestResult.message}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </section>
 

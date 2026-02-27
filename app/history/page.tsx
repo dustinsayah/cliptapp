@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Footer from "@/components/Footer";
 
 interface JobRow {
   id: string;
@@ -134,7 +135,7 @@ export default function HistoryPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#050A14] text-white">
+    <div className="min-h-screen bg-[#050A14] text-white flex flex-col">
       {/* Grid background */}
       <div className="fixed inset-0 pointer-events-none z-0" style={{
         backgroundImage: `linear-gradient(rgba(0,163,255,0.018) 1px, transparent 1px), linear-gradient(90deg, rgba(0,163,255,0.018) 1px, transparent 1px)`,
@@ -320,6 +321,8 @@ export default function HistoryPage() {
           </div>
         )}
       </main>
+
+      <Footer />
     </div>
   );
 }

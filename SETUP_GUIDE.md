@@ -18,6 +18,28 @@ Environment variables are secret configuration values that your app needs to con
 | `RESEND_API_KEY` | Resend | resend.com/api-keys |
 | `VIDEO_PROCESSING_WEBHOOK_SECRET` | Your own | Generate with `openssl rand -hex 32` |
 | `OPENAI_API_KEY` | OpenAI | platform.openai.com/api-keys |
+| `GOOGLE_CREDENTIALS_JSON` | Google Cloud | **Entire contents** of `secrets/google-credentials.json` (see below) |
+| `GOOGLE_CLOUD_PROJECT_ID` | Google Cloud | `clipt-production` |
+
+### ⚠️ IMPORTANT — Google Credentials on Vercel
+
+The standard `GOOGLE_APPLICATION_CREDENTIALS` environment variable points to a **file path** — but
+Vercel's filesystem is read-only and the credentials file is never deployed. You must use the
+`GOOGLE_CREDENTIALS_JSON` variable instead.
+
+**How to set up `GOOGLE_CREDENTIALS_JSON` on Vercel:**
+1. Open `secrets/google-credentials.json` in a text editor
+2. Select all (Ctrl+A) and copy the **entire JSON content**
+3. In Vercel → Settings → Environment Variables, create a new variable:
+   - Name: `GOOGLE_CREDENTIALS_JSON`
+   - Value: paste the entire JSON (one long line is correct)
+4. Also add `GOOGLE_CLOUD_PROJECT_ID` = `clipt-production`
+5. Redeploy from Vercel → Deployments → Redeploy
+
+**Do NOT** add `GOOGLE_APPLICATION_CREDENTIALS` on Vercel — it won't work.
+
+For **local development**, `GOOGLE_APPLICATION_CREDENTIALS=./secrets/google-credentials.json`
+in `.env.local` works fine. Leave `GOOGLE_CREDENTIALS_JSON` blank locally.
 
 ### Adding Variables in Vercel (Production)
 

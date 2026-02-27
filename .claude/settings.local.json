@@ -14,7 +14,8 @@
       "Bash(python:*)",
       "Bash(node:*)",
       "Bash(npx next:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(python3:*)"
     ]
   }
 }

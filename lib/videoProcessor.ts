@@ -34,6 +34,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { sendProcessingCompleteEmail, sendProcessingFailedEmail } from "./emailService";
+import { classifyAllClips, isGoogleConfigured, type ClipForClassification } from "./googleVideoIntelligence";
 
 // ── Server-side Supabase client ───────────────────────────────────────────────
 function getSupabase() {
@@ -419,13 +420,44 @@ export async function processVideo(job: ProcessingJob): Promise<void> {
 
     // Step 3: Score and rank
     await updateJobStatus(jobId, "identifying");
-    const clips = await scoreAndRankClips(detectedFrames, sport);
+    const rankedClips = await scoreAndRankClips(detectedFrames, sport);
 
-    // Short delay to simulate reel assembly (~2s)
+    // Step 3.5: Enrich clip play types with Google Video Intelligence
+    //
+    // If Google API is configured → classify each clip using LABEL_DETECTION.
+    // If not configured or API fails → keep the mock play types from scoreAndRankClips.
+    let clips: ClipResult[];
+    if (isGoogleConfigured()) {
+      console.log(`[Job ${jobId}] Using Google Video Intelligence for play classification`);
+      try {
+        const clipsForClassification: ClipForClassification[] = rankedClips.map((c) => ({
+          ...c,
+          videoUrl: job.videoUrl,
+        }));
+        const enriched = await classifyAllClips(clipsForClassification, sport, job.position ?? "");
+        clips = enriched.map((c) => ({
+          startTime:      c.startTime,
+          endTime:        c.endTime,
+          confidence:     c.confidence,
+          playType:       c.playType,
+          jerseyVisible:  typeof c.jerseyVisible === "boolean" ? c.jerseyVisible : true,
+          thumbnailUrl:   typeof c.thumbnailUrl === "string"   ? c.thumbnailUrl : undefined,
+        }));
+        console.log(`[Job ${jobId}] Google Video Intelligence classification complete.`);
+      } catch (gviErr) {
+        console.error(`[Job ${jobId}] Google Video Intelligence failed — falling back to mock play types:`, gviErr);
+        clips = rankedClips;
+      }
+    } else {
+      console.log(`[Job ${jobId}] Using mock play types — Google API not configured`);
+      clips = rankedClips;
+    }
+
+    // Step 4: Simulate reel assembly (~2s)
     await updateJobStatus(jobId, "building");
     await new Promise((r) => setTimeout(r, 2000));
 
-    // Step 4: Save results
+    // Step 5: Save results
     await updateJobStatus(jobId, "complete", { result_clips: clips });
     console.log(`[Job ${jobId}] ✓ Complete — ${clips.length} clips found`);
 
