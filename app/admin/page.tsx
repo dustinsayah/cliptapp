@@ -266,21 +266,25 @@ export default function AdminPage() {
         setSimJob((prev) => prev ? { ...prev, elapsed: prev.elapsed + 1 } : prev);
       }, 1000);
 
-      // Poll status
+      // Poll status via API route (every 3 seconds)
       const poll = async () => {
-        const sr = await supabase.from("processing_jobs").select("status").eq("id", jobId).single();
-        if (sr.data) {
-          const st = sr.data.status as string;
-          setSimJob((prev) => prev ? { ...prev, status: st } : prev);
-          if (st === "complete" || st === "failed") {
-            if (simPollRef.current) clearInterval(simPollRef.current);
-            if (simElapsedRef.current) clearInterval(simElapsedRef.current);
-            loadJobs(); // refresh jobs table
+        try {
+          const sr = await fetch(`/api/process-video/status?jobId=${jobId}`);
+          const sd = await sr.json();
+          if (sd.status) {
+            setSimJob((prev) => prev ? { ...prev, status: sd.status } : prev);
+            if (sd.status === "complete" || sd.status === "failed") {
+              if (simPollRef.current) clearInterval(simPollRef.current);
+              if (simElapsedRef.current) clearInterval(simElapsedRef.current);
+              loadJobs(); // refresh jobs table
+            }
           }
+        } catch (pollErr) {
+          console.error("[admin] Poll error:", pollErr);
         }
       };
       poll();
-      simPollRef.current = setInterval(poll, 2000);
+      simPollRef.current = setInterval(poll, 3000);
     } catch (e) {
       setSimError(e instanceof Error ? e.message : "Network error");
     } finally {
@@ -444,8 +448,10 @@ export default function AdminPage() {
                   </div>
                 </div>
                 <SimProgressBar status={simJob.status} />
-                <div className="mt-2 flex items-center gap-2">
-                  <span className="text-xs text-slate-500 font-mono">job: {simJob.jobId.slice(0, 8)}...</span>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-slate-500 font-mono">
+                    job ID: <span className="text-slate-400 select-all">{simJob.jobId}</span>
+                  </span>
                   {simJob.status === "complete" && (
                     <span className="text-xs text-emerald-400 font-bold">✓ Complete — clips saved to Supabase</span>
                   )}

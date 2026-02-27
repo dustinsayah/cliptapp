@@ -32,43 +32,58 @@
 //   https://github.com/foxesdocode/yt-dlp-wrap
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { supabase } from "./supabase";
+import { createClient } from "@supabase/supabase-js";
+import { sendProcessingCompleteEmail, sendProcessingFailedEmail } from "./emailService";
 
-// ── Email notification helper ─────────────────────────────────────────────────
-//
-// TODO: When Resend is integrated, replace the Supabase-only insert below with
-// an actual email send. Example:
-//
-//   import { Resend } from 'resend';
-//   const resend = new Resend(process.env.RESEND_API_KEY);
-//   await resend.emails.send({
-//     from: 'Clipt <noreply@cliptapp.com>',
-//     to: email,
-//     subject: 'Your highlights are ready!',
-//     html: `<p>Hi ${firstName}, your AI reel for jersey #${jerseyNumber} is ready.</p>`,
-//   });
-//
+// ── Server-side Supabase client ───────────────────────────────────────────────
+function getSupabase() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key || url === "https://placeholder.supabase.co" || key === "your-anon-key-here") {
+    console.error("[videoProcessor] Supabase not configured — status updates will fail.");
+    return null;
+  }
+  return createClient(url, key);
+}
+
+// ── Email notification helpers ────────────────────────────────────────────────
+
 async function notifyEmailComplete(
   email: string,
   firstName: string,
-  jerseyNumber: number
+  jerseyNumber: number,
+  clipCount: number
 ): Promise<void> {
   if (!email?.trim()) return;
   try {
-    // Save email to waitlist with ai_processing_complete source so we have a record.
-    // This also ensures the email is captured even if it wasn't in the waitlist before.
-    const { error } = await supabase
-      .from("waitlist")
-      .insert({ email: email.trim().toLowerCase(), source: "ai_processing_complete" })
-      .select(); // use upsert-safe: duplicate emails are silently ignored
-    if (error && !error.message?.toLowerCase().includes("duplicate") && error.code !== "23505") {
-      console.error(`[notifyEmailComplete] Waitlist insert error:`, error);
-    } else {
-      console.log(`[notifyEmailComplete] Email captured for ${firstName} #${jerseyNumber}: ${email}`);
+    // 1. Save email to waitlist so we have a record
+    const supabase = getSupabase();
+    if (supabase) {
+      const { error } = await supabase
+        .from("waitlist")
+        .insert({ email: email.trim().toLowerCase(), source: "ai_processing_complete" });
+      if (error && error.code !== "23505" && !error.message?.toLowerCase().includes("duplicate")) {
+        console.error("[notifyEmailComplete] Waitlist insert error:", error.message);
+      }
     }
-    // TODO: Send actual email notification via Resend here
+    // 2. Send real email via Resend
+    await sendProcessingCompleteEmail(email, firstName, jerseyNumber, clipCount);
   } catch (err) {
     console.error("[notifyEmailComplete] Unexpected error:", err);
+  }
+}
+
+async function notifyEmailFailed(
+  email: string,
+  firstName: string,
+  jerseyNumber: number,
+  errorMessage: string
+): Promise<void> {
+  if (!email?.trim()) return;
+  try {
+    await sendProcessingFailedEmail(email, firstName, jerseyNumber, errorMessage);
+  } catch (err) {
+    console.error("[notifyEmailFailed] Unexpected error:", err);
   }
 }
 
@@ -133,13 +148,18 @@ async function updateJobStatus(
   extra?: Partial<{ error_message: string; result_clips: ClipResult[] }>
 ): Promise<void> {
   console.log(`[Job ${jobId}] Status → ${status}`);
+  const supabase = getSupabase();
+  if (!supabase) {
+    console.error(`[Job ${jobId}] Cannot update status — Supabase not configured`);
+    return;
+  }
   const { error } = await supabase
     .from("processing_jobs")
     .update({ status, updated_at: new Date().toISOString(), ...extra })
     .eq("id", jobId);
 
   if (error) {
-    console.error(`[Job ${jobId}] Failed to update status in Supabase:`, error);
+    console.error(`[Job ${jobId}] Failed to update status in Supabase:`, error.message, error.code);
   }
 }
 
@@ -404,14 +424,18 @@ export async function processVideo(job: ProcessingJob): Promise<void> {
     await updateJobStatus(jobId, "complete", { result_clips: clips });
     console.log(`[Job ${jobId}] ✓ Complete — ${clips.length} clips found`);
 
-    // Step 5: Notify athlete via email (Supabase record + TODO: Resend)
+    // Step 5: Notify athlete via email (Supabase record + Resend)
     if (job.email) {
-      await notifyEmailComplete(job.email, job.firstName, job.jerseyNumber);
+      await notifyEmailComplete(job.email, job.firstName, job.jerseyNumber, clips.length);
     }
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Unknown processing error";
     console.error(`[Job ${jobId}] ✗ Failed:`, message);
     await updateJobStatus(jobId, "failed", { error_message: message });
+    // Send failure notification email
+    if (job.email) {
+      await notifyEmailFailed(job.email, job.firstName, job.jerseyNumber, message);
+    }
   }
 }

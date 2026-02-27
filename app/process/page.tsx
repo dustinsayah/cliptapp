@@ -14,6 +14,24 @@ const POSITIONS: Record<string, string[]> = {
 
 const GRAD_YEARS = ["2025","2026","2027","2028","2029","2030"];
 
+// ── Accepted video formats ─────────────────────────────────────────────────
+
+const ACCEPTED_FORMATS = ["video/mp4","video/quicktime","video/x-msvideo","video/x-matroska","video/webm"];
+const ACCEPTED_EXTENSIONS = [".mp4",".mov",".avi",".mkv",".webm"];
+
+function getEstimatedTime(bytes: number): string {
+  const mb = bytes / 1e6;
+  if (mb < 500)  return "~2 minutes";
+  if (mb < 1000) return "~5 minutes";
+  return "~10 minutes";
+}
+
+function isAcceptedFormat(file: File): boolean {
+  if (ACCEPTED_FORMATS.includes(file.type)) return true;
+  const name = file.name.toLowerCase();
+  return ACCEPTED_EXTENSIONS.some((ext) => name.endsWith(ext));
+}
+
 // ── Mock clip generation ───────────────────────────────────────────────────
 
 export interface AiClip {
@@ -31,7 +49,6 @@ export interface AiClip {
   thumbnailUrl: string | null;
 }
 
-// Basketball: 8 clips, specific play types ordered by confidence score high to low
 const BASKETBALL_PLAYS: Array<{ playType: string; confidenceScore: number }> = [
   { playType: "Scoring Play",    confidenceScore: 0.97 },
   { playType: "Defensive Stop",  confidenceScore: 0.94 },
@@ -43,7 +60,6 @@ const BASKETBALL_PLAYS: Array<{ playType: string; confidenceScore: number }> = [
   { playType: "Post Move",       confidenceScore: 0.78 },
 ];
 
-// Football: clips by position
 const FOOTBALL_PLAYS: Record<string, Array<{ playType: string; confidenceScore: number }>> = {
   Quarterback: [
     { playType: "Touchdown Pass",     confidenceScore: 0.96 },
@@ -54,20 +70,20 @@ const FOOTBALL_PLAYS: Record<string, Array<{ playType: string; confidenceScore: 
     { playType: "Pocket Escape",      confidenceScore: 0.82 },
   ],
   "Running Back": [
-    { playType: "Big Run",           confidenceScore: 0.95 },
-    { playType: "Touchdown",         confidenceScore: 0.93 },
-    { playType: "Broken Tackle",     confidenceScore: 0.90 },
-    { playType: "Screen Pass Catch", confidenceScore: 0.87 },
+    { playType: "Big Run",            confidenceScore: 0.95 },
+    { playType: "Touchdown",          confidenceScore: 0.93 },
+    { playType: "Broken Tackle",      confidenceScore: 0.90 },
+    { playType: "Screen Pass Catch",  confidenceScore: 0.87 },
     { playType: "Yards After Contact",confidenceScore: 0.83 },
-    { playType: "Goal Line Carry",   confidenceScore: 0.80 },
+    { playType: "Goal Line Carry",    confidenceScore: 0.80 },
   ],
   "Wide Receiver": [
-    { playType: "Touchdown Reception", confidenceScore: 0.96 },
-    { playType: "Deep Ball Catch",     confidenceScore: 0.93 },
-    { playType: "Route Running",       confidenceScore: 0.90 },
-    { playType: "YAC Run",             confidenceScore: 0.87 },
-    { playType: "Contested Catch",     confidenceScore: 0.84 },
-    { playType: "Slant Route Score",   confidenceScore: 0.81 },
+    { playType: "Touchdown Reception",confidenceScore: 0.96 },
+    { playType: "Deep Ball Catch",    confidenceScore: 0.93 },
+    { playType: "Route Running",      confidenceScore: 0.90 },
+    { playType: "YAC Run",            confidenceScore: 0.87 },
+    { playType: "Contested Catch",    confidenceScore: 0.84 },
+    { playType: "Slant Route Score",  confidenceScore: 0.81 },
   ],
   Linebacker: [
     { playType: "Sack",            confidenceScore: 0.95 },
@@ -105,7 +121,6 @@ const FOOTBALL_PLAYS: Record<string, Array<{ playType: string; confidenceScore: 
 
 function generateMockClips(sport: string, jerseyNumber: number, position?: string): AiClip[] {
   let playDefs: Array<{ playType: string; confidenceScore: number }>;
-
   if (sport === "Basketball") {
     playDefs = BASKETBALL_PLAYS;
   } else if (sport === "Football") {
@@ -113,8 +128,6 @@ function generateMockClips(sport: string, jerseyNumber: number, position?: strin
   } else {
     playDefs = FOOTBALL_PLAYS.default;
   }
-
-  // Build clips with realistic, non-overlapping timestamps
   let cursor = 45 + Math.floor(Math.random() * 30);
   return playDefs.map(({ playType, confidenceScore }, i) => {
     const startTime = cursor;
@@ -141,10 +154,10 @@ function generateMockClips(sport: string, jerseyNumber: number, position?: strin
 // ── Processing steps ───────────────────────────────────────────────────────
 
 const PROC_STEPS = [
-  { key: "downloading", label: "Video Downloaded",          hint: "Fetching video from source..." },
-  { key: "scanning",    label: "Scanning frames for #",     hint: "Running computer vision model on frames..." },
-  { key: "identifying", label: "Ranking best plays",        hint: "Grouping and scoring detected plays..." },
-  { key: "building",    label: "Building your reel",        hint: "Compiling your highlight reel..." },
+  { key: "downloading", label: "Video Downloaded",       hint: "Fetching video from source..." },
+  { key: "scanning",    label: "Scanning frames for #",  hint: "Running computer vision model on frames..." },
+  { key: "identifying", label: "Ranking best plays",     hint: "Grouping and scoring detected plays..." },
+  { key: "building",    label: "Building your reel",     hint: "Compiling your highlight reel..." },
 ];
 
 const STATUS_IDX: Record<string, number> = {
@@ -181,14 +194,14 @@ const UploadIcon = () => (
   </svg>
 );
 
-const CheckCircleIcon = ({ color = "#22C55E" }: { color?: string }) => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+const CheckCircleIcon = ({ color = "#22C55E", size = 22 }: { color?: string; size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="10" /><polyline points="20 6 9 17 4 12" />
   </svg>
 );
 
-const AlertIcon = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+const AlertIcon = ({ size = 22 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="10" />
     <line x1="12" y1="8" x2="12" y2="12" />
     <line x1="12" y1="16" x2="12.01" y2="16" />
@@ -201,24 +214,31 @@ const Spinner = ({ size = 20, color = "#00A3FF" }: { size?: number; color?: stri
   </svg>
 );
 
+const XBigIcon = () => (
+  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2" strokeLinecap="round">
+    <circle cx="12" cy="12" r="10" />
+    <line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" />
+  </svg>
+);
+
 // ── Shared input style ─────────────────────────────────────────────────────
 
 const IS: React.CSSProperties = {
-  background: "rgba(255,255,255,0.04)",
-  border: "1px solid rgba(255,255,255,0.09)",
+  background:   "rgba(255,255,255,0.04)",
+  border:       "1px solid rgba(255,255,255,0.09)",
   borderRadius: "12px",
-  color: "#fff",
-  width: "100%",
-  padding: "12px 16px",
-  fontSize: "14px",
-  outline: "none",
+  color:        "#fff",
+  width:        "100%",
+  padding:      "12px 16px",
+  fontSize:     "14px",
+  outline:      "none",
 } as const;
 
 const LS: React.CSSProperties = {
-  display: "block",
-  fontSize: "13px",
-  fontWeight: 600,
-  color: "#e2e8f0",
+  display:      "block",
+  fontSize:     "13px",
+  fontWeight:   600,
+  color:        "#e2e8f0",
   marginBottom: "6px",
 } as const;
 
@@ -236,31 +256,32 @@ interface JobState {
   position: string;
   errorMessage: string | null;
   resultClips: AiClip[] | null;
+  queuePosition: number;
 }
 
 // ── Radar animation component ──────────────────────────────────────────────
 
 function RadarPulse() {
   return (
-    <div className="relative flex items-center justify-center" style={{ width: "180px", height: "180px" }}>
+    <div className="relative flex items-center justify-center" style={{ width: "clamp(120px, 40vw, 180px)", height: "clamp(120px, 40vw, 180px)" }}>
       {[0, 1, 2].map((i) => (
         <div
           key={i}
           className="absolute rounded-full border"
           style={{
-            width: "100px",
-            height: "100px",
+            width:  "clamp(67px, 22vw, 100px)",
+            height: "clamp(67px, 22vw, 100px)",
             borderColor: "rgba(0,163,255,0.5)",
             animation: "radar-ring 2.4s ease-out infinite",
             animationDelay: `${i * 0.8}s`,
           }}
         />
       ))}
-      <div className="absolute rounded-full border border-[#00A3FF]/20" style={{ width: "160px", height: "160px" }} />
-      <div className="absolute rounded-full border border-[#00A3FF]/10" style={{ width: "130px", height: "130px" }} />
+      <div className="absolute rounded-full border border-[#00A3FF]/20" style={{ width: "clamp(107px, 35vw, 160px)", height: "clamp(107px, 35vw, 160px)" }} />
+      <div className="absolute rounded-full border border-[#00A3FF]/10" style={{ width: "clamp(87px, 28vw, 130px)", height: "clamp(87px, 28vw, 130px)" }} />
       <div className="absolute rounded-full border-2 border-[#00A3FF] flex items-center justify-center"
-        style={{ width: "70px", height: "70px", background: "rgba(0,163,255,0.06)" }}>
-        <div className="rounded-full" style={{ width: "24px", height: "24px", background: "#00A3FF", boxShadow: "0 0 20px rgba(0,163,255,0.8)" }} />
+        style={{ width: "clamp(47px, 15vw, 70px)", height: "clamp(47px, 15vw, 70px)", background: "rgba(0,163,255,0.06)" }}>
+        <div className="rounded-full" style={{ width: "clamp(16px, 5vw, 24px)", height: "clamp(16px, 5vw, 24px)", background: "#00A3FF", boxShadow: "0 0 20px rgba(0,163,255,0.8)" }} />
       </div>
     </div>
   );
@@ -282,8 +303,11 @@ export default function ProcessPage() {
   const ytDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Upload state
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [dragging,   setDragging]   = useState(false);
+  const [uploadFile,          setUploadFile]          = useState<File | null>(null);
+  const [uploadFileError,     setUploadFileError]     = useState("");
+  const [uploadThumbnail,     setUploadThumbnail]     = useState<string | null>(null);
+  const [thumbnailGenerating, setThumbnailGenerating] = useState(false);
+  const [dragging,            setDragging]            = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Form state
@@ -312,6 +336,57 @@ export default function ProcessPage() {
   // Reset position when sport changes
   useEffect(() => { setPosition(""); }, [sport]);
 
+  // Generate canvas thumbnail for uploaded file
+  const generateVideoThumbnail = useCallback((file: File) => {
+    setThumbnailGenerating(true);
+    setUploadThumbnail(null);
+    try {
+      const url    = URL.createObjectURL(file);
+      const video  = document.createElement("video");
+      video.preload = "metadata";
+      video.muted   = true;
+      video.src     = url;
+      video.onseeked = () => {
+        try {
+          const canvas  = document.createElement("canvas");
+          canvas.width  = 320;
+          canvas.height = 180;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(video, 0, 0, 320, 180);
+            setUploadThumbnail(canvas.toDataURL("image/jpeg", 0.8));
+          }
+        } catch { /* canvas tainted from local file — skip */ }
+        URL.revokeObjectURL(url);
+        setThumbnailGenerating(false);
+      };
+      video.onerror = () => {
+        URL.revokeObjectURL(url);
+        setThumbnailGenerating(false);
+      };
+      video.onloadedmetadata = () => {
+        video.currentTime = Math.min(video.duration * 0.12, 5);
+      };
+    } catch {
+      setThumbnailGenerating(false);
+    }
+  }, []);
+
+  // Handle file selection (with validation)
+  const handleFileSelect = useCallback((file: File) => {
+    setUploadFileError("");
+    setUploadFile(null);
+    setUploadThumbnail(null);
+
+    if (!isAcceptedFormat(file)) {
+      setUploadFileError(`Unsupported format "${file.name.split(".").pop()?.toUpperCase() ?? "unknown"}". Please upload MP4, MOV, AVI, MKV, or WEBM.`);
+      return;
+    }
+
+    setUploadFile(file);
+    generateVideoThumbnail(file);
+  }, [generateVideoThumbnail]);
+
   // Fetch YouTube preview (debounced)
   useEffect(() => {
     if (ytDebounceRef.current) clearTimeout(ytDebounceRef.current);
@@ -328,10 +403,19 @@ export default function ProcessPage() {
       try {
         const res  = await fetch(`/api/youtube-info?url=${encodeURIComponent(ytUrl)}`);
         const data = await res.json();
-        if (!res.ok) { setYtPreviewError(data.error ?? "Could not load preview"); setYtPreview(null); }
-        else         { setYtPreview(data as YouTubeOEmbedData); setYtPreviewError(""); }
+        if (!res.ok) {
+          setYtPreviewError(
+            data.error?.toLowerCase().includes("private") || data.error?.toLowerCase().includes("unavailable")
+              ? "This video is private or unavailable. Please use a public YouTube video or upload your file directly."
+              : (data.error ?? "Could not load video preview.")
+          );
+          setYtPreview(null);
+        } else {
+          setYtPreview(data as YouTubeOEmbedData);
+          setYtPreviewError("");
+        }
       } catch {
-        setYtPreviewError("Failed to fetch video info");
+        setYtPreviewError("Failed to fetch video info. Check your connection.");
         setYtPreview(null);
       } finally {
         setYtPreviewLoading(false);
@@ -371,8 +455,8 @@ export default function ProcessPage() {
       localStorage.setItem("aiGeneratedClips", JSON.stringify(clips));
       localStorage.setItem("aiJobMeta", JSON.stringify({
         jerseyNumber: job.jerseyNumber,
-        firstName: job.firstName,
-        sport: job.sport,
+        firstName:    job.firstName,
+        sport:        job.sport,
       }));
       setClipsSaved(true);
     }
@@ -381,9 +465,7 @@ export default function ProcessPage() {
   // Auto-navigate to /customize when complete
   useEffect(() => {
     if (job?.status === "complete" && clipsSaved) {
-      const timer = setTimeout(() => {
-        router.push("/customize");
-      }, 2500);
+      const timer = setTimeout(() => router.push("/customize"), 2500);
       return () => clearTimeout(timer);
     }
   }, [job?.status, clipsSaved, router]);
@@ -401,41 +483,40 @@ export default function ProcessPage() {
 
   // Demo simulation (client-side fallback when API unavailable)
   const runDemoSimulation = useCallback((jNum: number, fname: string, spt: string, pos: string) => {
-    const mockJob: JobState = { id: "demo", status: "queued", jerseyNumber: jNum, firstName: fname, sport: spt, position: pos, errorMessage: null, resultClips: null };
+    const mockJob: JobState = {
+      id: "demo", status: "queued",
+      jerseyNumber: jNum, firstName: fname, sport: spt, position: pos,
+      errorMessage: null, resultClips: null, queuePosition: 1,
+    };
     setJob(mockJob);
     setPhase("processing");
-
     const steps: Array<[number, string]> = [
-      [1200, "downloading"],
-      [3800, "scanning"],
-      [3200, "identifying"],
-      [2000, "building"],
-      [1500, "complete"],
+      [1200, "downloading"], [3800, "scanning"],
+      [3200, "identifying"], [2000, "building"], [1500, "complete"],
     ];
     let total = 0;
     steps.forEach(([delay, status]) => {
       total += delay;
-      setTimeout(() => {
-        setJob((prev) => prev ? { ...prev, status } : prev);
-      }, total);
+      setTimeout(() => setJob((prev) => prev ? { ...prev, status } : prev), total);
     });
   }, []);
 
-  // Poll job status
+  // Poll job status via API
   const startPolling = useCallback((jobId: string, jNum: number, fname: string, spt: string, pos: string) => {
     const poll = async () => {
       try {
         const res  = await fetch(`/api/process-video/status?jobId=${jobId}`);
         const data = await res.json();
         setJob({
-          id: data.id,
-          status: data.status,
-          jerseyNumber: jNum,
-          firstName: fname,
-          sport: spt,
-          position: pos,
-          errorMessage: data.errorMessage ?? null,
-          resultClips: data.resultClips ?? null,
+          id:            data.id,
+          status:        data.status,
+          jerseyNumber:  jNum,
+          firstName:     fname,
+          sport:         spt,
+          position:      pos,
+          errorMessage:  data.errorMessage ?? null,
+          resultClips:   data.resultClips ?? null,
+          queuePosition: data.queuePosition ?? 0,
         });
         if (data.status === "complete" || data.status === "failed") {
           if (pollRef.current) clearInterval(pollRef.current);
@@ -445,13 +526,14 @@ export default function ProcessPage() {
       }
     };
     poll();
-    pollRef.current = setInterval(poll, 5000);
+    pollRef.current = setInterval(poll, 3000);
   }, []);
 
   // Validation
   const sharedFilled = firstName.trim() && lastName.trim() && jerseyNumber.trim() &&
     position.trim() && sport.trim() && school.trim() && email.trim();
-  const canSubmit = (tab === "youtube" ? isValidYouTubeUrl(ytUrl) && !ytPreviewLoading : !!uploadFile) && !!sharedFilled;
+  const ytReady  = tab === "youtube" && isValidYouTubeUrl(ytUrl) && !ytPreviewLoading && !!ytPreview;
+  const canSubmit = (tab === "youtube" ? ytReady : !!uploadFile) && !!sharedFilled;
 
   // Submit
   const handleSubmit = async () => {
@@ -479,24 +561,34 @@ export default function ProcessPage() {
         body: JSON.stringify({
           videoUrl,
           firstName: fname,
-          lastName: lastName.trim(),
+          lastName:  lastName.trim(),
           jerseyNumber: jNum,
           position: pos,
-          sport: spt,
-          school: school.trim(),
-          email: email.trim(),
+          sport:    spt,
+          school:   school.trim(),
+          email:    email.trim(),
         }),
       });
       const data = await res.json();
+      console.log("[process-video] API response:", res.status, data);
 
       if (!res.ok) {
+        if (res.status === 429) {
+          setSubmitError(data.error ?? "Too many requests. Please wait before submitting again.");
+          setSubmitting(false);
+          return;
+        }
+        // For other errors (503 = no Supabase, 500 = DB error), fall back to demo with notice
+        console.warn("[process-video] API error:", data.error, "— running demo simulation");
         runDemoSimulation(jNum, fname, spt, pos);
         return;
       }
 
-      setJob({ id: data.jobId, status: "queued", jerseyNumber: jNum, firstName: fname, sport: spt, position: pos, errorMessage: null, resultClips: null });
+      const jobId: string = data.jobId;
+      const queuePosition: number = data.queuePosition ?? 1;
+      setJob({ id: jobId, status: "queued", jerseyNumber: jNum, firstName: fname, sport: spt, position: pos, errorMessage: null, resultClips: null, queuePosition });
       setPhase("processing");
-      startPolling(data.jobId, jNum, fname, spt, pos);
+      startPolling(jobId, jNum, fname, spt, pos);
     } catch {
       runDemoSimulation(jNum, fname, spt, pos);
     } finally {
@@ -504,10 +596,19 @@ export default function ProcessPage() {
     }
   };
 
-  const positions    = POSITIONS[sport] ?? [];
-  const currentStep  = STATUS_IDX[job?.status ?? "queued"] ?? -1;
+  const positions   = POSITIONS[sport] ?? [];
+  const currentStep = STATUS_IDX[job?.status ?? "queued"] ?? -1;
   const thumbnailUrl = ytPreview ? (getYouTubeThumbnail(ytUrl, "maxres") ?? ytPreview.thumbnail_url) : null;
   const clipCount    = job ? generateMockClips(job.sport, job.jerseyNumber, job.position).length : 0;
+
+  // ── Queue position message ─────────────────────────────────────────────────
+  const queueMsg = (() => {
+    if (!job) return null;
+    const pos = job.queuePosition;
+    if (job.status !== "queued" || pos <= 1) return null;
+    const estMins = (pos - 1) * 2;
+    return `You are #${pos} in queue — estimated wait ~${estMins} minute${estMins !== 1 ? "s" : ""}`;
+  })();
 
   // ══════════════════════════════════════════════════════════════════════════
   // PROCESSING PHASE
@@ -534,28 +635,41 @@ export default function ProcessPage() {
           backgroundSize: "64px 64px",
         }} />
 
-        <main className="relative z-10 flex flex-col items-center justify-center min-h-screen px-6 py-16">
+        <main className="relative z-10 flex flex-col items-center justify-center min-h-screen px-4 py-12">
           <div className="w-full max-w-2xl">
-            <div className="rounded-2xl p-8 sm:p-10" style={{
+            <div className="rounded-2xl p-6 sm:p-10" style={{
               background: "#0A1628",
               border: "1px solid rgba(255,255,255,0.08)",
               boxShadow: "0 0 80px rgba(0,80,255,0.1)",
             }}>
               {isFailed ? (
+                // ── Error recovery ───────────────────────────────────────────
                 <div className="text-center">
-                  <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-5"
+                  <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-5"
                     style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)" }}>
-                    <AlertIcon />
+                    <XBigIcon />
                   </div>
-                  <h2 className="text-xl font-black text-white mb-2">Processing Failed</h2>
-                  <p className="text-slate-400 text-sm mb-7 leading-relaxed">{job.errorMessage ?? "An unexpected error occurred. Please try again."}</p>
-                  <button onClick={() => { setPhase("input"); setJob(null); setElapsed(0); }}
-                    className="px-8 py-3 rounded-xl font-bold text-sm text-white transition-all hover:scale-[1.02]"
-                    style={{ background: "linear-gradient(135deg, #0055EE 0%, #00A3FF 100%)", boxShadow: "0 0 24px rgba(0,120,255,0.3)" }}>
-                    Try Again
-                  </button>
+                  <h2 className="text-2xl font-black text-white mb-3">Processing Failed</h2>
+                  <p className="text-slate-400 text-sm mb-7 leading-relaxed max-w-md mx-auto">
+                    {job.errorMessage ?? "An unexpected error occurred during AI processing. Your clips were not affected."}
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                    <button
+                      onClick={() => { setPhase("input"); setJob(null); setElapsed(0); setClipsSaved(false); }}
+                      className="px-8 py-3 rounded-xl font-bold text-sm text-white transition-all hover:scale-[1.02]"
+                      style={{ background: "linear-gradient(135deg, #0055EE 0%, #00A3FF 100%)", boxShadow: "0 0 24px rgba(0,120,255,0.3)" }}>
+                      Try Again
+                    </button>
+                    <button
+                      onClick={() => router.push("/upload")}
+                      className="px-8 py-3 rounded-xl font-bold text-sm text-slate-300 transition-all hover:text-white"
+                      style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}>
+                      Upload Clips Manually
+                    </button>
+                  </div>
                 </div>
               ) : isComplete ? (
+                // ── Complete ─────────────────────────────────────────────────
                 <div className="text-center">
                   <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6"
                     style={{ background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.3)" }}>
@@ -583,9 +697,10 @@ export default function ProcessPage() {
                   </div>
                 </div>
               ) : (
+                // ── In progress ──────────────────────────────────────────────
                 <>
                   {/* Top row: elapsed + jersey badge */}
-                  <div className="flex items-center justify-between mb-8">
+                  <div className="flex items-center justify-between mb-6 sm:mb-8 flex-wrap gap-2">
                     <div className="flex items-center gap-2 px-3 py-1.5 rounded-full"
                       style={{ background: "rgba(0,163,255,0.1)", border: "1px solid rgba(0,163,255,0.25)" }}>
                       <span className="w-2 h-2 rounded-full bg-[#00A3FF] animate-pulse" />
@@ -596,8 +711,16 @@ export default function ProcessPage() {
                     </div>
                   </div>
 
-                  {/* Main 2-col layout */}
-                  <div className="flex flex-col lg:flex-row gap-8 items-start">
+                  {/* Queue position */}
+                  {queueMsg && (
+                    <div className="mb-5 px-4 py-2.5 rounded-xl text-sm text-center"
+                      style={{ background: "rgba(0,163,255,0.06)", border: "1px solid rgba(0,163,255,0.18)", color: "#7EC8FF" }}>
+                      {queueMsg}
+                    </div>
+                  )}
+
+                  {/* Main 2-col layout — stacks on mobile */}
+                  <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 items-start">
                     {/* Left: timeline */}
                     <div className="lg:w-52 shrink-0 w-full">
                       <p className="text-[10px] font-black tracking-widest uppercase text-slate-600 mb-4">Progress</p>
@@ -629,11 +752,11 @@ export default function ProcessPage() {
                                     : <span className="text-[9px] font-bold text-slate-600">{i + 1}</span>}
                                 </div>
                                 {i < PROC_STEPS.length - 1 && (
-                                  <div className="w-0.5 h-8 mt-1 transition-all duration-500 rounded-full"
+                                  <div className="w-0.5 h-7 mt-1 transition-all duration-500 rounded-full"
                                     style={{ background: isDone ? "rgba(34,197,94,0.4)" : "rgba(255,255,255,0.07)" }} />
                                 )}
                               </div>
-                              <div className="pb-8 pt-0.5">
+                              <div className="pb-7 pt-0.5">
                                 <p className="text-sm font-semibold leading-none transition-colors duration-300"
                                   style={{ color: isDone ? "#22C55E" : isActive ? "#fff" : "#475569" }}>
                                   {label}
@@ -649,10 +772,10 @@ export default function ProcessPage() {
                     </div>
 
                     {/* Right: radar + status */}
-                    <div className="flex-1 flex flex-col items-center justify-center min-h-[260px]">
+                    <div className="flex-1 flex flex-col items-center justify-center min-h-[200px] sm:min-h-[260px]">
                       <RadarPulse />
-                      <div className="mt-6 text-center">
-                        <h3 className="text-xl font-black text-white mb-2">
+                      <div className="mt-5 text-center">
+                        <h3 className="text-lg sm:text-xl font-black text-white mb-2">
                           {currentStep === 0 && "Downloading video..."}
                           {currentStep === 1 && `Scanning for jersey #${job.jerseyNumber}...`}
                           {currentStep === 2 && "Ranking best plays..."}
@@ -666,7 +789,7 @@ export default function ProcessPage() {
                     </div>
                   </div>
 
-                  <p className="text-center text-slate-600 text-xs mt-8">
+                  <p className="text-center text-slate-600 text-xs mt-6 sm:mt-8">
                     This takes 1–2 minutes. Your clips will be ready to review when complete.
                   </p>
                 </>
@@ -689,6 +812,8 @@ export default function ProcessPage() {
           0%   { transform: scale(1);   opacity: 0.8; }
           100% { transform: scale(2.6); opacity: 0; }
         }
+        input[type=number]::-webkit-inner-spin-button,
+        input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
       `}</style>
 
       <div className="fixed inset-0 pointer-events-none z-0" style={{
@@ -699,15 +824,15 @@ export default function ProcessPage() {
         background: "radial-gradient(ellipse 80% 40% at 50% -5%, rgba(0,80,255,0.13) 0%, transparent 100%)",
       }} />
 
-      <main className="relative z-10 max-w-3xl mx-auto px-6 pb-24">
+      <main className="relative z-10 max-w-3xl mx-auto px-4 sm:px-6 pb-24">
 
         {/* ── Hero ── */}
-        <div className="pt-12 pb-10 text-center">
+        <div className="pt-10 sm:pt-12 pb-8 sm:pb-10 text-center">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-[#00A3FF]/30 bg-[#00A3FF]/10 text-[#00A3FF] text-xs font-bold tracking-widest uppercase mb-6">
             <SparkleIcon size={14} />
             AI Processing
           </div>
-          <h1 className="text-4xl sm:text-5xl font-black text-white leading-tight mb-4">
+          <h1 className="text-3xl sm:text-5xl font-black text-white leading-tight mb-4">
             Let AI Build Your Reel
           </h1>
           <p className="text-slate-400 text-base sm:text-lg max-w-xl mx-auto leading-relaxed">
@@ -717,13 +842,13 @@ export default function ProcessPage() {
         </div>
 
         {/* ── How It Works ── */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-12">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-10 sm:mb-12">
           {[
             { n: "1", icon: <UploadIcon />,            title: "Submit Your Film",    desc: "Paste a YouTube link or upload your game film." },
             { n: "2", icon: <SparkleIcon size={32} />, title: "AI Scans For You",    desc: `Our model detects jersey #${jerseyNumber || "?"} in every frame.` },
             { n: "3", icon: <FilmIcon size={32} />,    title: "Get Your Highlights", desc: "Review your top plays and export your recruiting reel." },
           ].map(({ n, icon, title, desc }) => (
-            <div key={n} className="relative p-5 rounded-2xl flex flex-col gap-3"
+            <div key={n} className="relative p-4 sm:p-5 rounded-2xl flex flex-col gap-3"
               style={{ background: "#0A1628", border: "1px solid rgba(255,255,255,0.07)" }}>
               <div className="absolute top-4 right-4 text-4xl font-black text-white/[0.04] select-none">{n}</div>
               <div style={{ color: "#00A3FF" }}>{icon}</div>
@@ -733,12 +858,12 @@ export default function ProcessPage() {
           ))}
         </div>
 
-        {/* ── Tabs ── */}
-        <div className="flex gap-1 p-1 rounded-xl mb-7 w-fit"
+        {/* ── Tabs — full width on mobile ── */}
+        <div className="flex gap-1 p-1 rounded-xl mb-7 w-full sm:w-fit"
           style={{ background: "#0A1628", border: "1px solid rgba(255,255,255,0.07)" }}>
           {(["youtube","upload"] as Tab[]).map((t) => (
             <button key={t} onClick={() => setTab(t)}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-all duration-200"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 rounded-lg text-sm font-bold transition-all duration-200"
               style={tab === t
                 ? { background: "linear-gradient(135deg, #0055EE 0%, #00A3FF 100%)", color: "#fff", boxShadow: "0 0 20px rgba(0,120,255,0.3)" }
                 : { color: "#64748b" }}>
@@ -755,20 +880,31 @@ export default function ProcessPage() {
             <div className="relative">
               <input type="url" value={ytUrl} onChange={(e) => setYtUrl(e.target.value)}
                 placeholder="https://www.youtube.com/watch?v=..."
-                style={{ ...IS, paddingRight: "48px", borderColor: ytPreviewError ? "rgba(239,68,68,0.5)" : ytPreview ? "rgba(34,197,94,0.4)" : "rgba(255,255,255,0.09)" }}
+                style={{
+                  ...IS, paddingRight: "48px",
+                  borderColor: ytPreviewError ? "rgba(239,68,68,0.5)"
+                             : ytPreview     ? "rgba(34,197,94,0.4)"
+                             : "rgba(255,255,255,0.09)",
+                }}
                 onFocus={(e) => { if (!ytPreviewError && !ytPreview) e.currentTarget.style.borderColor = "rgba(0,163,255,0.5)"; }}
                 onBlur={(e)  => { if (!ytPreviewError && !ytPreview) e.currentTarget.style.borderColor = "rgba(255,255,255,0.09)"; }}
               />
               <div className="absolute right-3 top-1/2 -translate-y-1/2">
                 {ytPreviewLoading && <Spinner size={18} />}
-                {ytPreview && !ytPreviewLoading && <CheckCircleIcon color="#22C55E" />}
+                {ytPreview && !ytPreviewLoading && canSubmit && <CheckCircleIcon color="#22C55E" size={20} />}
+                {ytPreview && !ytPreviewLoading && !canSubmit && <CheckCircleIcon color="#22C55E" size={20} />}
               </div>
             </div>
-            {ytPreviewError && <p className="text-red-400 text-xs mt-1.5">{ytPreviewError}</p>}
+            {ytPreviewError && (
+              <div className="flex items-start gap-2 mt-2">
+                <AlertIcon size={15} />
+                <p className="text-red-400 text-xs leading-snug">{ytPreviewError}</p>
+              </div>
+            )}
 
             {/* Preview card */}
             {ytPreview && (
-              <div className="mt-4 rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.08)", background: "#0A1628" }}>
+              <div className="mt-4 rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(34,197,94,0.25)", background: "#0A1628" }}>
                 <div className="relative" style={{ paddingBottom: "56.25%" }}>
                   {thumbnailUrl && (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -778,20 +914,26 @@ export default function ProcessPage() {
                     />
                   )}
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="w-14 h-14 rounded-full flex items-center justify-center"
+                    <div className="w-12 h-12 rounded-full flex items-center justify-center"
                       style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(4px)" }}>
-                      <svg width="22" height="22" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3" /></svg>
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3" /></svg>
                     </div>
                   </div>
+                  {/* Valid badge overlay */}
+                  <div className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full"
+                    style={{ background: "rgba(34,197,94,0.9)", backdropFilter: "blur(4px)" }}>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+                    <span className="text-white text-[10px] font-black">Video found</span>
+                  </div>
                 </div>
-                <div className="px-5 py-4 flex items-start justify-between gap-4">
-                  <div>
+                <div className="px-4 sm:px-5 py-4 flex items-start justify-between gap-4">
+                  <div className="min-w-0">
                     <p className="text-white text-sm font-semibold line-clamp-1 mb-0.5">{ytPreview.title}</p>
-                    <p className="text-slate-500 text-xs">{ytPreview.author_name} · Duration detected during processing</p>
+                    <p className="text-slate-500 text-xs">{ytPreview.author_name}</p>
                   </div>
                   <button onClick={() => { setYtUrl(""); setYtPreview(null); }}
                     className="text-xs text-slate-500 hover:text-[#00A3FF] transition-colors whitespace-nowrap shrink-0 font-semibold">
-                    Change Video
+                    Change
                   </button>
                 </div>
               </div>
@@ -803,34 +945,69 @@ export default function ProcessPage() {
         {tab === "upload" && (
           <div className="mb-6">
             <label style={LS}>Game Film Video</label>
-            <div onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+            <div
+              onDragOver={(e)  => { e.preventDefault(); setDragging(true); }}
               onDragLeave={() => setDragging(false)}
-              onDrop={(e) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) setUploadFile(f); }}
-              onClick={() => !uploadFile && fileInputRef.current?.click()}
-              className="rounded-xl p-8 flex flex-col items-center text-center transition-all cursor-pointer"
-              style={{ background: "#0A1628", border: `2px dashed ${dragging ? "#00A3FF" : "rgba(0,163,255,0.35)"}`, boxShadow: dragging ? "0 0 28px rgba(0,163,255,0.12)" : "none" }}>
+              onDrop={(e)     => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFileSelect(f); }}
+              onClick={()     => !uploadFile && fileInputRef.current?.click()}
+              className="rounded-xl p-6 sm:p-8 flex flex-col items-center text-center transition-all cursor-pointer"
+              style={{
+                background: "#0A1628",
+                border: `2px dashed ${dragging ? "#00A3FF" : uploadFileError ? "rgba(239,68,68,0.5)" : uploadFile ? "rgba(34,197,94,0.4)" : "rgba(0,163,255,0.35)"}`,
+                boxShadow: dragging ? "0 0 28px rgba(0,163,255,0.12)" : "none",
+              }}>
               {uploadFile ? (
-                <div className="w-full">
+                <div className="w-full space-y-3">
+                  {/* Thumbnail preview */}
+                  {(uploadThumbnail || thumbnailGenerating) && (
+                    <div className="relative rounded-xl overflow-hidden mb-3" style={{ paddingBottom: "56.25%" }}>
+                      {thumbnailGenerating ? (
+                        <div className="absolute inset-0 flex items-center justify-center" style={{ background: "rgba(0,163,255,0.05)" }}>
+                          <Spinner size={24} />
+                        </div>
+                      ) : uploadThumbnail ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={uploadThumbnail} alt="Video thumbnail" className="absolute inset-0 w-full h-full object-cover" />
+                      ) : null}
+                    </div>
+                  )}
+
+                  {/* File info row */}
                   <div className="flex items-center justify-between px-4 py-3 rounded-xl"
                     style={{ background: "rgba(0,163,255,0.08)", border: "1px solid rgba(0,163,255,0.25)" }}>
                     <div className="flex flex-col text-left min-w-0 mr-3">
                       <span className="text-white text-sm font-semibold truncate">{uploadFile.name}</span>
-                      <span className="text-slate-500 text-xs mt-0.5">{(uploadFile.size / 1e6).toFixed(0)} MB</span>
+                      <span className="text-slate-400 text-xs mt-0.5">
+                        {(uploadFile.size / 1e6).toFixed(0)} MB · Est. {getEstimatedTime(uploadFile.size)}
+                      </span>
                     </div>
-                    <button onClick={(e) => { e.stopPropagation(); setUploadFile(null); }}
+                    <button onClick={(e) => { e.stopPropagation(); setUploadFile(null); setUploadThumbnail(null); setUploadFileError(""); }}
                       className="text-slate-500 hover:text-red-400 transition-colors shrink-0">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                         <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
                       </svg>
                     </button>
                   </div>
+
+                  {/* Large file warning */}
+                  {uploadFile.size > 2e9 && (
+                    <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl text-xs text-amber-400"
+                      style={{ background: "rgba(245,158,11,0.07)", border: "1px solid rgba(245,158,11,0.2)" }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="shrink-0 mt-0.5">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                        <line x1="12" y1="9" x2="12" y2="13" />
+                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                      </svg>
+                      Large files may take longer to process. Make sure you have a stable connection.
+                    </div>
+                  )}
                 </div>
               ) : (
                 <>
                   <div className="mb-4"><UploadIcon /></div>
                   <p className="text-white font-bold text-base mb-1">Drop your game film here</p>
-                  <p className="text-slate-400 text-sm mb-1">MP4, MOV, MKV — up to 4GB</p>
-                  <p className="text-slate-500 text-xs mb-5">Any video format accepted</p>
+                  <p className="text-slate-400 text-sm mb-1">MP4, MOV, AVI, MKV, WEBM — up to 4GB</p>
+                  <p className="text-slate-500 text-xs mb-5">or click to browse</p>
                   <button type="button" onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
                     className="px-6 py-2.5 rounded-xl text-sm font-bold text-white transition-all hover:opacity-90"
                     style={{ background: "#00A3FF" }}>
@@ -838,14 +1015,26 @@ export default function ProcessPage() {
                   </button>
                 </>
               )}
-              <input ref={fileInputRef} type="file" accept="video/*,.mp4,.mov,.mkv,.avi,.webm" className="hidden"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) setUploadFile(f); }} />
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={[...ACCEPTED_FORMATS, ...ACCEPTED_EXTENSIONS].join(",")}
+                className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileSelect(f); e.target.value = ""; }}
+              />
             </div>
+
+            {uploadFileError && (
+              <div className="flex items-start gap-2 mt-2 text-xs text-red-400">
+                <AlertIcon size={14} />
+                <span>{uploadFileError}</span>
+              </div>
+            )}
           </div>
         )}
 
         {/* ── Athlete Info Form ── */}
-        <div className="rounded-2xl p-6 mb-6" style={{ background: "#0A1628", border: "1px solid rgba(255,255,255,0.07)" }}>
+        <div className="rounded-2xl p-5 sm:p-6 mb-6" style={{ background: "#0A1628", border: "1px solid rgba(255,255,255,0.07)" }}>
           <h2 className="text-base font-black text-white mb-5">Athlete Info</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
@@ -889,7 +1078,7 @@ export default function ProcessPage() {
             <div>
               <label style={LS}>
                 Jersey Number
-                <span className="ml-2 text-xs font-normal text-slate-500">— The AI will scan every frame for this number</span>
+                <span className="ml-2 text-xs font-normal text-slate-500">— AI scans every frame for this</span>
               </label>
               <input type="number" min={0} max={99} value={jerseyNumber} onChange={(e) => setJerseyNumber(e.target.value)} placeholder="e.g. 23"
                 style={{ ...IS, maxWidth: "160px" }}
@@ -925,32 +1114,44 @@ export default function ProcessPage() {
           </div>
         </div>
 
-        {/* Error */}
+        {/* Rate limit / submit errors */}
         {submitError && (
-          <div className="flex items-center gap-3 px-4 py-3 rounded-xl mb-4 text-sm text-red-400"
+          <div className="flex items-start gap-3 px-4 py-3 rounded-xl mb-4 text-sm text-red-400"
             style={{ background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.2)" }}>
-            <AlertIcon />{submitError}
+            <AlertIcon size={18} />{submitError}
           </div>
         )}
 
         {/* Helper text */}
-        {!canSubmit && (
+        {!canSubmit && !submitError && (
           <p className="text-slate-500 text-xs text-center mb-3">
-            {tab === "youtube" && !isValidYouTubeUrl(ytUrl) && ytUrl.trim() ? "Paste a valid YouTube URL above" :
+            {tab === "youtube" && ytUrl.trim() && !isValidYouTubeUrl(ytUrl) ? "Paste a valid YouTube URL above" :
+             tab === "youtube" && isValidYouTubeUrl(ytUrl) && !ytPreview && !ytPreviewLoading ? "Waiting for video info..." :
              tab === "upload"  && !uploadFile ? "Add your game film video to continue" :
              !sharedFilled ? "Fill out all athlete info above to continue" : ""}
           </p>
         )}
 
         {/* Submit button */}
-        <button onClick={handleSubmit} disabled={!canSubmit || submitting}
-          className="w-full py-4 rounded-xl font-bold text-base text-white transition-all flex items-center justify-center gap-3"
+        <button
+          onClick={handleSubmit}
+          disabled={!canSubmit || submitting}
+          className="w-full py-3.5 sm:py-4 rounded-xl font-bold text-base text-white transition-all flex items-center justify-center gap-3"
           style={canSubmit && !submitting
             ? { background: "linear-gradient(135deg, #0055EE 0%, #00A3FF 100%)", boxShadow: "0 0 40px rgba(0,120,255,0.4)", cursor: "pointer" }
             : { background: "rgba(255,255,255,0.06)", color: "#475569", cursor: "not-allowed", border: "1px solid rgba(255,255,255,0.07)" }}>
-          {submitting ? <><Spinner size={20} />Starting Analysis...</>
-          : <><SparkleIcon size={20} />Find My Highlights →</>}
+          {submitting
+            ? <><Spinner size={20} />Starting Analysis...</>
+            : <><SparkleIcon size={20} />Find My Highlights →</>}
         </button>
+
+        {/* Footer hint */}
+        <p className="text-center text-slate-600 text-xs mt-4">
+          Already submitted?{" "}
+          <button onClick={() => router.push("/history")} className="text-slate-500 hover:text-[#00A3FF] transition-colors underline">
+            Find my reels →
+          </button>
+        </p>
       </main>
     </div>
   );
