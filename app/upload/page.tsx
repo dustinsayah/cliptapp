@@ -280,6 +280,12 @@ export default function UploadPage() {
       school: school.trim(),
     });
     localStorage.setItem("clipSource", "manual");
+    // Store blob URLs so the export page can access clips after navigation
+    try {
+      const blobUrls = files.map((f) => URL.createObjectURL(f));
+      localStorage.setItem("clipt_blob_urls", JSON.stringify(blobUrls));
+      localStorage.setItem("clipt_blob_count", String(files.length));
+    } catch {}
     router.push("/customize");
   };
 

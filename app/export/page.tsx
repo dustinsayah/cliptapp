@@ -635,48 +635,81 @@ function drawEndFrame(ctx: CanvasRenderingContext2D, info: TitleInfo, accent: st
 // ── Animation runners ──────────────────────────────────────────────────────────
 
 function runCard(drawFn: () => void, ms: number, isAborted: () => boolean): Promise<void> {
+  console.log("[runCard] START ms=" + ms);
   return new Promise((resolve) => {
-    const t0 = performance.now();
-    const tick = (now: number) => {
-      if (isAborted() || now - t0 >= ms) { resolve(); return; }
-      drawFn(); requestAnimationFrame(tick);
+    let ivl: ReturnType<typeof setInterval> | undefined;
+    let resolved = false;
+    const done = () => {
+      if (resolved) return;
+      resolved = true;
+      if (ivl !== undefined) clearInterval(ivl);
+      console.log("[runCard] END");
+      resolve();
     };
-    requestAnimationFrame(tick);
+    const t0 = Date.now();
+    const tick = () => {
+      if (isAborted() || Date.now() - t0 >= ms) { done(); return; }
+      try { drawFn(); } catch (e) { console.warn("[runCard] drawFn error", e); }
+    };
+    drawFn(); // draw first frame immediately
+    ivl = setInterval(tick, 33);
+    setTimeout(done, Math.max(ms, 4000) + 500); // hard safety cap
   });
 }
 
 function runTitleCardAnimated(ctx: CanvasRenderingContext2D, info: TitleInfo, accent: string, dim: Dim, template: TitleCardTemplate, anim: string, ab: () => boolean): Promise<void> {
+  console.log("[runTitleCardAnimated] START anim=" + anim);
   return new Promise((resolve) => {
-    const t0 = performance.now();
-    const tick = (now: number) => {
-      if (ab() || now - t0 >= TITLE_MS) { resolve(); return; }
-      const el = now - t0;
+    let ivl: ReturnType<typeof setInterval> | undefined;
+    let resolved = false;
+    const done = () => {
+      if (resolved) return;
+      resolved = true;
+      if (ivl !== undefined) clearInterval(ivl);
+      console.log("[runTitleCardAnimated] END");
+      resolve();
+    };
+    const t0 = Date.now();
+    const tick = () => {
+      const el = Date.now() - t0;
+      if (ab() || el >= TITLE_MS) { done(); return; }
       ctx.clearRect(0, 0, dim.w, dim.h);
       drawTitleFrame(ctx, info, accent, dim, template);
       if (anim === "fade-in") {
         const alpha = el < 800 ? 1 - (el / 800) : 0;
-        ctx.fillStyle = "#050A14"; ctx.globalAlpha = alpha; ctx.fillRect(0, 0, dim.w, dim.h); ctx.globalAlpha = 1;
+        if (alpha > 0) { ctx.fillStyle = "#050A14"; ctx.globalAlpha = alpha; ctx.fillRect(0, 0, dim.w, dim.h); ctx.globalAlpha = 1; }
       } else if (anim === "reveal" && el < 600) {
         const pct = el / 600;
         ctx.fillStyle = accent; ctx.fillRect(0, 0, dim.w * (1 - pct), dim.h);
       } else if (anim === "glitch" && el < 400) {
-        const offset = Math.round((1 - el/400) * 8);
+        const offset = Math.round((1 - el / 400) * 8);
         const id = ctx.getImageData(0, 0, dim.w, dim.h);
         ctx.putImageData(id, -offset, 0);
       }
-      requestAnimationFrame(tick);
     };
-    requestAnimationFrame(tick);
+    tick();
+    ivl = setInterval(tick, 33);
+    setTimeout(done, TITLE_MS + 500);
   });
 }
 
 function runPlayerIDOverlay(ctx: CanvasRenderingContext2D, vid: HTMLVideoElement, accent: string, dim: Dim, ab: () => boolean): Promise<void> {
+  console.log("[runPlayerIDOverlay] START");
   return new Promise((resolve) => {
-    const t0 = performance.now();
+    let ivl: ReturnType<typeof setInterval> | undefined;
+    let resolved = false;
+    const done = () => {
+      if (resolved) return;
+      resolved = true;
+      if (ivl !== undefined) clearInterval(ivl);
+      console.log("[runPlayerIDOverlay] END");
+      resolve();
+    };
+    const t0 = Date.now();
     const cx = dim.w / 2, cy = dim.h / 2, r = Math.round(Math.min(dim.w, dim.h) * 0.09);
-    const tick = (now: number) => {
-      const el = now - t0;
-      if (ab() || el >= PLAYER_MS) { resolve(); return; }
+    const tick = () => {
+      const el = Date.now() - t0;
+      if (ab() || el >= PLAYER_MS) { done(); return; }
       const pulse = Math.sin((el / PLAYER_MS) * Math.PI * 3) * 0.3 + 0.7;
       const cr = r * (0.9 + pulse * 0.15);
       drawVideoFrame(ctx, vid, dim, accent);
@@ -685,9 +718,10 @@ function runPlayerIDOverlay(ctx: CanvasRenderingContext2D, vid: HTMLVideoElement
       const ay = cy + cr + Math.round(dim.h * 0.022), as_ = Math.round(dim.h * 0.024);
       ctx.save(); ctx.fillStyle = accent; ctx.globalAlpha = pulse;
       ctx.beginPath(); ctx.moveTo(cx - as_, ay); ctx.lineTo(cx + as_, ay); ctx.lineTo(cx, ay + as_ * 1.1); ctx.closePath(); ctx.fill(); ctx.restore();
-      requestAnimationFrame(tick);
     };
-    requestAnimationFrame(tick);
+    tick();
+    ivl = setInterval(tick, 33);
+    setTimeout(done, PLAYER_MS + 300);
   });
 }
 
@@ -696,15 +730,25 @@ function runTransition(ctx: CanvasRenderingContext2D, type: string, dim: Dim, ab
   const ms = type === "Flash Cut" ? 220 : type === "Crossfade" ? 400 : 500;
   const color = type === "Flash Cut" ? "#FFFFFF" : "#000000";
   return new Promise((resolve) => {
-    const t0 = performance.now();
-    const tick = (now: number) => {
-      const el = now - t0;
-      if (ab() || el >= ms) { ctx.globalAlpha = 1; resolve(); return; }
+    let ivl: ReturnType<typeof setInterval> | undefined;
+    let resolved = false;
+    const done = () => {
+      if (resolved) return;
+      resolved = true;
+      if (ivl !== undefined) clearInterval(ivl);
+      ctx.globalAlpha = 1;
+      resolve();
+    };
+    const t0 = Date.now();
+    const tick = () => {
+      const el = Date.now() - t0;
+      if (ab() || el >= ms) { done(); return; }
       const alpha = type === "Flash Cut" ? Math.sin((el / ms) * Math.PI) : el / ms;
       ctx.fillStyle = color; ctx.globalAlpha = alpha; ctx.fillRect(0, 0, dim.w, dim.h); ctx.globalAlpha = 1;
-      requestAnimationFrame(tick);
     };
-    requestAnimationFrame(tick);
+    tick();
+    ivl = setInterval(tick, 33);
+    setTimeout(done, ms + 200);
   });
 }
 
@@ -722,7 +766,7 @@ interface ClipOpts {
 
 function runClipInner(vid: HTMLVideoElement, ctx: CanvasRenderingContext2D, isAborted: () => boolean, opts: ClipOpts, speedFactor = 1): Promise<void> {
   return new Promise((resolve) => {
-    const { dim, highlightPlayer, showJerseyOverlay, enhanceQuality, info, accent,
+    const { dim, showJerseyOverlay, enhanceQuality, info, accent,
       trimStart, trimEnd, textOverlay, intensity, playLabel, isBestPlay,
       highlightBestPlay, watermarkStyle } = opts;
 
@@ -733,17 +777,21 @@ function runClipInner(vid: HTMLVideoElement, ctx: CanvasRenderingContext2D, isAb
     const labelDuration = 1.5 / speedFactor;
     const labelFadeEnd = 2.0 / speedFactor;
     const flashDuration = 1.2 / speedFactor;
+    const startRealTime = Date.now();
 
-    let raf = 0;
-    let startRealTime = -1;
+    let ivl: ReturnType<typeof setInterval> | undefined;
+    let resolved = false;
+    const done = () => {
+      if (resolved) return;
+      resolved = true;
+      if (ivl !== undefined) clearInterval(ivl);
+      resolve();
+    };
 
     const tick = () => {
-      if (isAborted() || vid.ended || vid.currentTime >= tEnd) {
-        cancelAnimationFrame(raf); resolve(); return;
-      }
+      if (isAborted() || vid.ended || vid.currentTime >= tEnd) { done(); return; }
       const elapsed = vid.currentTime - tStart;
-      const realElapsed = startRealTime < 0 ? 0 : (performance.now() - startRealTime) / 1000;
-      if (startRealTime < 0) startRealTime = performance.now();
+      const realElapsed = (Date.now() - startRealTime) / 1000;
 
       const filters: string[] = [];
       if (enhanceQuality) filters.push("contrast(1.1) saturate(1.15) brightness(1.03)");
@@ -752,10 +800,8 @@ function runClipInner(vid: HTMLVideoElement, ctx: CanvasRenderingContext2D, isAb
       drawVideoFrame(ctx, vid, dim, accent);
       ctx.filter = "none";
 
-      // Overlay: lower third
       if (showJerseyOverlay) drawLowerThird(ctx, info, accent, dim);
 
-      // Overlay: text overlay
       if (textOverlay) {
         const barH = Math.round(dim.h * 0.092), y = dim.h - barH;
         ctx.fillStyle = "rgba(5,10,20,0.82)"; ctx.fillRect(0, y, dim.w, barH);
@@ -764,7 +810,6 @@ function runClipInner(vid: HTMLVideoElement, ctx: CanvasRenderingContext2D, isAb
         ctx.fillText(textOverlay.slice(0, 30), dim.w / 2, y + barH / 2); ctx.restore();
       }
 
-      // Overlay: play label pill
       if (playLabel) {
         let labelAlpha = 1;
         if (elapsed > labelDuration && elapsed < labelFadeEnd) {
@@ -775,13 +820,11 @@ function runClipInner(vid: HTMLVideoElement, ctx: CanvasRenderingContext2D, isAb
         if (labelAlpha > 0) drawClipLabel(ctx, playLabel, labelAlpha, accent, dim);
       }
 
-      // Highlight border on best play
       if (isBestPlay && highlightBestPlay && realElapsed < flashDuration) {
         const pulse = Math.sin((realElapsed / flashDuration) * Math.PI);
         drawHighlightBorder(ctx, accent, pulse * 0.8, dim);
       }
 
-      // Slow-motion label
       if (speedFactor < 1) {
         ctx.save();
         ctx.font = `bold ${Math.round(dim.h * 0.022)}px Arial, sans-serif`;
@@ -791,10 +834,14 @@ function runClipInner(vid: HTMLVideoElement, ctx: CanvasRenderingContext2D, isAb
       }
 
       drawStamp(ctx, dim, watermarkStyle, info, accent);
-      if (playDuration > 0) opts.onPct(elapsed / playDuration);
-      raf = requestAnimationFrame(tick);
+      if (playDuration > 0) opts.onPct(Math.min(elapsed / playDuration, 1));
     };
-    raf = requestAnimationFrame(tick);
+
+    tick();
+    ivl = setInterval(tick, 33);
+    // Hard safety timeout: clip real-time duration + 3s buffer
+    const safetyMs = Math.ceil((playDuration / speedFactor) * 1000) + 3000;
+    setTimeout(done, safetyMs);
   });
 }
 
@@ -839,10 +886,28 @@ function runClipSlowMo(file: File, ctx: CanvasRenderingContext2D, isAborted: () 
   });
 }
 
+function runClipByUrl(url: string, ctx: CanvasRenderingContext2D, isAborted: () => boolean, opts: ClipOpts): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const vid = document.createElement("video");
+    vid.src = url; vid.muted = true; vid.playsInline = true;
+    vid.onloadedmetadata = async () => {
+      const tStart = opts.trimStart > 0 ? opts.trimStart : 0;
+      if (tStart > 0) {
+        await new Promise<void>((res) => { vid.onseeked = () => res(); vid.currentTime = tStart; });
+      }
+      try { await vid.play(); } catch { reject(new Error("Processing failed — try uploading smaller clips")); return; }
+      if (opts.highlightPlayer) await runPlayerIDOverlay(ctx, vid, opts.accent, opts.dim, isAborted);
+      await runClipInner(vid, ctx, isAborted, opts, 1);
+      vid.pause(); resolve();
+    };
+    vid.onerror = () => { reject(new Error("Processing failed — could not load clip")); };
+  });
+}
+
 // ── Build Reel config ─────────────────────────────────────────────────────────
 
 interface BuildConfig {
-  files: File[]; info: TitleInfo; accent: string;
+  files: File[]; clipUrls?: string[]; info: TitleInfo; accent: string;
   dim: Dim; fps: number; bitrate: number;
   musicTrackId: string;
   transitionStyle: string;
@@ -857,14 +922,20 @@ interface BuildConfig {
   watermarkStyle: WatermarkStyle;
   isAborted: () => boolean;
   onProgress: (pct: number, text: string) => void;
+  onMusicFailed?: () => void;
 }
 
 async function buildReel(cfg: BuildConfig): Promise<Blob> {
-  const { files, info, accent, dim, fps, bitrate, musicTrackId, transitionStyle,
+  const { files, clipUrls, info, accent, dim, fps, bitrate, musicTrackId, transitionStyle,
     includeStatsCard, statsData, showMeasurablesCard, highlightPlayer, showJerseyOverlay, enhanceQuality,
     titleCardTemplate, introAnimation, trimStarts, trimEnds, textOverlays, intensities,
     clipPlayLabels, bestPlayIndex, highlightBestPlay, slowMotionReplay, watermarkStyle,
-    isAborted, onProgress } = cfg;
+    isAborted, onProgress, onMusicFailed } = cfg;
+
+  // Determine clip source — prefer File objects, fall back to blob URLs
+  const useUrls = clipUrls && clipUrls.length > 0;
+  const clipCount = useUrls ? clipUrls!.length : files.length;
+  if (clipCount === 0) throw new Error("Processing failed — no clips provided");
 
   const mime = getSupportedMime();
   if (!mime) throw new Error("NO_RECORDER");
@@ -876,14 +947,17 @@ async function buildReel(cfg: BuildConfig): Promise<Blob> {
   ctx.imageSmoothingEnabled = true;
   (ctx as unknown as { imageSmoothingQuality: string }).imageSmoothingQuality = "high";
 
-  // Audio
+  // Audio setup — failures are non-fatal, export continues without audio
   let audioCtx: AudioContext | null = null, gainNode: GainNode | null = null, audioDest: MediaStreamAudioDestinationNode | null = null;
   const musicUrl = MUSIC_TRACK_URLS[musicTrackId];
   const isCrowdNoise = musicTrackId === "crowd-noise";
   if (musicUrl) {
     try {
       audioCtx = new AudioContext();
+      // Resume context in case browser suspended it
+      if (audioCtx.state === "suspended") await audioCtx.resume();
       const resp = await fetch(musicUrl, { mode: "cors" });
+      if (!resp.ok) throw new Error("fetch failed");
       const buf  = await audioCtx.decodeAudioData(await resp.arrayBuffer());
       const src  = audioCtx.createBufferSource();
       src.buffer = buf; src.loop = true;
@@ -893,7 +967,13 @@ async function buildReel(cfg: BuildConfig): Promise<Blob> {
       gainNode.gain.linearRampToValueAtTime(targetVol, audioCtx.currentTime + 2);
       audioDest = audioCtx.createMediaStreamDestination();
       src.connect(gainNode); gainNode.connect(audioDest); src.start();
-    } catch { audioCtx = null; gainNode = null; audioDest = null; }
+      console.log("[buildReel] Music loaded:", musicTrackId);
+    } catch (e) {
+      console.warn("[buildReel] Music failed, continuing without audio:", e);
+      audioCtx?.close().catch(() => {});
+      audioCtx = null; gainNode = null; audioDest = null;
+      onMusicFailed?.();
+    }
   }
 
   const vTracks = canvas.captureStream(fps).getVideoTracks();
@@ -913,8 +993,15 @@ async function buildReel(cfg: BuildConfig): Promise<Blob> {
     await runTitleCardAnimated(ctx, info, accent, dim, titleCardTemplate, introAnimation, isAborted);
 
     if (!isAborted() && includeStatsCard) {
-      onProgress(10, "Drawing stats card...");
-      await runCard(() => drawStatsFrame(ctx, statsData, info, accent, dim), STATS_MS, isAborted);
+      // Filter out empty stat fields so wrong-sport keys don't show up
+      const filteredStats = Object.fromEntries(
+        Object.entries(statsData).filter(([, v]) => v && v.trim())
+      );
+      if (Object.keys(filteredStats).length > 0) {
+        onProgress(10, "Drawing stats card...");
+        console.log("[buildReel] Drawing stats card with", Object.keys(filteredStats).length, "fields");
+        await runCard(() => drawStatsFrame(ctx, filteredStats, info, accent, dim), STATS_MS, isAborted);
+      }
     }
 
     if (!isAborted() && showMeasurablesCard && Object.values(info.measurablesData || {}).some(Boolean)) {
@@ -923,10 +1010,10 @@ async function buildReel(cfg: BuildConfig): Promise<Blob> {
     }
 
     const effTrans = transitionStyle;
-    for (let i = 0; i < files.length; i++) {
+    for (let i = 0; i < clipCount; i++) {
       if (isAborted()) break;
-      const base = 21 + (i / files.length) * 58, range = 58 / files.length;
-      onProgress(base, `Processing clip ${i + 1} of ${files.length}...`);
+      const base = 21 + (i / clipCount) * 58, range = 58 / clipCount;
+      onProgress(base, `Processing clip ${i + 1} of ${clipCount}...`);
       if (i > 0) await runTransition(ctx, effTrans, dim, isAborted);
       const clipOpts: ClipOpts = {
         dim, highlightPlayer, showJerseyOverlay, enhanceQuality, info, accent,
@@ -937,12 +1024,17 @@ async function buildReel(cfg: BuildConfig): Promise<Blob> {
         playLabel:   clipPlayLabels[i] ?? "",
         isBestPlay:  i === bestPlayIndex,
         highlightBestPlay, watermarkStyle,
-        onPct: (p) => onProgress(base + p * range, `Processing clip ${i + 1} of ${files.length}...`),
+        onPct: (p) => onProgress(base + p * range, `Processing clip ${i + 1} of ${clipCount}...`),
       };
-      await runClip(files[i], ctx, isAborted, clipOpts);
+      console.log(`[buildReel] Running clip ${i + 1}/${clipCount} via ${useUrls ? "URL" : "File"}`);
+      if (useUrls) {
+        await runClipByUrl(clipUrls![i], ctx, isAborted, clipOpts);
+      } else {
+        await runClip(files[i], ctx, isAborted, clipOpts);
+      }
 
-      // Slow motion replay after best play
-      if (!isAborted() && slowMotionReplay && i === bestPlayIndex) {
+      // Slow motion replay after best play (only available with File objects)
+      if (!isAborted() && slowMotionReplay && i === bestPlayIndex && !useUrls) {
         onProgress(base + range, `Slow motion replay: clip ${i + 1}...`);
         await runTransition(ctx, "Fade to Black", dim, isAborted);
         await runClipSlowMo(files[i], ctx, isAborted, clipOpts);
@@ -1057,6 +1149,8 @@ export default function ExportPage() {
   const [blobMime, setBlobMime] = useState("");
   const [errMsg, setErrMsg] = useState("");
   const [clipsOnly, setClipsOnly] = useState(false);
+  const [musicFailed, setMusicFailed] = useState(false);
+  const [storedClipCount, setStoredClipCount] = useState(0);
 
   const abortRef  = useRef(false);
   const blobRef   = useRef<string | null>(null);
@@ -1084,6 +1178,11 @@ export default function ExportPage() {
   }, [reel.reelId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    // Load stored clip count for display when files are not in context
+    try {
+      const n = parseInt(localStorage.getItem("clipt_blob_count") || "0", 10);
+      if (n > 0) setStoredClipCount(n);
+    } catch {}
     return () => {
       abortRef.current = true;
       if (blobRef.current) URL.revokeObjectURL(blobRef.current);
@@ -1113,9 +1212,29 @@ export default function ExportPage() {
 
   const doBuild = async () => {
     setDurationModal(false);
-    if (reel.files.length === 0) {
-      setErrMsg("No clips found — go back and upload your clips first."); setPhase("error"); return;
+    setMusicFailed(false);
+
+    // Try reel.files first; fall back to stored blob URLs if context lost files after navigation
+    let buildFiles: File[] = reel.files;
+    let buildUrls: string[] | undefined;
+
+    if (buildFiles.length === 0) {
+      try {
+        const stored = localStorage.getItem("clipt_blob_urls");
+        if (stored) {
+          const parsed: string[] = JSON.parse(stored);
+          if (parsed.length > 0) {
+            buildUrls = parsed;
+            console.log("[doBuild] Using", parsed.length, "stored blob URLs");
+          }
+        }
+      } catch {}
+
+      if (!buildUrls || buildUrls.length === 0) {
+        setErrMsg("No clips found — go back and upload your clips first."); setPhase("error"); return;
+      }
     }
+
     abortRef.current = false;
     setPhase("processing"); setPct(0); setStep("Starting...");
 
@@ -1137,12 +1256,12 @@ export default function ExportPage() {
       const fps = getExportFps(quality);
       const bitrate = getExportBitrate(quality);
       const blob = await buildReel({
-        files: reel.files, info: buildInfo(), accent: accentHex,
+        files: buildFiles, clipUrls: buildUrls, info: buildInfo(), accent: accentHex,
         dim, fps, bitrate,
         musicTrackId: reel.musicTrackId || "no-music",
         transitionStyle: reel.transition || "Hard Cut",
         includeStatsCard: reel.includeStatsCard,
-        statsData: reel.statsData,
+        statsData: reel.statsData ?? {},
         showMeasurablesCard: reel.showMeasurablesCard,
         highlightPlayer: reel.highlightPlayer,
         showJerseyOverlay: reel.showJerseyOverlay ?? true,
@@ -1160,6 +1279,7 @@ export default function ExportPage() {
         watermarkStyle: reel.watermarkStyle || "clipt",
         isAborted: () => abortRef.current,
         onProgress: (p, t) => { setPct(p); setStep(t); },
+        onMusicFailed: () => setMusicFailed(true),
       });
 
       const url = URL.createObjectURL(blob);
@@ -1344,7 +1464,7 @@ export default function ExportPage() {
                 {aspectRatio} · {quality.toUpperCase()}
               </span>
             </div>
-            <p className="text-xs text-slate-500">{reel.files.length} clips · ~{reelMinutes} min</p>
+            <p className="text-xs text-slate-500">{reel.files.length || storedClipCount || "?"} clips · ~{reelMinutes} min</p>
           </div>
 
           {phase === "idle" && (
@@ -1409,6 +1529,12 @@ export default function ExportPage() {
                 ))}
               </div>
               {device === "ios" && <p className="text-[10px] text-slate-600 text-center">Opens in Safari → tap Share → Save to Files</p>}
+
+              {musicFailed && (
+                <div className="rounded-lg px-3 py-2" style={{ background: "rgba(251,191,36,0.06)", border: "1px solid rgba(251,191,36,0.18)" }}>
+                  <p className="text-[10px] text-[#FBBF24]">Music couldn&apos;t be mixed into this download — the video is audio-free. Music plays back when coaches view your shared link.</p>
+                </div>
+              )}
 
               {/* Rebuild with different quality */}
               <button type="button" onClick={() => setPhase("idle")}
