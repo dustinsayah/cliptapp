@@ -794,19 +794,91 @@ function OnboardTooltip({
   );
 }
 
+// ── AI Clip type (matches process page output) ─────────────────────────────────
+
+interface AiClip {
+  id: string;
+  clipNumber: number;
+  playType: string;
+  startTime: number;
+  endTime: number;
+  duration: number;
+  confidenceScore: number;
+  jerseyVisible: boolean;
+  aiPicked: boolean;
+  sport: string;
+  jerseyNumber: number;
+  thumbnailUrl: string | null;
+}
+
+interface AiJobMeta {
+  jerseyNumber: number;
+  firstName: string;
+  sport: string;
+}
+
 // ── Main Page ──────────────────────────────────────────────────────────────────
 
 export default function CustomizePage() {
   const router = useRouter();
   const reel   = useReel();
 
+  // ── AI Clips detection ───────────────────────────────────────────────────
+  const [aiClips,    setAiClips]    = useState<AiClip[] | null>(null);
+  const [aiMeta,     setAiMeta]     = useState<AiJobMeta | null>(null);
+  const [aiBannerDismissed, setAiBannerDismissed] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = localStorage.getItem("aiGeneratedClips");
+      const metaRaw = localStorage.getItem("aiJobMeta");
+      if (raw) {
+        const parsed = JSON.parse(raw) as AiClip[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setAiClips(parsed);
+        }
+      }
+      if (metaRaw) {
+        setAiMeta(JSON.parse(metaRaw) as AiJobMeta);
+      }
+    } catch {
+      // ignore parse errors
+    }
+  }, []);
+
   const initialNames = reel.files.length > 0 ? reel.files.map((f) => f.name) : reel.clipNames;
 
-  const [clips, setClips] = useState<{ name: string; label: string; playLabel: string }[]>(() =>
-    initialNames.map((n, i) => ({
+  // If AI clips are available, derive clip names from them; otherwise use manual clips
+  const derivedInitialClips = (): Array<{ name: string; label: string; playLabel: string; aiClip?: AiClip }> => {
+    if (aiClips && aiClips.length > 0) {
+      return aiClips.map((c) => ({
+        name: c.playType,
+        label: c.playType,
+        playLabel: c.playType,
+        aiClip: c,
+      }));
+    }
+    return initialNames.map((n, i) => ({
       name: n, label: reel.clipLabels?.[i] || "", playLabel: reel.clipPlayLabels?.[i] || "",
-    }))
+    }));
+  };
+
+  const [clips, setClips] = useState<{ name: string; label: string; playLabel: string; aiClip?: AiClip }[]>(
+    derivedInitialClips
   );
+
+  // Re-sync when aiClips first loads (after mount)
+  useEffect(() => {
+    if (aiClips && aiClips.length > 0) {
+      setClips(aiClips.map((c) => ({
+        name: c.playType,
+        label: c.playType,
+        playLabel: c.playType,
+        aiClip: c,
+      })));
+    }
+  }, [aiClips]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Drag reorder ──────────────────────────────────────────────────────────
   const dragIdx = useRef<number | null>(null);
@@ -1048,6 +1120,50 @@ export default function CustomizePage() {
         </div>
       </div>
 
+      {/* ── AI Generated Banner ── */}
+      {aiClips && aiClips.length > 0 && !aiBannerDismissed && (
+        <div className="max-w-7xl mx-auto px-6 pt-4">
+          <div className="flex items-center justify-between gap-4 rounded-xl px-5 py-3.5"
+            style={{ background: "rgba(0,163,255,0.09)", border: "1px solid rgba(0,163,255,0.28)" }}>
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="shrink-0 flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-black"
+                style={{ background: "rgba(0,163,255,0.18)", color: "#00A3FF" }}>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
+                </svg>
+                AI REEL
+              </div>
+              <span className="text-white text-sm font-semibold truncate">
+                AI found <strong>{aiClips.length} clips</strong> featuring jersey{" "}
+                <strong style={{ color: "#00A3FF" }}>#{aiMeta?.jerseyNumber ?? "?"}</strong>
+                {aiMeta?.firstName ? ` for ${aiMeta.firstName}` : ""} — your best plays are already sorted by quality.
+              </span>
+            </div>
+            <div className="flex items-center gap-3 shrink-0">
+              <button onClick={() => {
+                localStorage.removeItem("aiGeneratedClips");
+                localStorage.removeItem("aiJobMeta");
+                setAiClips(null);
+                setAiMeta(null);
+                setAiBannerDismissed(true);
+                // Reset to manual clips
+                const names = reel.files.length > 0 ? reel.files.map((f) => f.name) : reel.clipNames;
+                setClips(names.map((n, i) => ({ name: n, label: reel.clipLabels?.[i] || "", playLabel: reel.clipPlayLabels?.[i] || "" })));
+              }}
+                className="text-xs text-slate-400 hover:text-white transition-colors font-semibold whitespace-nowrap">
+                Use Manual Clips
+              </button>
+              <button onClick={() => setAiBannerDismissed(true)}
+                className="text-slate-500 hover:text-white transition-colors">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── 3-column layout ── */}
       <div className="max-w-7xl mx-auto px-6 py-8">
         <div className="lg:grid lg:grid-cols-[220px_1fr_280px] gap-6">
@@ -1056,9 +1172,17 @@ export default function CustomizePage() {
           <div className="hidden lg:block">
             <div className="sticky top-28 rounded-2xl overflow-hidden" style={cardBase}>
               <div className="px-4 py-4">
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">
-                  Clips ({clips.length})
-                </p>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                    Clips ({clips.length})
+                  </p>
+                  {aiClips && aiClips.length > 0 && (
+                    <span className="text-[9px] font-black px-2 py-0.5 rounded-full"
+                      style={{ background: "rgba(0,163,255,0.12)", color: "#00A3FF", border: "1px solid rgba(0,163,255,0.25)" }}>
+                      AI SORTED
+                    </span>
+                  )}
+                </div>
                 {clips.length === 0 ? (
                   <p className="text-slate-600 text-xs">No clips uploaded</p>
                 ) : (
@@ -1067,22 +1191,52 @@ export default function CustomizePage() {
                       <div key={`${clip.name}-${i}`}
                         draggable onDragStart={() => onDragStart(i)}
                         onDragOver={(e) => onDragOver(e, i)} onDragEnd={onDragEnd}
-                        className="flex items-center gap-2 px-2 py-2 rounded-lg cursor-grab active:cursor-grabbing transition-all"
+                        className="flex items-start gap-2 px-2 py-2 rounded-lg cursor-grab active:cursor-grabbing transition-all"
                         style={{
-                          background: dragOver === i ? `${accentHex}12` : "transparent",
-                          border: `1px solid ${dragOver === i ? accentHex + "40" : "transparent"}`,
+                          background: dragOver === i ? `${accentHex}12` : (clip.aiClip ? "rgba(0,163,255,0.04)" : "transparent"),
+                          border: `1px solid ${dragOver === i ? accentHex + "40" : (clip.aiClip ? "rgba(0,163,255,0.12)" : "transparent")}`,
                         }}>
-                        <span className="text-slate-600 shrink-0"><GripIcon /></span>
+                        <span className="text-slate-600 shrink-0 mt-0.5"><GripIcon /></span>
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs text-slate-300 truncate">{clip.name}</p>
-                          {clip.playLabel && <p className="text-[10px] text-slate-500 truncate">{clip.playLabel}</p>}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="text-xs text-slate-300 truncate">{clip.name}</p>
+                            {clip.aiClip?.aiPicked && (
+                              <span className="shrink-0 text-[8px] font-black px-1.5 py-px rounded"
+                                style={{ background: "rgba(251,191,36,0.18)", color: "#FBBF24", border: "1px solid rgba(251,191,36,0.3)" }}>
+                                AI PICK
+                              </span>
+                            )}
+                          </div>
+                          {clip.aiClip && (
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <div className="flex-1 h-0.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)", maxWidth: 48 }}>
+                                <div className="h-full rounded-full" style={{ width: `${Math.round(clip.aiClip.confidenceScore * 100)}%`, background: "#00A3FF" }} />
+                              </div>
+                              <span className="text-[9px] text-slate-500 font-mono">
+                                {Math.round(clip.aiClip.confidenceScore * 100)}%
+                              </span>
+                            </div>
+                          )}
+                          {!clip.aiClip && clip.playLabel && (
+                            <p className="text-[10px] text-slate-500 truncate">{clip.playLabel}</p>
+                          )}
                         </div>
-                        <div className="flex items-center gap-1 shrink-0">
+                        <div className="flex items-center gap-1 shrink-0 mt-0.5">
                           {/* Best play star */}
                           {highlightBest && (
                             <button type="button" onClick={() => setBestPlayIdx(bestPlayIdx === i ? -1 : i)}
                               className="transition-colors" style={{ color: bestPlayIdx === i ? accentHex : "#334155" }}>
                               <StarIcon filled={bestPlayIdx === i} />
+                            </button>
+                          )}
+                          {/* Remove clip button for AI clips */}
+                          {clip.aiClip && (
+                            <button type="button"
+                              onClick={() => setClips((prev) => prev.filter((_, idx) => idx !== i))}
+                              className="text-slate-600 hover:text-red-400 transition-colors" title="Remove clip">
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+                                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                              </svg>
                             </button>
                           )}
                           <span className="text-[10px] font-bold text-slate-600">{i + 1}</span>
@@ -1325,7 +1479,7 @@ export default function CustomizePage() {
               <p className="text-xs text-slate-500 font-medium uppercase tracking-wider mb-3">Clip Transition</p>
               <div className="grid grid-cols-2 gap-2">
                 {TRANSITION_OPTIONS.map((t) => (
-                  <button key={t.id} type="button" onClick={() => setTransition(t.id)}
+                  <button key={t.id} type="button" onClick={() => setTransition(t.id as typeof transition)}
                     className="rounded-xl px-4 py-3 text-left transition-all"
                     style={{
                       background: transition === t.id ? `${accentHex}14` : "rgba(255,255,255,0.03)",

@@ -10,10 +10,9 @@ import { supabase } from "@/lib/supabase";
 const POSITIONS: Record<string, string[]> = {
   Football:   ["Quarterback","Running Back","Wide Receiver","Tight End","Offensive Line","Defensive Line","Linebacker","Cornerback","Safety","Kicker / Punter"],
   Basketball: ["Point Guard","Shooting Guard","Small Forward","Power Forward","Center"],
-  Baseball:   ["Pitcher","Catcher","First Base","Second Base","Third Base","Shortstop","Left Field","Center Field","Right Field"],
-  Soccer:     ["Goalkeeper","Defender","Midfielder","Forward / Striker"],
-  Lacrosse:   ["Attack","Midfield","Defense","Goalie"],
 };
+
+const GRAD_YEARS = ["2025","2026","2027","2028","2029","2030"];
 
 // ── Mock clip generation ───────────────────────────────────────────────────
 
@@ -24,36 +23,117 @@ export interface AiClip {
   startTime: number;
   endTime: number;
   duration: number;
-  confidence: number;
-  thumbnailUrl: string | null;
-  jerseyNumber: number;
+  confidenceScore: number;
+  jerseyVisible: boolean;
+  aiPicked: boolean;
   sport: string;
+  jerseyNumber: number;
+  thumbnailUrl: string | null;
 }
 
-const SPORT_PLAYS: Record<string, string[]> = {
-  Football:   ["Touchdown Pass","Big Run","Deep Ball Catch","Key Block","Interception"],
-  Basketball: ["Mid Range Jumper","Drive to Basket","Defensive Stop","Three Pointer","Fast Break"],
-  Baseball:   ["Home Run","Strikeout","Stolen Base","Double Play","Clutch Hit"],
-  Soccer:     ["Goal","Key Save","Assist","Defensive Stop","Counter Attack"],
-  default:    ["Highlight Play","Key Moment","Big Play","Athletic Play","Score"],
+// Basketball: 8 clips, specific play types ordered by confidence score high to low
+const BASKETBALL_PLAYS: Array<{ playType: string; confidenceScore: number }> = [
+  { playType: "Scoring Play",    confidenceScore: 0.97 },
+  { playType: "Defensive Stop",  confidenceScore: 0.94 },
+  { playType: "Assist",          confidenceScore: 0.91 },
+  { playType: "Three Pointer",   confidenceScore: 0.89 },
+  { playType: "Drive to Basket", confidenceScore: 0.87 },
+  { playType: "Hustle Play",     confidenceScore: 0.84 },
+  { playType: "Fast Break",      confidenceScore: 0.81 },
+  { playType: "Post Move",       confidenceScore: 0.78 },
+];
+
+// Football: clips by position
+const FOOTBALL_PLAYS: Record<string, Array<{ playType: string; confidenceScore: number }>> = {
+  Quarterback: [
+    { playType: "Touchdown Pass",     confidenceScore: 0.96 },
+    { playType: "Scramble for First", confidenceScore: 0.92 },
+    { playType: "Deep Ball Strike",   confidenceScore: 0.90 },
+    { playType: "Red Zone Score",     confidenceScore: 0.87 },
+    { playType: "Two-Minute Drive",   confidenceScore: 0.85 },
+    { playType: "Pocket Escape",      confidenceScore: 0.82 },
+  ],
+  "Running Back": [
+    { playType: "Big Run",           confidenceScore: 0.95 },
+    { playType: "Touchdown",         confidenceScore: 0.93 },
+    { playType: "Broken Tackle",     confidenceScore: 0.90 },
+    { playType: "Screen Pass Catch", confidenceScore: 0.87 },
+    { playType: "Yards After Contact",confidenceScore: 0.83 },
+    { playType: "Goal Line Carry",   confidenceScore: 0.80 },
+  ],
+  "Wide Receiver": [
+    { playType: "Touchdown Reception", confidenceScore: 0.96 },
+    { playType: "Deep Ball Catch",     confidenceScore: 0.93 },
+    { playType: "Route Running",       confidenceScore: 0.90 },
+    { playType: "YAC Run",             confidenceScore: 0.87 },
+    { playType: "Contested Catch",     confidenceScore: 0.84 },
+    { playType: "Slant Route Score",   confidenceScore: 0.81 },
+  ],
+  Linebacker: [
+    { playType: "Sack",            confidenceScore: 0.95 },
+    { playType: "TFL",             confidenceScore: 0.92 },
+    { playType: "Blitz",           confidenceScore: 0.89 },
+    { playType: "Pass Coverage",   confidenceScore: 0.85 },
+    { playType: "Forced Fumble",   confidenceScore: 0.82 },
+    { playType: "Key Tackle",      confidenceScore: 0.78 },
+  ],
+  Cornerback: [
+    { playType: "Interception",    confidenceScore: 0.97 },
+    { playType: "Pass Breakup",    confidenceScore: 0.93 },
+    { playType: "Man Coverage",    confidenceScore: 0.90 },
+    { playType: "Tackle for Loss", confidenceScore: 0.86 },
+    { playType: "Return Yards",    confidenceScore: 0.82 },
+    { playType: "Press Coverage",  confidenceScore: 0.79 },
+  ],
+  Safety: [
+    { playType: "Big Hit",         confidenceScore: 0.95 },
+    { playType: "Interception",    confidenceScore: 0.92 },
+    { playType: "Run Stop",        confidenceScore: 0.89 },
+    { playType: "Zone Coverage",   confidenceScore: 0.85 },
+    { playType: "Blitz",           confidenceScore: 0.81 },
+    { playType: "Deflection",      confidenceScore: 0.78 },
+  ],
+  default: [
+    { playType: "Highlight Play",  confidenceScore: 0.93 },
+    { playType: "Key Block",       confidenceScore: 0.90 },
+    { playType: "Big Play",        confidenceScore: 0.87 },
+    { playType: "Athletic Play",   confidenceScore: 0.84 },
+    { playType: "Score",           confidenceScore: 0.81 },
+    { playType: "Impact Play",     confidenceScore: 0.78 },
+  ],
 };
 
-function generateMockClips(sport: string, jerseyNumber: number): AiClip[] {
-  const plays = SPORT_PLAYS[sport] ?? SPORT_PLAYS.default;
-  return plays.map((playType, i) => {
-    const startTime = 60 + i * 90 + Math.floor(Math.random() * 20);
-    const dur = 4 + Math.random() * 4;
+function generateMockClips(sport: string, jerseyNumber: number, position?: string): AiClip[] {
+  let playDefs: Array<{ playType: string; confidenceScore: number }>;
+
+  if (sport === "Basketball") {
+    playDefs = BASKETBALL_PLAYS;
+  } else if (sport === "Football") {
+    playDefs = FOOTBALL_PLAYS[position ?? ""] ?? FOOTBALL_PLAYS.default;
+  } else {
+    playDefs = FOOTBALL_PLAYS.default;
+  }
+
+  // Build clips with realistic, non-overlapping timestamps
+  let cursor = 45 + Math.floor(Math.random() * 30);
+  return playDefs.map(({ playType, confidenceScore }, i) => {
+    const startTime = cursor;
+    const dur = Math.round((4 + Math.random() * 4.5) * 10) / 10;
+    const endTime = Math.round((startTime + dur) * 10) / 10;
+    cursor = endTime + 60 + Math.floor(Math.random() * 45);
     return {
       id: `ai-clip-${i + 1}`,
       clipNumber: i + 1,
       playType,
       startTime,
-      endTime: Math.round((startTime + dur) * 10) / 10,
-      duration: Math.round(dur * 10) / 10,
-      confidence: Math.round((0.85 + Math.random() * 0.14) * 100) / 100,
-      thumbnailUrl: null,
-      jerseyNumber,
+      endTime,
+      duration: dur,
+      confidenceScore,
+      jerseyVisible: true,
+      aiPicked: true,
       sport,
+      jerseyNumber,
+      thumbnailUrl: null,
     };
   });
 }
@@ -61,10 +141,10 @@ function generateMockClips(sport: string, jerseyNumber: number): AiClip[] {
 // ── Processing steps ───────────────────────────────────────────────────────
 
 const PROC_STEPS = [
-  { key: "downloading", label: "Downloading Video",         hint: "Fetching video from source..." },
-  { key: "scanning",    label: "Scanning for Jersey Number",hint: "Running computer vision model on frames..." },
-  { key: "identifying", label: "Identifying Best Plays",    hint: "Grouping and scoring detected plays..." },
-  { key: "building",    label: "Building Your Reel",        hint: "Compiling your highlight reel..." },
+  { key: "downloading", label: "Video Downloaded",          hint: "Fetching video from source..." },
+  { key: "scanning",    label: "Scanning frames for #",     hint: "Running computer vision model on frames..." },
+  { key: "identifying", label: "Ranking best plays",        hint: "Grouping and scoring detected plays..." },
+  { key: "building",    label: "Building your reel",        hint: "Compiling your highlight reel..." },
 ];
 
 const STATUS_IDX: Record<string, number> = {
@@ -153,6 +233,7 @@ interface JobState {
   jerseyNumber: number;
   firstName: string;
   sport: string;
+  position: string;
   errorMessage: string | null;
   resultClips: AiClip[] | null;
 }
@@ -162,7 +243,6 @@ interface JobState {
 function RadarPulse() {
   return (
     <div className="relative flex items-center justify-center" style={{ width: "180px", height: "180px" }}>
-      {/* Expanding rings */}
       {[0, 1, 2].map((i) => (
         <div
           key={i}
@@ -176,10 +256,8 @@ function RadarPulse() {
           }}
         />
       ))}
-      {/* Static outer ring */}
       <div className="absolute rounded-full border border-[#00A3FF]/20" style={{ width: "160px", height: "160px" }} />
       <div className="absolute rounded-full border border-[#00A3FF]/10" style={{ width: "130px", height: "130px" }} />
-      {/* Center circle */}
       <div className="absolute rounded-full border-2 border-[#00A3FF] flex items-center justify-center"
         style={{ width: "70px", height: "70px", background: "rgba(0,163,255,0.06)" }}>
         <div className="rounded-full" style={{ width: "24px", height: "24px", background: "#00A3FF", boxShadow: "0 0 20px rgba(0,163,255,0.8)" }} />
@@ -193,43 +271,43 @@ function RadarPulse() {
 export default function ProcessPage() {
   const router = useRouter();
 
-  // ── Phase & tab ─────────────────────────────────────────────────────────
   const [phase, setPhase] = useState<Phase>("input");
   const [tab,   setTab]   = useState<Tab>("youtube");
 
-  // ── YouTube state ────────────────────────────────────────────────────────
-  const [ytUrl,           setYtUrl]           = useState("");
-  const [ytPreview,       setYtPreview]       = useState<YouTubeOEmbedData | null>(null);
-  const [ytPreviewLoading,setYtPreviewLoading]= useState(false);
-  const [ytPreviewError,  setYtPreviewError]  = useState("");
+  // YouTube state
+  const [ytUrl,            setYtUrl]            = useState("");
+  const [ytPreview,        setYtPreview]        = useState<YouTubeOEmbedData | null>(null);
+  const [ytPreviewLoading, setYtPreviewLoading] = useState(false);
+  const [ytPreviewError,   setYtPreviewError]   = useState("");
   const ytDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Upload state ─────────────────────────────────────────────────────────
+  // Upload state
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [dragging,   setDragging]   = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ── Form state ───────────────────────────────────────────────────────────
+  // Form state
   const [firstName,    setFirstName]    = useState("");
   const [lastName,     setLastName]     = useState("");
   const [jerseyNumber, setJerseyNumber] = useState("");
   const [position,     setPosition]     = useState("");
   const [sport,        setSport]        = useState("");
   const [school,       setSchool]       = useState("");
+  const [gradYear,     setGradYear]     = useState("");
   const [email,        setEmail]        = useState("");
 
-  // ── Submit state ─────────────────────────────────────────────────────────
-  const [submitting,   setSubmitting]   = useState(false);
-  const [submitError,  setSubmitError]  = useState("");
+  // Submit state
+  const [submitting,  setSubmitting]  = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
-  // ── Processing state ─────────────────────────────────────────────────────
-  const [job,       setJob]       = useState<JobState | null>(null);
-  const [elapsed,   setElapsed]   = useState(0);
-  const [msgIndex,  setMsgIndex]  = useState(0);
-  const [clipsSaved,setClipsSaved]= useState(false);
-  const pollRef    = useRef<ReturnType<typeof setInterval> | null>(null);
-  const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const msgRef     = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Processing state
+  const [job,        setJob]        = useState<JobState | null>(null);
+  const [elapsed,    setElapsed]    = useState(0);
+  const [msgIndex,   setMsgIndex]   = useState(0);
+  const [clipsSaved, setClipsSaved] = useState(false);
+  const pollRef     = useRef<ReturnType<typeof setInterval> | null>(null);
+  const elapsedRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const msgRef      = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Reset position when sport changes
   useEffect(() => { setPosition(""); }, [sport]);
@@ -262,7 +340,7 @@ export default function ProcessPage() {
     return () => { if (ytDebounceRef.current) clearTimeout(ytDebounceRef.current); };
   }, [ytUrl]);
 
-  // Elapsed timer during processing
+  // Elapsed timer
   useEffect(() => {
     if (phase === "processing") {
       elapsedRef.current = setInterval(() => setElapsed((p) => p + 1), 1000);
@@ -270,29 +348,45 @@ export default function ProcessPage() {
     return () => { if (elapsedRef.current) clearInterval(elapsedRef.current); };
   }, [phase]);
 
-  // Rotating messages during processing
+  // Rotating messages (5 messages, rotate every 6 seconds)
   const rotatingMessages = [
-    "Analyzing frame by frame...",
+    "Analyzing every frame...",
     `Looking for jersey #${jerseyNumber || "?"}...`,
     "Scoring play intensity...",
+    "Finding your best moments...",
     "Almost ready...",
   ];
   useEffect(() => {
     if (phase !== "processing") return;
-    msgRef.current = setInterval(() => setMsgIndex((p) => (p + 1) % rotatingMessages.length), 8000);
+    msgRef.current = setInterval(() => setMsgIndex((p) => (p + 1) % rotatingMessages.length), 6000);
     return () => { if (msgRef.current) clearInterval(msgRef.current); };
   }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Save clips to localStorage when complete
   useEffect(() => {
     if (job?.status === "complete" && !clipsSaved) {
-      const clips = job.resultClips && job.resultClips.length > 0
+      const clips = (job.resultClips && job.resultClips.length > 0)
         ? job.resultClips
-        : generateMockClips(job.sport, job.jerseyNumber);
-      localStorage.setItem("aiGeneratedClips", JSON.stringify(clips.slice(0, 5)));
+        : generateMockClips(job.sport, job.jerseyNumber, job.position);
+      localStorage.setItem("aiGeneratedClips", JSON.stringify(clips));
+      localStorage.setItem("aiJobMeta", JSON.stringify({
+        jerseyNumber: job.jerseyNumber,
+        firstName: job.firstName,
+        sport: job.sport,
+      }));
       setClipsSaved(true);
     }
   }, [job?.status, clipsSaved, job]);
+
+  // Auto-navigate to /customize when complete
+  useEffect(() => {
+    if (job?.status === "complete" && clipsSaved) {
+      const timer = setTimeout(() => {
+        router.push("/customize");
+      }, 2500);
+      return () => clearTimeout(timer);
+    }
+  }, [job?.status, clipsSaved, router]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -303,12 +397,11 @@ export default function ProcessPage() {
     };
   }, []);
 
-  // Format elapsed time
   const fmtElapsed = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
 
-  // ── Demo simulation (client-side fallback when API unavailable) ──────────
-  const runDemoSimulation = useCallback((jNum: number, fname: string, spt: string) => {
-    const mockJob: JobState = { id: "demo", status: "queued", jerseyNumber: jNum, firstName: fname, sport: spt, errorMessage: null, resultClips: null };
+  // Demo simulation (client-side fallback when API unavailable)
+  const runDemoSimulation = useCallback((jNum: number, fname: string, spt: string, pos: string) => {
+    const mockJob: JobState = { id: "demo", status: "queued", jerseyNumber: jNum, firstName: fname, sport: spt, position: pos, errorMessage: null, resultClips: null };
     setJob(mockJob);
     setPhase("processing");
 
@@ -328,8 +421,8 @@ export default function ProcessPage() {
     });
   }, []);
 
-  // ── Poll job status ──────────────────────────────────────────────────────
-  const startPolling = useCallback((jobId: string, jNum: number, fname: string, spt: string) => {
+  // Poll job status
+  const startPolling = useCallback((jobId: string, jNum: number, fname: string, spt: string, pos: string) => {
     const poll = async () => {
       try {
         const res  = await fetch(`/api/process-video/status?jobId=${jobId}`);
@@ -340,6 +433,7 @@ export default function ProcessPage() {
           jerseyNumber: jNum,
           firstName: fname,
           sport: spt,
+          position: pos,
           errorMessage: data.errorMessage ?? null,
           resultClips: data.resultClips ?? null,
         });
@@ -354,26 +448,27 @@ export default function ProcessPage() {
     pollRef.current = setInterval(poll, 5000);
   }, []);
 
-  // ── Validation ───────────────────────────────────────────────────────────
+  // Validation
   const sharedFilled = firstName.trim() && lastName.trim() && jerseyNumber.trim() &&
     position.trim() && sport.trim() && school.trim() && email.trim();
   const canSubmit = (tab === "youtube" ? isValidYouTubeUrl(ytUrl) && !ytPreviewLoading : !!uploadFile) && !!sharedFilled;
 
-  // ── Submit ───────────────────────────────────────────────────────────────
+  // Submit
   const handleSubmit = async () => {
     if (!canSubmit || submitting) return;
     setSubmitting(true);
     setSubmitError("");
 
-    const jNum = Number(jerseyNumber);
+    const jNum  = Number(jerseyNumber);
     const fname = firstName.trim();
-    const spt = sport.trim();
+    const spt   = sport.trim();
+    const pos   = position.trim();
 
-    // Save email to waitlist (non-blocking — errors do not stop form submission)
+    // Save email to waitlist (non-blocking)
     supabase
       .from("waitlist")
       .insert({ email: email.trim().toLowerCase(), source: "process_page" })
-      .then((response) => console.log("[Clipt] Supabase waitlist response:", response));
+      .then((response) => console.log("[Clipt] waitlist response:", response));
 
     const videoUrl = tab === "youtube" ? ytUrl : "https://example.com/stub-upload.mp4";
 
@@ -381,30 +476,38 @@ export default function ProcessPage() {
       const res = await fetch("/api/process-video", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ videoUrl, firstName: fname, lastName: lastName.trim(), jerseyNumber: jNum, position: position.trim(), sport: spt, school: school.trim(), email: email.trim() }),
+        body: JSON.stringify({
+          videoUrl,
+          firstName: fname,
+          lastName: lastName.trim(),
+          jerseyNumber: jNum,
+          position: pos,
+          sport: spt,
+          school: school.trim(),
+          email: email.trim(),
+        }),
       });
       const data = await res.json();
 
       if (!res.ok) {
-        // API failed — run demo simulation
-        runDemoSimulation(jNum, fname, spt);
+        runDemoSimulation(jNum, fname, spt, pos);
         return;
       }
 
-      setJob({ id: data.jobId, status: "queued", jerseyNumber: jNum, firstName: fname, sport: spt, errorMessage: null, resultClips: null });
+      setJob({ id: data.jobId, status: "queued", jerseyNumber: jNum, firstName: fname, sport: spt, position: pos, errorMessage: null, resultClips: null });
       setPhase("processing");
-      startPolling(data.jobId, jNum, fname, spt);
+      startPolling(data.jobId, jNum, fname, spt, pos);
     } catch {
-      // Network error — run demo simulation
-      runDemoSimulation(jNum, fname, spt);
+      runDemoSimulation(jNum, fname, spt, pos);
     } finally {
       setSubmitting(false);
     }
   };
 
-  const positions = POSITIONS[sport] ?? [];
-  const currentStep = STATUS_IDX[job?.status ?? "queued"] ?? -1;
+  const positions    = POSITIONS[sport] ?? [];
+  const currentStep  = STATUS_IDX[job?.status ?? "queued"] ?? -1;
   const thumbnailUrl = ytPreview ? (getYouTubeThumbnail(ytUrl, "maxres") ?? ytPreview.thumbnail_url) : null;
+  const clipCount    = job ? generateMockClips(job.sport, job.jerseyNumber, job.position).length : 0;
 
   // ══════════════════════════════════════════════════════════════════════════
   // PROCESSING PHASE
@@ -433,15 +536,12 @@ export default function ProcessPage() {
 
         <main className="relative z-10 flex flex-col items-center justify-center min-h-screen px-6 py-16">
           <div className="w-full max-w-2xl">
-
-            {/* Status card */}
             <div className="rounded-2xl p-8 sm:p-10" style={{
               background: "#0A1628",
               border: "1px solid rgba(255,255,255,0.08)",
               boxShadow: "0 0 80px rgba(0,80,255,0.1)",
             }}>
               {isFailed ? (
-                /* ── Error ── */
                 <div className="text-center">
                   <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-5"
                     style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)" }}>
@@ -456,7 +556,6 @@ export default function ProcessPage() {
                   </button>
                 </div>
               ) : isComplete ? (
-                /* ── Success ── */
                 <div className="text-center">
                   <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6"
                     style={{ background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.3)" }}>
@@ -464,10 +563,11 @@ export default function ProcessPage() {
                   </div>
                   <h2 className="text-2xl font-black text-white mb-2">Your Highlights Are Ready!</h2>
                   <p className="text-slate-400 text-sm mb-1">
-                    We found <span className="text-white font-bold">5 plays</span> featuring jersey{" "}
-                    <span className="font-black" style={{ color: "#00A3FF" }}>#{job.jerseyNumber}</span>.
+                    AI found <span className="text-white font-bold">{clipCount} plays</span> featuring jersey{" "}
+                    <span className="font-black" style={{ color: "#00A3FF" }}>#{job.jerseyNumber}</span> — sorted by quality.
                   </p>
-                  <p className="text-slate-500 text-xs mb-8">Completed in {fmtElapsed(elapsed)}</p>
+                  <p className="text-slate-500 text-xs mb-2">Completed in {fmtElapsed(elapsed)}</p>
+                  <p className="text-slate-600 text-xs mb-8">Taking you to your reel...</p>
                   <div className="flex flex-col sm:flex-row gap-3 justify-center">
                     <button
                       onClick={() => router.push("/customize")}
@@ -483,14 +583,13 @@ export default function ProcessPage() {
                   </div>
                 </div>
               ) : (
-                /* ── Processing ── */
                 <>
                   {/* Top row: elapsed + jersey badge */}
                   <div className="flex items-center justify-between mb-8">
                     <div className="flex items-center gap-2 px-3 py-1.5 rounded-full"
                       style={{ background: "rgba(0,163,255,0.1)", border: "1px solid rgba(0,163,255,0.25)" }}>
                       <span className="w-2 h-2 rounded-full bg-[#00A3FF] animate-pulse" />
-                      <span className="text-xs font-bold text-[#00A3FF]">Jersey #{job.jerseyNumber}</span>
+                      <span className="text-xs font-bold text-[#00A3FF]">Scanning for #{job.jerseyNumber}</span>
                     </div>
                     <div className="text-slate-400 text-sm font-mono tabular-nums">
                       {fmtElapsed(elapsed)}
@@ -501,15 +600,17 @@ export default function ProcessPage() {
                   <div className="flex flex-col lg:flex-row gap-8 items-start">
                     {/* Left: timeline */}
                     <div className="lg:w-52 shrink-0 w-full">
-                      <p className="text-[10px] font-black tracking-widest uppercase text-slate-600 mb-4">Pipeline</p>
+                      <p className="text-[10px] font-black tracking-widest uppercase text-slate-600 mb-4">Progress</p>
                       <div className="flex flex-col">
                         {PROC_STEPS.map((step, i) => {
-                          const isDone   = i < currentStep || currentStep === 4;
-                          const isActive = i === currentStep;
-                          const isPending= !isDone && !isActive;
+                          const isDone    = i < currentStep || currentStep === 4;
+                          const isActive  = i === currentStep;
+                          const isPending = !isDone && !isActive;
+                          const label = step.key === "scanning"
+                            ? `Scanning for #${job.jerseyNumber}`
+                            : step.label;
                           return (
                             <div key={step.key} className="flex items-start gap-3">
-                              {/* Circle + line */}
                               <div className="flex flex-col items-center shrink-0">
                                 <div
                                   className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition-all duration-500"
@@ -522,22 +623,22 @@ export default function ProcessPage() {
                                               : "2px solid rgba(255,255,255,0.08)",
                                     animation:  isActive ? "step-pulse 1.8s ease-in-out infinite" : "none",
                                   }}>
-                                  {isDone   ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22C55E" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
-                                  : isActive ? <Spinner size={14} />
-                                  : <span className="text-[9px] font-bold text-slate-600">{i + 1}</span>}
+                                  {isDone
+                                    ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22C55E" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+                                    : isActive ? <Spinner size={14} />
+                                    : <span className="text-[9px] font-bold text-slate-600">{i + 1}</span>}
                                 </div>
                                 {i < PROC_STEPS.length - 1 && (
                                   <div className="w-0.5 h-8 mt-1 transition-all duration-500 rounded-full"
                                     style={{ background: isDone ? "rgba(34,197,94,0.4)" : "rgba(255,255,255,0.07)" }} />
                                 )}
                               </div>
-                              {/* Text */}
                               <div className="pb-8 pt-0.5">
                                 <p className="text-sm font-semibold leading-none transition-colors duration-300"
                                   style={{ color: isDone ? "#22C55E" : isActive ? "#fff" : "#475569" }}>
-                                  {step.key === "scanning" ? `Scanning for #${job.jerseyNumber}` : step.label}
+                                  {label}
                                 </p>
-                                {isActive && <p className="text-xs text-slate-500 mt-1 leading-snug">{step.hint}</p>}
+                                {isActive  && <p className="text-xs text-slate-500 mt-1 leading-snug">{step.hint}</p>}
                                 {isDone    && <p className="text-[11px] text-emerald-700 mt-0.5">Done</p>}
                                 {isPending && <p className="text-[11px] text-slate-600 mt-0.5">Queued</p>}
                               </div>
@@ -554,11 +655,11 @@ export default function ProcessPage() {
                         <h3 className="text-xl font-black text-white mb-2">
                           {currentStep === 0 && "Downloading video..."}
                           {currentStep === 1 && `Scanning for jersey #${job.jerseyNumber}...`}
-                          {currentStep === 2 && "Identifying best plays..."}
+                          {currentStep === 2 && "Ranking best plays..."}
                           {currentStep === 3 && "Building your reel..."}
                           {currentStep === -1 && "Starting up..."}
                         </h3>
-                        <p className="text-slate-500 text-sm transition-all duration-700">
+                        <p className="text-slate-500 text-sm transition-all duration-700 min-h-[20px]">
                           {rotatingMessages[msgIndex]}
                         </p>
                       </div>
@@ -588,13 +689,8 @@ export default function ProcessPage() {
           0%   { transform: scale(1);   opacity: 0.8; }
           100% { transform: scale(2.6); opacity: 0; }
         }
-        @keyframes step-pulse {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(0,163,255,0.4); }
-          50%       { box-shadow: 0 0 0 8px rgba(0,163,255,0); }
-        }
       `}</style>
 
-      {/* Background */}
       <div className="fixed inset-0 pointer-events-none z-0" style={{
         backgroundImage: `linear-gradient(rgba(0,163,255,0.022) 1px, transparent 1px), linear-gradient(90deg, rgba(0,163,255,0.022) 1px, transparent 1px)`,
         backgroundSize: "64px 64px",
@@ -623,9 +719,9 @@ export default function ProcessPage() {
         {/* ── How It Works ── */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-12">
           {[
-            { n: "1", icon: <UploadIcon />,            title: "Submit Your Film",      desc: "Paste a YouTube link or upload your game film." },
-            { n: "2", icon: <SparkleIcon size={32} />, title: "AI Scans For You",      desc: `Our model detects jersey #${jerseyNumber || "?"} in every frame.` },
-            { n: "3", icon: <FilmIcon size={32} />,    title: "Get Your Highlights",   desc: "Review your top plays and export your recruiting reel." },
+            { n: "1", icon: <UploadIcon />,            title: "Submit Your Film",    desc: "Paste a YouTube link or upload your game film." },
+            { n: "2", icon: <SparkleIcon size={32} />, title: "AI Scans For You",    desc: `Our model detects jersey #${jerseyNumber || "?"} in every frame.` },
+            { n: "3", icon: <FilmIcon size={32} />,    title: "Get Your Highlights", desc: "Review your top plays and export your recruiting reel." },
           ].map(({ n, icon, title, desc }) => (
             <div key={n} className="relative p-5 rounded-2xl flex flex-col gap-3"
               style={{ background: "#0A1628", border: "1px solid rgba(255,255,255,0.07)" }}>
@@ -733,7 +829,8 @@ export default function ProcessPage() {
                 <>
                   <div className="mb-4"><UploadIcon /></div>
                   <p className="text-white font-bold text-base mb-1">Drop your game film here</p>
-                  <p className="text-slate-400 text-sm mb-5">MP4, MOV, MKV — any video format</p>
+                  <p className="text-slate-400 text-sm mb-1">MP4, MOV, MKV — up to 4GB</p>
+                  <p className="text-slate-500 text-xs mb-5">Any video format accepted</p>
                   <button type="button" onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
                     className="px-6 py-2.5 rounded-xl text-sm font-bold text-white transition-all hover:opacity-90"
                     style={{ background: "#00A3FF" }}>
@@ -773,7 +870,8 @@ export default function ProcessPage() {
                 onFocus={(e) => (e.currentTarget.style.borderColor = "rgba(0,163,255,0.5)")}
                 onBlur={(e)  => (e.currentTarget.style.borderColor = "rgba(255,255,255,0.09)")}>
                 <option value="" disabled hidden>Select a sport</option>
-                {Object.keys(POSITIONS).map((s) => <option key={s} value={s} style={{ background: "#0A1628" }}>{s}</option>)}
+                <option value="Basketball" style={{ background: "#0A1628" }}>Basketball</option>
+                <option value="Football" style={{ background: "#0A1628" }}>Football</option>
               </select>
             </div>
 
@@ -788,15 +886,26 @@ export default function ProcessPage() {
               </select>
             </div>
 
-            <div className="sm:col-span-2">
+            <div>
               <label style={LS}>
                 Jersey Number
-                <span className="ml-2 text-xs font-normal text-slate-500">— This is the number the AI will look for on screen</span>
+                <span className="ml-2 text-xs font-normal text-slate-500">— The AI will scan every frame for this number</span>
               </label>
               <input type="number" min={0} max={99} value={jerseyNumber} onChange={(e) => setJerseyNumber(e.target.value)} placeholder="e.g. 23"
                 style={{ ...IS, maxWidth: "160px" }}
                 onFocus={(e) => (e.currentTarget.style.borderColor = "rgba(0,163,255,0.5)")}
                 onBlur={(e)  => (e.currentTarget.style.borderColor = "rgba(255,255,255,0.09)")} />
+            </div>
+
+            <div>
+              <label style={LS}>Graduation Year</label>
+              <select value={gradYear} onChange={(e) => setGradYear(e.target.value)}
+                style={{ ...IS, appearance: "none" } as React.CSSProperties}
+                onFocus={(e) => (e.currentTarget.style.borderColor = "rgba(0,163,255,0.5)")}
+                onBlur={(e)  => (e.currentTarget.style.borderColor = "rgba(255,255,255,0.09)")}>
+                <option value="" disabled hidden>Select year</option>
+                {GRAD_YEARS.map((y) => <option key={y} value={y} style={{ background: "#0A1628" }}>Class of {y}</option>)}
+              </select>
             </div>
 
             <div className="sm:col-span-2">
@@ -811,7 +920,7 @@ export default function ProcessPage() {
               <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com" style={IS}
                 onFocus={(e) => (e.currentTarget.style.borderColor = "rgba(0,163,255,0.5)")}
                 onBlur={(e)  => (e.currentTarget.style.borderColor = "rgba(255,255,255,0.09)")} />
-              <p className="text-slate-500 text-xs mt-1.5">We&apos;ll notify you when your highlights are ready.</p>
+              <p className="text-slate-500 text-xs mt-1.5">We will email you when your clips are ready.</p>
             </div>
           </div>
         </div>

@@ -34,6 +34,44 @@
 
 import { supabase } from "./supabase";
 
+// ── Email notification helper ─────────────────────────────────────────────────
+//
+// TODO: When Resend is integrated, replace the Supabase-only insert below with
+// an actual email send. Example:
+//
+//   import { Resend } from 'resend';
+//   const resend = new Resend(process.env.RESEND_API_KEY);
+//   await resend.emails.send({
+//     from: 'Clipt <noreply@cliptapp.com>',
+//     to: email,
+//     subject: 'Your highlights are ready!',
+//     html: `<p>Hi ${firstName}, your AI reel for jersey #${jerseyNumber} is ready.</p>`,
+//   });
+//
+async function notifyEmailComplete(
+  email: string,
+  firstName: string,
+  jerseyNumber: number
+): Promise<void> {
+  if (!email?.trim()) return;
+  try {
+    // Save email to waitlist with ai_processing_complete source so we have a record.
+    // This also ensures the email is captured even if it wasn't in the waitlist before.
+    const { error } = await supabase
+      .from("waitlist")
+      .insert({ email: email.trim().toLowerCase(), source: "ai_processing_complete" })
+      .select(); // use upsert-safe: duplicate emails are silently ignored
+    if (error && !error.message?.toLowerCase().includes("duplicate") && error.code !== "23505") {
+      console.error(`[notifyEmailComplete] Waitlist insert error:`, error);
+    } else {
+      console.log(`[notifyEmailComplete] Email captured for ${firstName} #${jerseyNumber}: ${email}`);
+    }
+    // TODO: Send actual email notification via Resend here
+  } catch (err) {
+    console.error("[notifyEmailComplete] Unexpected error:", err);
+  }
+}
+
 // ── Types ──────────────────────────────────────────────────────────────────
 
 /** A single detected highlight clip extracted from the game film */
@@ -365,6 +403,11 @@ export async function processVideo(job: ProcessingJob): Promise<void> {
     // Step 4: Save results
     await updateJobStatus(jobId, "complete", { result_clips: clips });
     console.log(`[Job ${jobId}] ✓ Complete — ${clips.length} clips found`);
+
+    // Step 5: Notify athlete via email (Supabase record + TODO: Resend)
+    if (job.email) {
+      await notifyEmailComplete(job.email, job.firstName, job.jerseyNumber);
+    }
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Unknown processing error";
