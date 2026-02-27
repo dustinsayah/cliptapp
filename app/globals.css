@@ -22,3 +22,27 @@ body {
 * {
   scroll-behavior: smooth;
 }
+
+/* Sound wave animation for music previews */
+@keyframes musicBar {
+  0%, 100% { transform: scaleY(0.25); opacity: 0.6; }
+  50%       { transform: scaleY(1);    opacity: 1;   }
+}
+.music-bar { transform-origin: bottom; animation: musicBar 0.9s ease-in-out infinite; }
+
+/* Tooltip fade-in */
+@keyframes tooltipIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+.tooltip-in { animation: tooltipIn 0.25s ease forwards; }
+
+/* Pulse glow for highlight best play */
+@keyframes glowPulse {
+  0%, 100% { opacity: 0.4; }
+  50%       { opacity: 1;   }
+}
+.glow-pulse { animation: glowPulse 1.5s ease-in-out infinite; }
+
+/* Color swatch hover */
+input[type="color"] { cursor: pointer; border: none; padding: 0; background: transparent; }

@@ -68,6 +68,63 @@ function getVideoExt(file: File): string {
   return ext;
 }
 
+// ── Onboarding tooltip ────────────────────────────────────────────────────────
+
+function UploadTip({ onDismiss }: { onDismiss: () => void }) {
+  return (
+    <div
+      className="tooltip-in relative mt-3 rounded-xl p-4 flex items-start gap-3"
+      style={{
+        background: "#0A1628",
+        border: "1px solid rgba(0,163,255,0.4)",
+        boxShadow: "0 4px 24px rgba(0,163,255,0.12)",
+      }}
+    >
+      {/* Arrow pointing up to the drop zone */}
+      <div
+        style={{
+          position: "absolute",
+          top: -8,
+          left: 32,
+          width: 0,
+          height: 0,
+          borderLeft: "8px solid transparent",
+          borderRight: "8px solid transparent",
+          borderBottom: "8px solid rgba(0,163,255,0.4)",
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          top: -6,
+          left: 34,
+          width: 0,
+          height: 0,
+          borderLeft: "6px solid transparent",
+          borderRight: "6px solid transparent",
+          borderBottom: "6px solid #0A1628",
+        }}
+      />
+      <span style={{ fontSize: 20 }}>💡</span>
+      <div className="flex-1 min-w-0">
+        <p className="text-white text-sm font-semibold mb-0.5">Upload up to 50 clips</p>
+        <p className="text-slate-400 text-xs leading-relaxed">
+          Drag-and-drop or browse. Add your best plays — coaches want variety. MP4, MOV, AVI, and WebM all work.
+        </p>
+      </div>
+      <button
+        onClick={onDismiss}
+        className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold transition-all hover:opacity-80"
+        style={{ background: "#00A3FF", color: "#050A14" }}
+      >
+        Got it
+      </button>
+    </div>
+  );
+}
+
+// ── Page ───────────────────────────────────────────────────────────────────────
+
 export default function UploadPage() {
   const router = useRouter();
   const reel = useReel();
@@ -82,6 +139,14 @@ export default function UploadPage() {
   const [sport, setSport]               = useState(reel.sport || "");
   const [school, setSchool]             = useState(reel.school || "");
   const [thumbnails, setThumbnails]     = useState<(string | null)[]>([]);
+  const [showUploadTip, setShowUploadTip] = useState(false);
+
+  // Show upload tip only on first visit (before customize-page onboard is done)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const done = localStorage.getItem("clipt_onboard_done");
+    if (!done) setShowUploadTip(true);
+  }, []);
 
   // Generate thumbnails when files change
   useEffect(() => {
@@ -318,6 +383,11 @@ export default function UploadPage() {
             }}
           />
         </div>
+
+        {/* Onboarding tip — step 1 */}
+        {showUploadTip && (
+          <UploadTip onDismiss={() => setShowUploadTip(false)} />
+        )}
 
         {/* File list with thumbnails */}
         {files.length > 0 && (
