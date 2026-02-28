@@ -269,80 +269,85 @@ export default function AdminPage() {
   const loadJobs = useCallback(async () => {
     setJobsLoading(true);
     setJobsError("");
+    console.log("[Admin] loadJobs: starting fetch");
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
     try {
       const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-      const res = await fetch(`${url}/rest/v1/processing_jobs?select=*&order=created_at.desc&limit=100`, {
-        headers: { 'apikey': key!, 'Authorization': `Bearer ${key}` }
-      });
+      console.log("[Admin] loadJobs: URL prefix =", url?.slice(0, 40));
+      const res = await fetch(
+        `${url}/rest/v1/processing_jobs?select=*&order=created_at.desc&limit=100`,
+        { headers: { apikey: key!, Authorization: `Bearer ${key}` }, signal: controller.signal }
+      );
+      clearTimeout(timeout);
+      console.log("[Admin] loadJobs: status =", res.status, "ok =", res.ok);
       const data = await res.json();
-      if (!res.ok) setJobsError(data?.message ?? "Failed to load jobs");
-      else setJobs((data as JobRow[]) ?? []);
+      console.log("[Admin] loadJobs: data =", data);
+      if (!res.ok) {
+        setJobsError(data?.message ?? `HTTP ${res.status}`);
+      } else if (!Array.isArray(data)) {
+        console.warn("[Admin] loadJobs: not an array:", typeof data, data);
+        setJobsError("No data found (unexpected response format)");
+      } else {
+        setJobs(data);
+      }
     } catch (e: any) {
-      console.error("Jobs error:", e);
-      setJobsError(e?.message ?? "Network error");
+      clearTimeout(timeout);
+      if (e?.name === "AbortError") {
+        console.error("[Admin] loadJobs: timed out after 8s");
+        setJobsError("Request timed out.");
+      } else {
+        console.error("[Admin] loadJobs: error:", e);
+        setJobsError(e?.message ?? "Network error");
+      }
+    } finally {
+      setJobsLoading(false);
     }
-    setJobsLoading(false);
   }, []);
 
   const loadWaitlist = useCallback(async () => {
     setWaitlistLoading(true);
     setWaitlistError("");
+    console.log("[Admin] loadWaitlist: starting fetch");
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
     try {
       const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-      const res = await fetch(`${url}/rest/v1/waitlist?select=*&order=created_at.desc&limit=200`, {
-        headers: { 'apikey': key!, 'Authorization': `Bearer ${key}` }
-      });
+      console.log("[Admin] loadWaitlist: URL prefix =", url?.slice(0, 40));
+      const res = await fetch(
+        `${url}/rest/v1/waitlist?select=*&order=created_at.desc&limit=200`,
+        { headers: { apikey: key!, Authorization: `Bearer ${key}` }, signal: controller.signal }
+      );
+      clearTimeout(timeout);
+      console.log("[Admin] loadWaitlist: status =", res.status, "ok =", res.ok);
       const data = await res.json();
-      if (!res.ok) setWaitlistError(data?.message ?? "Failed to load waitlist");
-      else setWaitlist((data as WaitlistRow[]) ?? []);
-    } catch (e: any) {
-      console.error("Waitlist error:", e);
-      setWaitlistError(e?.message ?? "Network error");
-    }
-    setWaitlistLoading(false);
-  }, []);
-
-  useEffect(() => {
-    const fetchJobs = async () => {
-      try {
-        const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-        const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-        const res = await fetch(`${url}/rest/v1/processing_jobs?select=*&order=created_at.desc`, {
-          headers: {
-            'apikey': key!,
-            'Authorization': `Bearer ${key}`
-          }
-        });
-        const data = await res.json();
-        setJobs(data);
-      } catch (e) {
-        console.error(e);
-      }
-    };
-    fetchJobs();
-  }, []);
-
-  useEffect(() => {
-    const fetchWaitlist = async () => {
-      try {
-        const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-        const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-        const res = await fetch(`${url}/rest/v1/waitlist?select=*&order=created_at.desc`, {
-          headers: {
-            'apikey': key!,
-            'Authorization': `Bearer ${key}`
-          }
-        });
-        const data = await res.json();
+      console.log("[Admin] loadWaitlist: data =", data);
+      if (!res.ok) {
+        setWaitlistError(data?.message ?? `HTTP ${res.status}`);
+      } else if (!Array.isArray(data)) {
+        console.warn("[Admin] loadWaitlist: not an array:", typeof data, data);
+        setWaitlistError("No data found (unexpected response format)");
+      } else {
         setWaitlist(data);
-      } catch (e) {
-        console.error(e);
       }
-    };
-    fetchWaitlist();
+    } catch (e: any) {
+      clearTimeout(timeout);
+      if (e?.name === "AbortError") {
+        console.error("[Admin] loadWaitlist: timed out after 8s");
+        setWaitlistError("Request timed out.");
+      } else {
+        console.error("[Admin] loadWaitlist: error:", e);
+        setWaitlistError(e?.message ?? "Network error");
+      }
+    } finally {
+      setWaitlistLoading(false);
+    }
   }, []);
+
+  useEffect(() => { loadJobs(); }, [loadJobs]);
+  useEffect(() => { loadWaitlist(); }, [loadWaitlist]);
 
   // Cleanup on unmount
   useEffect(() => {
