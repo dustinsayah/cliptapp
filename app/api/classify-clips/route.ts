@@ -76,8 +76,6 @@ function computeQualityScore(playType: string, confidenceScore: number, duration
 const SPORT_PLAY_TYPES: Record<string, string[]> = {
   Basketball: ["Scoring Play", "Defensive Play", "Assist", "Rebound", "Block", "Fast Break", "Steal", "Great Play"],
   Football:   ["Touchdown", "Tackle/Sack", "Interception", "Completion", "Run Play", "Defensive Play", "Great Play"],
-  Soccer:     ["Goal", "Save", "Dribble", "Header", "Assist", "Defensive Play", "Great Play"],
-  Baseball:   ["Home Run", "Strikeout", "Defensive Play", "Hit", "RBI", "Stolen Base", "Great Play"],
   Lacrosse:   ["Goal", "Save", "Ground Ball", "Assist", "Defensive Play", "Fast Break", "Great Play"],
 };
 

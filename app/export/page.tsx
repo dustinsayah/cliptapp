@@ -196,17 +196,6 @@ const BENCHMARKS: Record<string, Record<string, PosBenchmark>> = {
     "Cornerback":       { avgReelMin: 3.4, idealClips: [7, 12], avgGpa: 3.4, topClips: "Man coverage, ball skills" },
     "Defensive End":    { avgReelMin: 3.3, idealClips: [6, 10], avgGpa: 3.1, topClips: "Pass rush, sacks, run stops" },
   },
-  Soccer: {
-    "Goalkeeper":       { avgReelMin: 3.0, idealClips: [6, 10], avgGpa: 3.4, topClips: "Shot stops, distribution" },
-    "Striker":          { avgReelMin: 3.2, idealClips: [6, 10], avgGpa: 3.2, topClips: "Goals, finishing, movement" },
-    "Center Back":      { avgReelMin: 3.0, idealClips: [6, 10], avgGpa: 3.3, topClips: "Aerials, tackling, passing" },
-    "Central Midfielder":{ avgReelMin: 3.2, idealClips: [7, 11], avgGpa: 3.4, topClips: "Passing range, pressing, goals" },
-  },
-  Baseball: {
-    "Pitcher":          { avgReelMin: 3.5, idealClips: [5, 9],  avgGpa: 3.3, topClips: "Velo, breaking ball, strikeouts" },
-    "Catcher":          { avgReelMin: 3.2, idealClips: [5, 8],  avgGpa: 3.3, topClips: "Pop time, blocking, hitting" },
-    "Shortstop":        { avgReelMin: 3.0, idealClips: [5, 9],  avgGpa: 3.4, topClips: "Range, arm, double plays" },
-  },
   Lacrosse: {
     "Attack":           { avgReelMin: 3.2, idealClips: [6, 10], avgGpa: 3.3, topClips: "Goals, dodges, assists" },
     "Midfield":         { avgReelMin: 3.0, idealClips: [6, 10], avgGpa: 3.3, topClips: "Transition, shooting, groundballs" },

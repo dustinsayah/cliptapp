@@ -74,7 +74,7 @@ const FEATURES = [
     icon: <ListIcon />,
     title: "Play Classification",
     description:
-      "Automatically identifies scoring plays, assists, defensive stops, and more. Supports Basketball, Football, Soccer, Baseball, and Lacrosse.",
+      "Automatically identifies scoring plays, assists, defensive stops, and more. Supports Basketball, Football, and Lacrosse.",
   },
   {
     icon: <TrophyIcon />,

@@ -216,8 +216,6 @@ export async function scoreAndRankClips(
   const PLAY_TYPES: Record<string, string[]> = {
     Football:   ["Touchdown Pass", "Big Run", "Deep Ball Catch", "Key Block", "Interception"],
     Basketball: ["Mid Range Jumper", "Drive to Basket", "Defensive Stop", "Three Pointer", "Fast Break"],
-    Baseball:   ["Home Run", "Strikeout", "Stolen Base", "Double Play", "Clutch Hit"],
-    Soccer:     ["Goal", "Key Save", "Assist", "Defensive Stop", "Counter Attack"],
     default:    ["Highlight Play", "Key Moment", "Big Play", "Athletic Play", "Score"],
   };
 

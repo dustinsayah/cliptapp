@@ -198,55 +198,6 @@ const LABEL_RULES: LabelRule[] = [
     sports: ["Lacrosse"],
   },
 
-  // ── Soccer ───────────────────────────────────────────────────────────────
-  {
-    keywords: ["goal", "shot on goal", "shoot", "score"],
-    playType: "Goal",
-    sports: ["Soccer"],
-  },
-  {
-    keywords: ["save", "goalkeeper save", "goalkeeping"],
-    playType: "Save",
-    sports: ["Soccer"],
-  },
-  {
-    keywords: ["dribble", "dribbling"],
-    playType: "Dribble",
-    sports: ["Soccer"],
-  },
-  {
-    keywords: ["header", "heading"],
-    playType: "Header",
-    sports: ["Soccer"],
-  },
-  {
-    keywords: ["assist", "pass"],
-    playType: "Assist",
-    sports: ["Soccer"],
-  },
-
-  // ── Baseball ─────────────────────────────────────────────────────────────
-  {
-    keywords: ["home run", "homer", "grand slam"],
-    playType: "Home Run",
-    sports: ["Baseball"],
-  },
-  {
-    keywords: ["strikeout", "strike out", "pitch", "pitching"],
-    playType: "Strikeout",
-    sports: ["Baseball"],
-  },
-  {
-    keywords: ["catch", "fly ball", "pop up", "fielding"],
-    playType: "Defensive Play",
-    sports: ["Baseball"],
-  },
-  {
-    keywords: ["hit", "single", "double", "triple", "batting"],
-    playType: "Hit",
-    sports: ["Baseball"],
-  },
-
   // ── Universal (no sport filter) ──────────────────────────────────────────
   {
     keywords: ["defense", "defensive play", "stop", "guard"],

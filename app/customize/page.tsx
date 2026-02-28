@@ -954,139 +954,6 @@ const POSITION_GUIDES: Record<string, Record<string, PosGuide>> = {
       coachTip: "Accuracy matters more than one big kick. Show consistency. Include kickoffs — coaches need a kickoff specialist.",
     },
   },
-  Soccer: {
-    "Goalkeeper": {
-      weights: [
-        { label: "Shot Stopping", pct: 35, emoji: "🧤" },
-        { label: "Distribution", pct: 25, emoji: "🎯" },
-        { label: "Cross Claiming", pct: 20, emoji: "✋" },
-        { label: "Communication & Positioning", pct: 15, emoji: "🧠" },
-        { label: "One-on-One", pct: 5, emoji: "⚡" },
-      ],
-      checklist: ["Diving save to the corner", "One-on-one stop", "Claim of a cross", "Long distribution to trigger attack", "Penalty save if available"],
-      coachTip: "Show clean distribution — college coaches want GKs who start the attack. Include your best long throw or kick.",
-    },
-    "Striker": {
-      weights: [
-        { label: "Finishing & Goals", pct: 35, emoji: "⚽" },
-        { label: "Hold-up Play", pct: 20, emoji: "💪" },
-        { label: "Movement & Runs", pct: 20, emoji: "🏃" },
-        { label: "Assists & Link-up", pct: 15, emoji: "🎯" },
-        { label: "Pressing Defense", pct: 10, emoji: "🔥" },
-      ],
-      checklist: ["Goal from inside the box", "Goal from range", "Back-to-goal hold-up", "Assist for teammate", "Press leading to turnover"],
-      coachTip: "Open with your best goal. Then show movement OFF the ball — coaches watch how you create space, not just how you score.",
-    },
-    "Center Back": {
-      weights: [
-        { label: "Aerial Duels", pct: 30, emoji: "💪" },
-        { label: "Tackling & Intercepting", pct: 25, emoji: "🛡️" },
-        { label: "Ball Playing Ability", pct: 25, emoji: "🎯" },
-        { label: "Positioning", pct: 15, emoji: "🧠" },
-        { label: "Leadership", pct: 5, emoji: "👊" },
-      ],
-      checklist: ["Aerial win in defense", "Clean tackle or interception", "Progressive pass to midfield", "Cover run for teammate", "Clearance under pressure"],
-      coachTip: "Show you can PLAY — college coaches want ball-playing defenders. Lead with your best passing sequence.",
-    },
-    "Central Midfielder": {
-      weights: [
-        { label: "Passing Range & Vision", pct: 30, emoji: "👁️" },
-        { label: "Ball Winning", pct: 25, emoji: "💥" },
-        { label: "Goals & Shooting", pct: 20, emoji: "⚽" },
-        { label: "Dribbling Under Pressure", pct: 15, emoji: "🔀" },
-        { label: "Box-to-Box Runs", pct: 10, emoji: "🏃" },
-      ],
-      checklist: ["Long progressive pass", "Tackle or press winning ball", "Shot from range or goal", "Dribble out of pressure", "Late run into the box"],
-      coachTip: "Show defensive work AND offensive creation. One-sided midfielders don't make college rosters.",
-    },
-    "Right Winger": {
-      weights: [
-        { label: "Dribbling & 1v1", pct: 30, emoji: "🔀" },
-        { label: "Crossing & Delivery", pct: 25, emoji: "🎯" },
-        { label: "Goals", pct: 25, emoji: "⚽" },
-        { label: "Pressing High", pct: 15, emoji: "🔥" },
-        { label: "Link-up Play", pct: 5, emoji: "🤝" },
-      ],
-      checklist: ["Beat a defender 1v1", "Accurate cross for a chance", "Goal from the wing", "Cutback assist", "High press regain"],
-      coachTip: "Show your best 1v1 dribble first. Coaches want to see if you can beat someone — everything else follows.",
-    },
-    "Left Winger": {
-      weights: [
-        { label: "Dribbling & 1v1", pct: 30, emoji: "🔀" },
-        { label: "Crossing & Delivery", pct: 25, emoji: "🎯" },
-        { label: "Goals", pct: 25, emoji: "⚽" },
-        { label: "Pressing High", pct: 15, emoji: "🔥" },
-        { label: "Link-up Play", pct: 5, emoji: "🤝" },
-      ],
-      checklist: ["Beat a defender 1v1", "Accurate cross for a chance", "Goal from the wing", "Cutback assist", "High press regain"],
-      coachTip: "Show your best 1v1 dribble first. Coaches want to see if you can beat someone — everything else follows.",
-    },
-    "Defensive Midfielder": {
-      weights: [
-        { label: "Ball Winning & Tackling", pct: 35, emoji: "💥" },
-        { label: "Passing Accuracy & Range", pct: 30, emoji: "🎯" },
-        { label: "Pressing & Intensity", pct: 20, emoji: "🔥" },
-        { label: "Positioning & Discipline", pct: 15, emoji: "🧠" },
-      ],
-      checklist: ["Tackle or interception", "Long ball switching play", "Press leading to turnover", "Simple safe pass under pressure", "Screening the defense"],
-      coachTip: "The 6 is the engine. Show your defensive work but ALSO show clean distribution under pressure.",
-    },
-  },
-  Baseball: {
-    "Pitcher": {
-      weights: [
-        { label: "Fastball Velocity & Movement", pct: 30, emoji: "🔥" },
-        { label: "Breaking Ball / Offspeed", pct: 25, emoji: "🌀" },
-        { label: "Strikeouts", pct: 25, emoji: "⚡" },
-        { label: "Control & Command", pct: 15, emoji: "🎯" },
-        { label: "Mechanics & Delivery", pct: 5, emoji: "📐" },
-      ],
-      checklist: ["Full-speed radar gun clip", "Strikeout on breaking ball", "Strikeout looking (command)", "1-2-3 inning", "Pickoff or holding runners"],
-      coachTip: "Lead with your highest velo pitch on the radar gun. Then show your secondary pitch bite. Command clips prove you're coachable.",
-    },
-    "Catcher": {
-      weights: [
-        { label: "Throwing to Second", pct: 30, emoji: "💪" },
-        { label: "Blocking & Receiving", pct: 25, emoji: "🧤" },
-        { label: "Hitting & Power", pct: 25, emoji: "⚾" },
-        { label: "Framing & Pitch Management", pct: 15, emoji: "🎯" },
-        { label: "Leadership", pct: 5, emoji: "👊" },
-      ],
-      checklist: ["Pop time throw to second", "Block of dirt ball", "Framed pitch for strike call", "RBI hit or home run", "Steal of third or second"],
-      coachTip: "Pop time and blocking are everything for catchers. Record your best throw — college coaches want to see that arm.",
-    },
-    "Shortstop": {
-      weights: [
-        { label: "Range & Athleticism", pct: 30, emoji: "⚡" },
-        { label: "Throwing Arm", pct: 25, emoji: "💪" },
-        { label: "Hitting & Exit Velocity", pct: 25, emoji: "⚾" },
-        { label: "Double Play Turns", pct: 15, emoji: "🔀" },
-        { label: "Leadership", pct: 5, emoji: "👊" },
-      ],
-      checklist: ["Backhand play in the hole", "Double play turn", "Diving stop", "RBI hit or extra base hit", "Arm strength throw from deep SS"],
-      coachTip: "Show range FIRST. College coaches can see your arm on any throw — but range separates SS prospects.",
-    },
-    "Outfielder": {
-      weights: [
-        { label: "Hitting & Power", pct: 35, emoji: "⚾" },
-        { label: "Arm Strength & Accuracy", pct: 25, emoji: "💪" },
-        { label: "Range & Route Running", pct: 25, emoji: "⚡" },
-        { label: "Speed & Base Running", pct: 15, emoji: "🏃" },
-      ],
-      checklist: ["Home run or extra base hit", "Outfield assist (throw home or 3B)", "Diving or running catch", "Speed from 1st to 3rd", "Gap hit with good route"],
-      coachTip: "Lead with your best hit. Then show your arm on a throw. OF prospects are judged on bat FIRST.",
-    },
-    "Designated Hitter": {
-      weights: [
-        { label: "Power & Exit Velocity", pct: 40, emoji: "💥" },
-        { label: "Batting Average", pct: 30, emoji: "🎯" },
-        { label: "RBI Situations", pct: 20, emoji: "⚾" },
-        { label: "Plate Discipline", pct: 10, emoji: "🧠" },
-      ],
-      checklist: ["Home run swing with exit velo", "Two-strike hit", "RBI situation at-bat", "Oppo field hit or line drive", "Deep at-bat working count"],
-      coachTip: "Your bat is your ticket. Every clip should be about offensive production.",
-    },
-  },
   Lacrosse: {
     "Attack": {
       weights: [
@@ -1153,42 +1020,8 @@ function getPositionGuide(sport: string, position: string): PosGuide | null {
       coachTip: "Film angles matter — coaches need to see your feet. Request sideline film that shows your technique.",
     };
   }
-  // Soccer: handle similar positions
-  if (sport === "Soccer") {
-    if (["Right Back", "Left Back"].includes(position)) {
-      return {
-        weights: [
-          { label: "Defending 1v1", pct: 30, emoji: "🛡️" },
-          { label: "Overlapping Runs & Crosses", pct: 30, emoji: "🏃" },
-          { label: "Tackling & Positioning", pct: 25, emoji: "💥" },
-          { label: "Link-up Play", pct: 15, emoji: "🎯" },
-        ],
-        checklist: ["Solid 1v1 defensive stop", "Overlapping run with cross", "Tackle or interception", "Assist from wide area", "Defensive recovery run"],
-        coachTip: "Modern fullbacks must attack. Show your overlap runs — defending alone won't get you recruited at D1.",
-      };
-    }
-    if (["Forward"].includes(position)) return POSITION_GUIDES.Soccer["Striker"] ?? null;
-    if (["Attacking Midfielder"].includes(position)) return POSITION_GUIDES.Soccer["Central Midfielder"] ?? null;
-  }
   // Lacrosse
   if (sport === "Lacrosse" && position === "Long Stick Midfielder") return POSITION_GUIDES.Lacrosse["Defense"] ?? null;
-  // Baseball outfield positions
-  if (sport === "Baseball" && ["Left Field", "Center Field", "Right Field"].includes(position)) {
-    return POSITION_GUIDES.Baseball["Outfielder"] ?? null;
-  }
-  if (sport === "Baseball" && ["First Base", "Second Base", "Third Base"].includes(position)) {
-    return {
-      weights: [
-        { label: "Hitting & Power", pct: 35, emoji: "⚾" },
-        { label: "Fielding & Range", pct: 25, emoji: "🧤" },
-        { label: "Arm Strength & Accuracy", pct: 20, emoji: "💪" },
-        { label: "Double Plays", pct: 15, emoji: "🔀" },
-        { label: "Speed", pct: 5, emoji: "🏃" },
-      ],
-      checklist: ["RBI hit or home run", "Defensive play showing range", "Strong throw across diamond", "Turn a double play", "Extra base hit"],
-      coachTip: "Your bat matters most at a corner position. Put your best offensive clips first.",
-    };
-  }
   return null;
 }
 
@@ -1221,6 +1054,28 @@ interface AiJobMeta {
 export default function CustomizePage() {
   const router = useRouter();
   const reel   = useReel();
+
+  // ── Sport / position state (loaded from localStorage on mount) ───────────
+  const [sport,    setSport]    = useState("");
+  const [position, setPosition] = useState("");
+
+  // Runs first on page load — reads sport + position directly from localStorage
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = localStorage.getItem("clipt_reel");
+      if (raw) {
+        const cliptData = JSON.parse(raw);
+        const savedSport    = (cliptData.sport    as string) || "";
+        const savedPosition = (cliptData.position as string) || "";
+        console.log("[customize] sport read from localStorage:", savedSport, "| position:", savedPosition);
+        if (savedSport)    setSport(savedSport);
+        if (savedPosition) setPosition(savedPosition);
+      }
+    } catch {
+      // ignore parse errors
+    }
+  }, []);
 
   // ── AI Clips detection ───────────────────────────────────────────────────
   const [aiClips,    setAiClips]    = useState<AiClip[] | null>(null);
@@ -1368,13 +1223,11 @@ export default function CustomizePage() {
   };
   const onDragEnd = () => { dragIdx.current = null; setDragOver(null); };
 
-  // ── Sport / positions ─────────────────────────────────────────────────────
-  const sport     = reel.sport || "";
+  // ── Derived positions list (recomputes when sport state changes) ──────────
   const positions = SPORTS_CONFIG[sport]?.positions ?? [];
 
   // ── State ─────────────────────────────────────────────────────────────────
   const [firstName,   setFirstName]   = useState(reel.firstName || "");
-  const [position,    setPosition]    = useState(() => positions.includes(reel.position) ? reel.position : "");
   const [gradYear,    setGradYear]    = useState(reel.gradYear || "");
   const [heightFt,    setHeightFt]    = useState(reel.heightFt || "");
   const [heightIn,    setHeightIn]    = useState(reel.heightIn || "");
@@ -1465,8 +1318,19 @@ export default function CustomizePage() {
   const isLight   = isLightColor(accentHex);
   const btnColor  = isLight ? "#050A14" : "#ffffff";
 
-  // Stats fields — sport-specific from SPORTS_CONFIG
-  const { base: baseStats, extra: extraStats } = SPORTS_CONFIG[sport]?.getStatFields(position) ?? getStatFields(sport, position);
+  // Stats fields — explicit if/else by sport so we always show the right stats
+  let baseStats: StatField[];
+  let extraStats: StatField[];
+  if (sport === "Basketball") {
+    ({ base: baseStats, extra: extraStats } = SPORTS_CONFIG.Basketball.getStatFields(position));
+  } else if (sport === "Football") {
+    ({ base: baseStats, extra: extraStats } = SPORTS_CONFIG.Football.getStatFields(position));
+  } else if (sport === "Lacrosse") {
+    ({ base: baseStats, extra: extraStats } = SPORTS_CONFIG.Lacrosse.getStatFields(position));
+  } else {
+    baseStats = [];
+    extraStats = [];
+  }
   const [showExtraStats, setShowExtraStats] = useState(false);
   const clipLabelOpts = SPORTS_CONFIG[sport]?.clipLabels ?? getClipLabels(sport);
   const diversityWarn = checkDiversity(clips.map((c) => c.label));
@@ -1647,7 +1511,7 @@ export default function CustomizePage() {
         firstName, position, gradYear, heightFt, heightIn, weight, gpa, email,
         coachName, coachEmail, musicTrackId, accentHex, fontStyle, transition,
         includeStatsCard, statsData, academicStatsData: academicData,
-        measurablesData, sport: reel.sport, school: reel.school,
+        measurablesData, sport, school: reel.school,
         jerseyNumber: reel.jerseyNumber,
       };
       localStorage.setItem("cliptSettings", JSON.stringify(cliptSettings));
