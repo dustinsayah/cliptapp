@@ -269,16 +269,18 @@ export default function AdminPage() {
   const loadJobs = useCallback(async () => {
     setJobsLoading(true);
     setJobsError("");
-    const { data, error } = await supabase
-      .from("processing_jobs")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(100);
-    if (error) {
-      console.error("Jobs error:", error);
-      setJobsError(error.message);
-    } else {
-      setJobs((data as JobRow[]) ?? []);
+    try {
+      const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      const res = await fetch(`${url}/rest/v1/processing_jobs?select=*&order=created_at.desc&limit=100`, {
+        headers: { 'apikey': key!, 'Authorization': `Bearer ${key}` }
+      });
+      const data = await res.json();
+      if (!res.ok) setJobsError(data?.message ?? "Failed to load jobs");
+      else setJobs((data as JobRow[]) ?? []);
+    } catch (e: any) {
+      console.error("Jobs error:", e);
+      setJobsError(e?.message ?? "Network error");
     }
     setJobsLoading(false);
   }, []);
@@ -286,24 +288,61 @@ export default function AdminPage() {
   const loadWaitlist = useCallback(async () => {
     setWaitlistLoading(true);
     setWaitlistError("");
-    const { data, error } = await supabase
-      .from("waitlist")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(200);
-    if (error) {
-      console.error("Waitlist error:", error);
-      setWaitlistError(error.message);
-    } else {
-      setWaitlist((data as WaitlistRow[]) ?? []);
+    try {
+      const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      const res = await fetch(`${url}/rest/v1/waitlist?select=*&order=created_at.desc&limit=200`, {
+        headers: { 'apikey': key!, 'Authorization': `Bearer ${key}` }
+      });
+      const data = await res.json();
+      if (!res.ok) setWaitlistError(data?.message ?? "Failed to load waitlist");
+      else setWaitlist((data as WaitlistRow[]) ?? []);
+    } catch (e: any) {
+      console.error("Waitlist error:", e);
+      setWaitlistError(e?.message ?? "Network error");
     }
     setWaitlistLoading(false);
   }, []);
 
   useEffect(() => {
-    loadJobs();
-    loadWaitlist();
-  }, [loadJobs, loadWaitlist]);
+    const fetchJobs = async () => {
+      try {
+        const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+        const res = await fetch(`${url}/rest/v1/processing_jobs?select=*&order=created_at.desc`, {
+          headers: {
+            'apikey': key!,
+            'Authorization': `Bearer ${key}`
+          }
+        });
+        const data = await res.json();
+        setJobs(data);
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    fetchJobs();
+  }, []);
+
+  useEffect(() => {
+    const fetchWaitlist = async () => {
+      try {
+        const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+        const res = await fetch(`${url}/rest/v1/waitlist?select=*&order=created_at.desc`, {
+          headers: {
+            'apikey': key!,
+            'Authorization': `Bearer ${key}`
+          }
+        });
+        const data = await res.json();
+        setWaitlist(data);
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    fetchWaitlist();
+  }, []);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -383,29 +422,6 @@ export default function AdminPage() {
         queue_position: queuePosition,
       });
 
-      const res = await fetch("/api/process-video", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jobId,
-          videoUrl: simYtUrl,
-          firstName: simFirstName.trim(),
-          lastName: simLastName.trim(),
-          jerseyNumber: jNum,
-          position: simPosition,
-          sport: simSport,
-          school: simSchool.trim(),
-          email: simEmail.trim(),
-          queuePosition,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setSimError(data.error ?? "API error");
-        setSimSubmitting(false);
-        return;
-      }
-
       setSimJob({ jobId, status: "queued", jerseyNumber: jNum, firstName: simFirstName.trim(), sport: simSport, elapsed: 0 });
 
       // Elapsed timer
@@ -413,27 +429,43 @@ export default function AdminPage() {
         setSimJob((prev) => prev ? { ...prev, elapsed: prev.elapsed + 1 } : prev);
       }, 1000);
 
-      // Poll status via API route (every 3 seconds), write final result to Supabase from browser
+      // Simulate processing stages by updating Supabase directly from browser
+      setTimeout(() => { supabase.from("processing_jobs").update({ status: "downloading" }).eq("id", jobId).then(() => {}); }, 1200);
+      setTimeout(() => { supabase.from("processing_jobs").update({ status: "scanning"    }).eq("id", jobId).then(() => {}); }, 4000);
+      setTimeout(() => { supabase.from("processing_jobs").update({ status: "identifying" }).eq("id", jobId).then(() => {}); }, 7000);
+      setTimeout(() => { supabase.from("processing_jobs").update({ status: "building"    }).eq("id", jobId).then(() => {}); }, 9500);
+      setTimeout(() => {
+        const sportCfg = SPORTS_CONFIG[simSport];
+        const playDefs = sportCfg
+          ? sportCfg.getClipTypes(simPosition).map((c: { label: string; confidence: number }) => ({ playType: c.label, confidenceScore: c.confidence }))
+          : [{ playType: "Highlight Play", confidenceScore: 0.9 }];
+        let cursor = 45;
+        const mockClips = playDefs.slice(0, 8).map((p: { playType: string; confidenceScore: number }, i: number) => {
+          const dur = Math.round((4 + Math.random() * 4.5) * 10) / 10;
+          const startTime = cursor;
+          const endTime = Math.round((startTime + dur) * 10) / 10;
+          cursor = endTime + 60;
+          return { id: `ai-clip-${i + 1}`, clipNumber: i + 1, playType: p.playType, startTime, endTime, duration: dur, confidenceScore: p.confidenceScore, jerseyVisible: true, aiPicked: true, sport: simSport, jerseyNumber: jNum, thumbnailUrl: null };
+        });
+        supabase.from("processing_jobs").update({
+          status: "complete", result_clips: mockClips, updated_at: new Date().toISOString(),
+        }).eq("id", jobId).then(() => {});
+      }, 12000);
+
+      // Poll Supabase directly for status updates (no API route)
       const poll = async () => {
         try {
-          const sr = await fetch(`/api/process-video/status?jobId=${jobId}`);
-          const sd = await sr.json();
-          if (sd.status) {
+          const { data: sd } = await supabase
+            .from("processing_jobs")
+            .select("status, result_clips, error_message")
+            .eq("id", jobId)
+            .single();
+          if (sd?.status) {
             setSimJob((prev) => prev ? { ...prev, status: sd.status } : prev);
             if (sd.status === "complete" || sd.status === "failed") {
               if (simPollRef.current) clearInterval(simPollRef.current);
               if (simElapsedRef.current) clearInterval(simElapsedRef.current);
-              // Update Supabase from browser with final status + clips
-              supabase
-                .from("processing_jobs")
-                .update({
-                  status:        sd.status,
-                  result_clips:  sd.resultClips  ?? null,
-                  error_message: sd.errorMessage ?? null,
-                  updated_at:    new Date().toISOString(),
-                })
-                .eq("id", jobId)
-                .then(() => loadJobs()); // refresh jobs table
+              loadJobs();
             }
           }
         } catch (pollErr) {

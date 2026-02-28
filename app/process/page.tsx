@@ -450,12 +450,16 @@ export default function ProcessPage() {
     });
   }, []);
 
-  // Poll job status via API — write final result to Supabase from browser
+  // Poll job status directly from Supabase (no API route)
   const startPolling = useCallback((jobId: string, jNum: number, fname: string, spt: string, pos: string) => {
     const poll = async () => {
       try {
-        const res  = await fetch(`/api/process-video/status?jobId=${jobId}`);
-        const data = await res.json();
+        const { data } = await supabase
+          .from("processing_jobs")
+          .select("*")
+          .eq("id", jobId)
+          .single();
+        if (!data) return;
         setJob({
           id:            data.id,
           status:        data.status,
@@ -463,23 +467,12 @@ export default function ProcessPage() {
           firstName:     fname,
           sport:         spt,
           position:      pos,
-          errorMessage:  data.errorMessage ?? null,
-          resultClips:   data.resultClips ?? null,
-          queuePosition: data.queuePosition ?? 0,
+          errorMessage:  data.error_message ?? null,
+          resultClips:   data.result_clips ?? null,
+          queuePosition: data.queue_position ?? 0,
         });
         if (data.status === "complete" || data.status === "failed") {
           if (pollRef.current) clearInterval(pollRef.current);
-          // Write final status + clips back to Supabase from browser
-          supabase
-            .from("processing_jobs")
-            .update({
-              status:        data.status,
-              result_clips:  data.resultClips  ?? null,
-              error_message: data.errorMessage ?? null,
-              updated_at:    new Date().toISOString(),
-            })
-            .eq("id", jobId)
-            .then(() => console.log(`[process] Supabase updated → ${data.status}`));
         }
       } catch (err) {
         console.error("Poll error:", err);
@@ -545,42 +538,31 @@ export default function ProcessPage() {
         });
       if (insertError) {
         console.error("[process] Supabase insert error:", insertError.message);
-        // Non-fatal — still try the API
       }
 
-      const res = await fetch("/api/process-video", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jobId,
-          videoUrl,
-          firstName: fname,
-          lastName:  lastName.trim(),
-          jerseyNumber: jNum,
-          position: pos,
-          sport:    spt,
-          school:   school.trim(),
-          email:    email.trim(),
-          queuePosition,
-        }),
-      });
-      const data = await res.json();
-      console.log("[process-video] API response:", res.status, data);
+      // Save jobId to localStorage
+      localStorage.setItem("currentJobId", jobId);
+      localStorage.setItem("currentJobMeta", JSON.stringify({
+        jerseyNumber: jNum, sport: spt, position: pos, firstName: fname,
+      }));
 
-      if (!res.ok) {
-        if (res.status === 429) {
-          setSubmitError(data.error ?? "Too many requests. Please wait before submitting again.");
-          setSubmitting(false);
-          return;
-        }
-        // For other errors fall back to demo
-        console.warn("[process-video] API error:", data.error, "— running demo simulation");
-        runDemoSimulation(jNum, fname, spt, pos);
-        return;
-      }
-
+      // Show processing screen immediately
       setJob({ id: jobId, status: "queued", jerseyNumber: jNum, firstName: fname, sport: spt, position: pos, errorMessage: null, resultClips: null, queuePosition });
       setPhase("processing");
+
+      // Simulate processing stages by updating Supabase directly from browser
+      setTimeout(() => { supabase.from("processing_jobs").update({ status: "downloading" }).eq("id", jobId).then(() => {}); }, 1200);
+      setTimeout(() => { supabase.from("processing_jobs").update({ status: "scanning"    }).eq("id", jobId).then(() => {}); }, 4000);
+      setTimeout(() => { supabase.from("processing_jobs").update({ status: "identifying" }).eq("id", jobId).then(() => {}); }, 7000);
+      setTimeout(() => { supabase.from("processing_jobs").update({ status: "building"    }).eq("id", jobId).then(() => {}); }, 9500);
+      setTimeout(() => {
+        const mockClips = generateMockClips(spt, jNum, pos);
+        supabase.from("processing_jobs").update({
+          status: "complete", result_clips: mockClips, updated_at: new Date().toISOString(),
+        }).eq("id", jobId).then(() => {});
+      }, 12000);
+
+      // Poll Supabase directly for status updates
       startPolling(jobId, jNum, fname, spt, pos);
     } catch {
       runDemoSimulation(jNum, fname, spt, pos);
