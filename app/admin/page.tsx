@@ -258,11 +258,16 @@ export default function AdminPage() {
   // ── Load data ─────────────────────────────────────────────────────────────
 
   const loadJobs = useCallback(async () => {
+    if (!supabaseConfigured) {
+      setJobsError("Supabase not configured — add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to your environment variables.");
+      setJobsLoading(false);
+      return;
+    }
     setJobsLoading(true);
     setJobsError("");
     const { data, error } = await supabase
       .from("processing_jobs")
-      .select("id,first_name,last_name,jersey_number,sport,status,created_at,email,position,school,video_url,source")
+      .select("*")
       .order("created_at", { ascending: false })
       .limit(100);
     if (error) {
@@ -274,11 +279,16 @@ export default function AdminPage() {
   }, []);
 
   const loadWaitlist = useCallback(async () => {
+    if (!supabaseConfigured) {
+      setWaitlistError("Supabase not configured — add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to your environment variables.");
+      setWaitlistLoading(false);
+      return;
+    }
     setWaitlistLoading(true);
     setWaitlistError("");
     const { data, error } = await supabase
       .from("waitlist")
-      .select("id,email,source,created_at")
+      .select("*")
       .order("created_at", { ascending: false })
       .limit(200);
     if (error) {
@@ -640,7 +650,7 @@ export default function AdminPage() {
           </div>
 
           {jobsError ? (
-            <div className="px-6 py-6 text-sm text-red-400">Error: {jobsError}</div>
+            <div className="px-6 py-6 text-sm text-red-400">{jobsError}</div>
           ) : jobsLoading ? (
             <div className="px-6 py-10 text-center text-slate-500 text-sm">Loading jobs...</div>
           ) : jobs.length === 0 ? (
@@ -650,11 +660,11 @@ export default function AdminPage() {
               <table className="w-full admin-table">
                 <thead>
                   <tr>
+                    <th className="text-left">ID</th>
                     <th className="text-left">Athlete</th>
                     <th className="text-left">Sport</th>
                     <th className="text-left">Jersey</th>
                     <th className="text-left">Status</th>
-                    <th className="text-left">Source</th>
                     <th className="text-left">Created</th>
                     <th className="text-right">Actions</th>
                   </tr>
@@ -663,14 +673,14 @@ export default function AdminPage() {
                   {jobs.map((job) => (
                     <tr key={job.id}>
                       <td>
-                        <div>
-                          <span className="font-semibold text-white">
-                            {[job.first_name, job.last_name].filter(Boolean).join(" ") || "—"}
-                          </span>
-                          {job.email && (
-                            <div className="text-xs text-slate-500 mt-0.5">{job.email}</div>
-                          )}
-                        </div>
+                        <span className="font-mono text-xs text-slate-500 select-all" title={job.id}>
+                          {job.id.slice(0, 8)}…
+                        </span>
+                      </td>
+                      <td>
+                        <span className="font-semibold text-white">
+                          {[job.first_name, job.last_name].filter(Boolean).join(" ") || "—"}
+                        </span>
                       </td>
                       <td className="text-slate-300">{job.sport ?? "—"}</td>
                       <td>
@@ -679,9 +689,6 @@ export default function AdminPage() {
                         ) : "—"}
                       </td>
                       <td><StatusBadge status={job.status} /></td>
-                      <td>
-                        <span className="text-xs text-slate-400 uppercase tracking-wide">{job.source ?? "—"}</span>
-                      </td>
                       <td className="text-slate-400 text-xs">{fmtDate(job.created_at)}</td>
                       <td className="text-right">
                         {job.status !== "complete" && job.status !== "failed" && (
@@ -726,7 +733,7 @@ export default function AdminPage() {
           </div>
 
           {waitlistError ? (
-            <div className="px-6 py-6 text-sm text-red-400">Error: {waitlistError}</div>
+            <div className="px-6 py-6 text-sm text-red-400">{waitlistError}</div>
           ) : waitlistLoading ? (
             <div className="px-6 py-10 text-center text-slate-500 text-sm">Loading waitlist...</div>
           ) : waitlist.length === 0 ? (
