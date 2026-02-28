@@ -8,6 +8,7 @@ import type {
   TitleCardTemplate, IntroAnimation, WatermarkStyle, ExportAspectRatio,
 } from "../providers";
 import { SPORTS_CONFIG } from "../../lib/sportsConfig";
+import QRCode from "qrcode";
 
 // ── Icons ──────────────────────────────────────────────────────────────────────
 
@@ -1201,6 +1202,7 @@ interface AiClip {
   endTime: number;
   duration: number;
   confidenceScore: number;
+  qualityScore?: number;
   jerseyVisible: boolean;
   aiPicked: boolean;
   sport: string;
@@ -1385,8 +1387,26 @@ export default function CustomizePage() {
   // Music
   const [musicTrackId,  setMusicTrackId]  = useState(reel.musicTrackId || "no-music");
   const [playingTrack,  setPlayingTrack]  = useState<string | null>(null);
+  const [customMusicName, setCustomMusicName] = useState<string>(() => {
+    try { return localStorage.getItem("clipt_custom_music_name") || ""; } catch { return ""; }
+  });
+  const musicFileInputRef = useRef<HTMLInputElement | null>(null);
   const audioRef  = useRef<HTMLAudioElement | null>(null);
   const playTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleCustomMusicUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) { alert("Music file must be under 10MB."); return; }
+    const blobUrl = URL.createObjectURL(file);
+    try {
+      localStorage.setItem("clipt_custom_music_url", blobUrl);
+      localStorage.setItem("clipt_custom_music_name", file.name);
+    } catch {}
+    setCustomMusicName(file.name);
+    setMusicTrackId("custom");
+    e.target.value = "";
+  };
 
   // Color
   const [accentHex,    setAccentHexLocal] = useState(reel.accentHex || "#00A3FF");
@@ -1420,6 +1440,17 @@ export default function CustomizePage() {
   const [highlightBest,   setHighlightBest]  = useState(reel.highlightBestPlay || false);
   const [slowMo,          setSlowMo]         = useState(reel.slowMotionReplay || false);
 
+  // Starred clips (multi-clip starring system)
+  const [starredIndices,  setStarredIndices] = useState<number[]>(reel.starredClipIndices || []);
+  const [addSlowMo,       setAddSlowMo]      = useState(reel.starredSlowMo || false);
+  const [addReplay,       setAddReplay]      = useState(reel.starredReplay || false);
+
+  // Auto-sort quality banner
+  const [autoSortBanner, setAutoSortBanner] = useState(false);
+
+  // Computed clip durations (for manual clips without aiClip.duration)
+  const [clipDurations,   setClipDurations]  = useState<number[]>([]);
+
   // Guide checklist
   const [guideChecks, setGuideChecks] = useState<boolean[]>([]);
   const toggleGuideCheck = (i: number) => {
@@ -1443,6 +1474,27 @@ export default function CustomizePage() {
   // Duration limit for this sport
   const sportMaxMin = SPORTS_CONFIG[sport]?.recommendedLength.max ?? 5;
 
+  // Computed total reel duration
+  const totalReelSecs = clips.reduce((sum, c, i) => {
+    if (c.aiClip) return sum + c.aiClip.duration;
+    return sum + (clipDurations[i] ?? 0);
+  }, 0);
+  const totalReelMins = Math.floor(totalReelSecs / 60);
+  const totalReelSecRem = Math.round(totalReelSecs % 60);
+  const sportMaxSecs = sportMaxMin * 60;
+  const durationColor = totalReelSecs === 0 ? "#64748B"
+    : totalReelSecs <= sportMaxSecs ? "#22C55E"
+    : totalReelSecs <= sportMaxSecs * 1.15 ? "#F59E0B"
+    : "#EF4444";
+  const durationMsg = totalReelSecs === 0 ? "Add clips to see duration"
+    : totalReelSecs <= sportMaxSecs ? "Within recommended range"
+    : totalReelSecs <= sportMaxSecs * 1.15 ? "Slightly over recommended"
+    : "Over maximum — consider removing clips";
+
+  // Star toggle helper
+  const toggleStar = (i: number) =>
+    setStarredIndices((prev) => prev.includes(i) ? prev.filter((x) => x !== i) : [...prev, i]);
+
   // Onboarding
   const [onboardStep, setOnboardStep] = useState(0);
   useEffect(() => {
@@ -1458,6 +1510,36 @@ export default function CustomizePage() {
       setOnboardStep(step + 1);
     }
   };
+
+  // Load auto-sort quality banner flag
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (localStorage.getItem("autoSortedByQuality") === "true") {
+      setAutoSortBanner(true);
+      localStorage.removeItem("autoSortedByQuality");
+    }
+  }, []);
+
+  // Compute durations for manual clips from File objects
+  useEffect(() => {
+    const files = reel.files;
+    if (!files.length) return;
+    const durations: number[] = new Array(files.length).fill(0);
+    let pending = files.length;
+    files.forEach((f, i) => {
+      const url = URL.createObjectURL(f);
+      const vid = document.createElement("video");
+      vid.preload = "metadata";
+      vid.onloadedmetadata = () => {
+        durations[i] = vid.duration || 0;
+        URL.revokeObjectURL(url);
+        pending--;
+        if (pending === 0) setClipDurations([...durations]);
+      };
+      vid.onerror = () => { pending--; if (pending === 0) setClipDurations([...durations]); };
+      vid.src = url;
+    });
+  }, [reel.files]);
 
   // ── Music handlers ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -1546,7 +1628,7 @@ export default function CustomizePage() {
       firstName, position, gradYear, heightFt, heightIn, weight, gpa, email, coachName, coachEmail,
       musicTrackId, accentHex,
       fontStyle, transition: transition as never,
-      reelLength, highlightPlayer, enhanceQuality, showJerseyOverlay,
+      highlightPlayer, enhanceQuality, showJerseyOverlay,
       includeStatsCard, statsData,
       showAcademicStats: showAcademic, showMeasurablesCard: showMeasurables,
       academicStatsData: academicData, measurablesData,
@@ -1555,9 +1637,22 @@ export default function CustomizePage() {
       watermarkStyle: watermark,
       exportAspectRatio: aspectRatio as never,
       labelMyPlays, bestPlayIndex: bestPlayIdx, highlightBestPlay: highlightBest, slowMotionReplay: slowMo,
+      starredClipIndices: starredIndices, starredSlowMo: addSlowMo, starredReplay: addReplay,
       clipLabels: clips.map((c) => c.label),
       clipPlayLabels: clips.map((c) => c.playLabel),
     });
+    // Save full settings snapshot to localStorage so export page always has fresh data
+    try {
+      const cliptSettings = {
+        firstName, position, gradYear, heightFt, heightIn, weight, gpa, email,
+        coachName, coachEmail, musicTrackId, accentHex, fontStyle, transition,
+        includeStatsCard, statsData, academicStatsData: academicData,
+        measurablesData, sport: reel.sport, school: reel.school,
+        jerseyNumber: reel.jerseyNumber,
+      };
+      localStorage.setItem("cliptSettings", JSON.stringify(cliptSettings));
+      console.log("[customize] cliptSettings saved:", cliptSettings);
+    } catch {}
     router.push("/export");
   };
 
@@ -1639,6 +1734,21 @@ export default function CustomizePage() {
         </div>
       )}
 
+      {/* ── Auto-sort quality banner ── */}
+      {autoSortBanner && (
+        <div className="max-w-7xl mx-auto px-6 pt-3">
+          <div className="flex items-center justify-between gap-4 rounded-xl px-5 py-3"
+            style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.25)" }}>
+            <span className="text-[#22C55E] text-sm font-semibold">
+              ✦ Clips automatically sorted by play quality — your best plays are first.
+            </span>
+            <button onClick={() => setAutoSortBanner(false)} className="text-slate-500 hover:text-white transition-colors">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── 3-column layout ── */}
       <div className="max-w-7xl mx-auto px-6 py-8">
         <div className="lg:grid lg:grid-cols-[220px_1fr_280px] gap-6">
@@ -1716,13 +1826,27 @@ export default function CustomizePage() {
                           )}
                         </div>
                         <div className="flex items-center gap-1 shrink-0 mt-0.5">
-                          {/* Best play star */}
-                          {highlightBest && (
-                            <button type="button" onClick={() => setBestPlayIdx(bestPlayIdx === i ? -1 : i)}
-                              className="transition-colors" style={{ color: bestPlayIdx === i ? accentHex : "#334155" }}>
-                              <StarIcon filled={bestPlayIdx === i} />
-                            </button>
-                          )}
+                          {/* Quality score badge for AI clips */}
+                          {clip.aiClip?.qualityScore !== undefined && (() => {
+                            const qs = clip.aiClip!.qualityScore!;
+                            const qc = qs >= 80 ? "#FBBF24" : qs >= 60 ? "#00A3FF" : qs >= 40 ? "#64748B" : "#EF4444";
+                            return (
+                              <div title={qs >= 80 ? "Elite Play" : qs >= 60 ? "Strong Play" : qs >= 40 ? "Decent Play" : "Consider Removing"}
+                                style={{
+                                  width: 22, height: 22, borderRadius: "50%",
+                                  background: qc + "22", border: `1.5px solid ${qc}`,
+                                  color: qc, fontSize: 8, fontWeight: 800,
+                                  display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                                }}>
+                                {qs}
+                              </div>
+                            );
+                          })()}
+                          {/* Star button — always visible for multi-clip starring */}
+                          <button type="button" onClick={() => toggleStar(i)}
+                            className="transition-colors" style={{ color: starredIndices.includes(i) ? "#FBBF24" : "#334155" }}>
+                            <StarIcon filled={starredIndices.includes(i)} />
+                          </button>
                           {/* Remove clip button — works for both AI and manual clips */}
                           <button type="button"
                             onClick={() => {
@@ -1878,6 +2002,30 @@ export default function CustomizePage() {
                     </div>
                   );
                 })}
+
+                {/* Upload Your Own Music */}
+                <div className="rounded-xl p-4" style={{ background: `${accentHex}0D`, border: `1px solid ${accentHex}30` }}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span style={{ fontSize: 16 }}>🎵</span>
+                    <span className="text-sm font-bold text-white">Upload Your Own Music</span>
+                    <span className="text-[10px] text-slate-500 ml-1">MP3 · WAV · up to 10MB</span>
+                  </div>
+                  <p className="text-xs text-slate-400 mb-3">Use your own song — your reel, your soundtrack.</p>
+                  {musicTrackId === "custom" && customMusicName && (
+                    <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-lg" style={{ background: `${accentHex}18`, border: `1px solid ${accentHex}40` }}>
+                      <span style={{ color: accentHex }}>✓</span>
+                      <span className="text-xs text-white font-medium truncate">{customMusicName}</span>
+                      <button type="button" onClick={() => { setMusicTrackId("no-music"); setCustomMusicName(""); try { localStorage.removeItem("clipt_custom_music_url"); localStorage.removeItem("clipt_custom_music_name"); } catch {} }}
+                        className="ml-auto text-slate-400 hover:text-white text-xs">Remove</button>
+                    </div>
+                  )}
+                  <input ref={musicFileInputRef} type="file" accept=".mp3,.wav,audio/mpeg,audio/wav" className="hidden" onChange={handleCustomMusicUpload} />
+                  <button type="button" onClick={() => musicFileInputRef.current?.click()}
+                    className="w-full py-2.5 rounded-xl text-sm font-bold transition-all hover:opacity-90"
+                    style={{ background: accentHex, color: isLightColor(accentHex) ? "#050A14" : "#fff" }}>
+                    {musicTrackId === "custom" ? "Replace Track" : "Browse & Upload"}
+                  </button>
+                </div>
               </div>
             </CollapsibleSection>
 
@@ -2255,21 +2403,67 @@ export default function CustomizePage() {
               </div>
             </CollapsibleSection>
 
-            {/* 10. DURATION */}
-            <CollapsibleSection title="Reel Duration" subtitle="Target clip length for your reel" accent={accentHex} defaultOpen={false}>
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-sm font-semibold text-white">{reelLength} min target</span>
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: `${accentHex}18`, color: accentHex }}>
-                  Max {sportMaxMin} min recommended
+            {/* 10. DURATION (read-only — computed from clips) */}
+            <CollapsibleSection title="Reel Length" subtitle="Computed from your selected clips" accent={accentHex} defaultOpen={false}>
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-3 h-3 rounded-full shrink-0" style={{ background: durationColor }} />
+                <span className="text-sm font-bold text-white">
+                  {totalReelSecs === 0 ? "No clips added" : `${totalReelMins}m ${totalReelSecRem}s`}
+                </span>
+                <span className="text-xs px-2 py-0.5 rounded-full ml-auto" style={{ background: `${accentHex}18`, color: accentHex }}>
+                  Max {sportMaxMin} min
                 </span>
               </div>
-              <input type="range" min={1} max={5} step={0.5} value={reelLength}
-                onChange={(e) => setReelLength(Number(e.target.value))}
-                className="w-full mb-3" style={{ accentColor: accentHex }} />
-              <p className="text-xs text-slate-500">
-                {sport === "Basketball" ? "Basketball coaches prefer under 4 min — quality over quantity." : sport === "Football" ? "Football coaches prefer under 5 min — put your best plays first." : "Keep it under 5 min — coaches stop watching after that."}
-              </p>
+              {totalReelSecs > 0 && (
+                <div className="h-2 rounded-full overflow-hidden mb-3" style={{ background: "rgba(255,255,255,0.06)" }}>
+                  <div className="h-full rounded-full transition-all duration-500"
+                    style={{ width: `${Math.min(100, (totalReelSecs / sportMaxSecs) * 100)}%`, background: durationColor }} />
+                </div>
+              )}
+              <p className="text-xs font-semibold" style={{ color: durationColor }}>{durationMsg}</p>
+              {durationColor === "#EF4444" && (
+                <p className="text-xs text-slate-500 mt-1">Consider removing your lowest-scored clips to shorten the reel.</p>
+              )}
             </CollapsibleSection>
+
+            {/* Starred Play Options — shown when at least one clip is starred */}
+            {starredIndices.length > 0 && (
+              <CollapsibleSection title="Starred Play Options" subtitle="Special treatment for your highlighted plays" accent={accentHex} defaultOpen>
+                <div className="flex flex-col gap-3 mb-4">
+                  {/* Add Slow Motion toggle */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-white">Add Slow Motion</p>
+                      <p className="text-xs text-slate-500">Starred clips play at 50% speed</p>
+                    </div>
+                    <button type="button" onClick={() => setAddSlowMo((v) => !v)}
+                      className="relative shrink-0 transition-all duration-200"
+                      style={{ width: 44, height: 24, borderRadius: 12, background: addSlowMo ? accentHex : "rgba(255,255,255,0.1)", border: `1px solid ${addSlowMo ? accentHex : "rgba(255,255,255,0.15)"}` }}>
+                      <div className="absolute top-0.5 transition-all duration-200"
+                        style={{ width: 20, height: 20, borderRadius: "50%", background: "#fff", left: addSlowMo ? 22 : 2 }} />
+                    </button>
+                  </div>
+                  {/* Add Instant Replay toggle */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-white">Add Instant Replay</p>
+                      <p className="text-xs text-slate-500">Starred clips replay at full speed with overlay</p>
+                    </div>
+                    <button type="button" onClick={() => setAddReplay((v) => !v)}
+                      className="relative shrink-0 transition-all duration-200"
+                      style={{ width: 44, height: 24, borderRadius: 12, background: addReplay ? accentHex : "rgba(255,255,255,0.1)", border: `1px solid ${addReplay ? accentHex : "rgba(255,255,255,0.15)"}` }}>
+                      <div className="absolute top-0.5 transition-all duration-200"
+                        style={{ width: 20, height: 20, borderRadius: "50%", background: "#fff", left: addReplay ? 22 : 2 }} />
+                    </button>
+                  </div>
+                </div>
+                <div className="rounded-lg px-3 py-2.5" style={{ background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.2)" }}>
+                  <p className="text-[11px] text-[#FBBF24] leading-snug">
+                    ⚠️ Use sparingly — coaches prefer full speed footage. Max 2 starred plays recommended.
+                  </p>
+                </div>
+              </CollapsibleSection>
+            )}
 
             {/* 11. WHAT COACHES WANT TO SEE */}
             {(() => {

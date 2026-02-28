@@ -51,6 +51,26 @@ interface ClipInput {
   [key: string]: unknown;
 }
 
+// ── Quality score helper ───────────────────────────────────────────────────
+
+function computeQualityScore(playType: string, confidenceScore: number, duration: number): number {
+  const confPts = Math.round(confidenceScore * 40);
+  const SCORING   = ["Goal","Home Run","Touchdown","Scoring Play","Score","Point"];
+  const ASSIST    = ["Assist","Completion","RBI"];
+  const DEFENSIVE = ["Defensive Play","Block","Tackle/Sack","Interception","Save","Ground Ball","Strikeout"];
+  const HUSTLE    = ["Steal","Rebound","Stolen Base","Fast Break"];
+  const typePts =
+    SCORING.some((t) => playType.includes(t))   ? 30 :
+    ASSIST.some((t) => playType.includes(t))    ? 25 :
+    DEFENSIVE.some((t) => playType.includes(t)) ? 25 :
+    HUSTLE.some((t) => playType.includes(t))    ? 15 : 10;
+  const durPts =
+    duration >= 4 && duration <= 12 ? 20 :
+    duration > 12 && duration <= 20 ? 15 :
+    duration < 4 ? 5 : 10;
+  return Math.min(100, confPts + typePts + durPts);
+}
+
 // ── Mock fallback classifier ───────────────────────────────────────────────
 
 const SPORT_PLAY_TYPES: Record<string, string[]> = {
@@ -63,10 +83,15 @@ const SPORT_PLAY_TYPES: Record<string, string[]> = {
 
 function mockClassify(clips: ClipInput[], sport: string): ClipInput[] {
   const types = SPORT_PLAY_TYPES[sport] ?? SPORT_PLAY_TYPES.Basketball;
-  return clips.map((clip, i) => ({
-    ...clip,
-    playType: types[i % types.length] ?? "Great Play",
-  }));
+  return clips.map((clip, i) => {
+    const playType = types[i % types.length] ?? "Great Play";
+    const duration = clip.endTime - clip.startTime;
+    return {
+      ...clip,
+      playType,
+      qualityScore: computeQualityScore(playType, clip.confidence, duration),
+    };
+  });
 }
 
 // ── Handler ───────────────────────────────────────────────────────────────
@@ -141,8 +166,16 @@ export async function POST(request: NextRequest) {
     );
 
     const enriched = await classifyAllClips(clipsForClassification, sport, position);
+    const scored = enriched.map((c: ClipInput & { playType?: string }) => ({
+      ...c,
+      qualityScore: computeQualityScore(
+        c.playType ?? "Great Play",
+        c.confidence,
+        c.endTime - c.startTime
+      ),
+    }));
 
-    return NextResponse.json({ clips: enriched, fallback: false });
+    return NextResponse.json({ clips: scored, fallback: false });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[classify-clips] classifyAllClips error:", msg);

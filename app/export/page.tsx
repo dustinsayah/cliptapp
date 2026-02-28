@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useReel } from "../providers";
 import type { FontStyle, TitleCardTemplate, WatermarkStyle, ExportAspectRatio, ExportQuality } from "../providers";
+import QRCode from "qrcode";
 
 // ── Dimensions ─────────────────────────────────────────────────────────────────
 type Dim = { w: number; h: number };
@@ -149,31 +150,25 @@ function calcCoachReadyScore(reel: {
   fontStyle: string; transition: string; firstName: string; school: string;
   position: string; jerseyNumber: string;
 }): CoachScore {
-  const sportMax = reel.sport === "Basketball" ? 4 : 5;
-  const trackHasLyrics = ["nba-warmup","game-time","trap-god","drill-season","ice-cold","street-ball","pressure"].includes(reel.musicTrackId);
-  const gpaNum = parseFloat(reel.gpa) || 0;
-  const allFieldsFilled = !!(reel.firstName && reel.gradYear && reel.heightFt && reel.weight && reel.email && reel.school && reel.position && reel.jerseyNumber);
+  const sportCfg = (() => { try { const { SPORTS_CONFIG } = require("@/lib/sportsConfig"); return SPORTS_CONFIG[reel.sport]; } catch { return null; } })();
+  const sportMax = sportCfg?.recommendedLength?.max ?? (reel.sport === "Basketball" ? 4 : 5);
 
   const deductions: ScoreItem[] = [
     { label: "Reel over recommended length", delta: -20, applies: reel.reelLength > sportMax, fix: `Reduce to ${sportMax} min or less in Reel Duration settings` },
-    { label: "Music may have lyrics (coaches watch on mute)", delta: -15, applies: trackHasLyrics, fix: "Switch to Cinematic or Coach Recommended music" },
-    { label: "No stats card included", delta: -10, applies: !reel.includeStatsCard, fix: "Enable Stats Card in the Stats System section" },
-    { label: "Missing graduation year", delta: -10, applies: !reel.gradYear, fix: "Add your Class of year in Reel Info" },
+    { label: "Missing graduation year", delta: -15, applies: !reel.gradYear, fix: "Add your Class of year in Reel Info" },
     { label: "Missing height or weight", delta: -10, applies: !reel.heightFt || !reel.weight, fix: "Add your measurables in Reel Info" },
     { label: "Missing email address", delta: -10, applies: !reel.email, fix: "Add your email in Reel Info — coaches need a way to contact you" },
-    { label: "Font not coach-standard (Modern or Bold)", delta: -5, applies: !["Modern","Bold"].includes(reel.fontStyle), fix: "Switch to Modern or Bold font in Color & Style" },
+    { label: "No stats card included", delta: -10, applies: !reel.includeStatsCard, fix: "Enable Stats Card in the Stats System section" },
+    { label: "Missing GPA", delta: -10, applies: !reel.gpa, fix: "Add your GPA in Reel Info — coaches factor academics heavily" },
     { label: "Non-Hard Cut transitions slow down viewing", delta: -5, applies: reel.transition !== "Hard Cut", fix: "Switch to Hard Cut in Color & Style" },
+    { label: "Font not coach-standard (Modern or Clean)", delta: -5, applies: !["Modern","Clean"].includes(reel.fontStyle), fix: "Switch to Modern or Clean font in Color & Style" },
   ];
 
-  const bonuses: ScoreItem[] = [
-    { label: "All title card fields complete", delta: 5, applies: allFieldsFilled },
-    { label: `GPA ${gpaNum.toFixed(1)} — above 3.0 (academic bonus)`, delta: 5, applies: gpaNum >= 3.0 && !!reel.gpa },
-  ];
+  const bonuses: ScoreItem[] = [];
 
   let score = 100;
   deductions.forEach((d) => { if (d.applies) score += d.delta; });
-  bonuses.forEach((b) => { if (b.applies) score += b.delta; });
-  score = Math.max(0, Math.min(110, score));
+  score = Math.max(0, Math.min(100, score));
 
   const grade = score >= 90 ? "A" : score >= 80 ? "B" : score >= 70 ? "C" : "D";
   const gradeLabel = score >= 90 ? "Coach Ready" : score >= 80 ? "Strong Reel" : score >= 70 ? "Needs Work" : "Missing Key Info";
@@ -227,160 +222,215 @@ function getBenchmark(sport: string, position: string): PosBenchmark | null {
 // ── Recruiting Card Canvas ─────────────────────────────────────────────────────
 
 async function drawRecruitingCard(info: TitleInfo, accentHex: string): Promise<string> {
-  const W = 1200, H = 800;
+  const W = 1200, H = 630;
   const canvas = document.createElement("canvas");
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext("2d")!;
-  const s = H / 800;
 
-  await Promise.allSettled(["Inter","Oswald","Poppins","Bebas Neue"].map((f) => document.fonts.load(`bold 48px "${f}"`)));
+  await Promise.allSettled([
+    document.fonts.load(`bold 56px "Oswald"`),
+    document.fonts.load(`bold 32px "Oswald"`),
+    document.fonts.load(`400 13px "Inter"`),
+    document.fonts.load(`bold 13px "Inter"`),
+  ]);
 
   // Background
-  ctx.fillStyle = "#050A14"; ctx.fillRect(0, 0, W, H);
-  // Diagonal pattern
-  ctx.save(); ctx.strokeStyle = accentHex + "0D"; ctx.lineWidth = 1;
-  const step = 32;
-  for (let x = -H; x < W + H; x += step) {
-    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x + H, H); ctx.stroke();
-  }
-  ctx.restore();
-  // Accent top stripe
-  ctx.fillStyle = accentHex; ctx.fillRect(0, 0, W, 8);
-  // Card border
-  ctx.strokeStyle = accentHex + "40"; ctx.lineWidth = 1.5;
-  ctx.strokeRect(1, 1, W - 2, H - 2);
+  ctx.fillStyle = "#050A14";
+  ctx.fillRect(0, 0, W, H);
 
-  // Left panel bg
-  ctx.fillStyle = accentHex + "12"; ctx.fillRect(0, 0, 340, H);
-  ctx.fillStyle = accentHex; ctx.fillRect(340, 0, 2, H);
+  // Left panel
+  const LEFT_W = 290;
+  ctx.fillStyle = accentHex + "12";
+  ctx.fillRect(0, 0, LEFT_W, H);
+  // Left panel right border
+  ctx.fillStyle = accentHex + "60";
+  ctx.fillRect(LEFT_W - 2, 0, 2, H);
+  // Left accent stripe (left edge)
+  ctx.fillStyle = accentHex;
+  ctx.fillRect(0, 0, 10, H);
 
   // Jersey number — big in left panel
   ctx.save();
-  ctx.shadowColor = accentHex; ctx.shadowBlur = 40;
-  ctx.font = `bold ${Math.round(140 * s)}px Arial, sans-serif`;
-  ctx.fillStyle = accentHex; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.fillText(info.jerseyNumber ? `#${info.jerseyNumber}` : "#00", 170, 220);
+  ctx.shadowColor = accentHex;
+  ctx.shadowBlur = 50;
+  ctx.font = `bold 120px "Oswald", Arial, sans-serif`;
+  ctx.fillStyle = accentHex;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(info.jerseyNumber ? `#${info.jerseyNumber}` : "#00", LEFT_W / 2 + 5, 155);
   ctx.restore();
 
-  // Sport + position in left panel
+  // Sport + position
   ctx.save();
-  ctx.font = `bold ${Math.round(14 * s)}px Arial, sans-serif`;
-  ctx.fillStyle = "#64748b"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.font = `bold 12px "Inter", Arial, sans-serif`;
+  ctx.fillStyle = "#64748b";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
   (ctx as unknown as { letterSpacing: string }).letterSpacing = "3px";
-  ctx.fillText([info.sport, info.position].filter(Boolean).join("  ·  ").toUpperCase(), 170, 340);
+  ctx.fillText([info.sport, info.position].filter(Boolean).join(" · ").toUpperCase(), LEFT_W / 2 + 5, 255);
   ctx.restore();
 
-  // School in left panel
+  // School
   if (info.school) {
     ctx.save();
-    ctx.font = `bold ${Math.round(13 * s)}px Arial, sans-serif`;
-    ctx.fillStyle = "#e2e8f0"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText(info.school.toUpperCase(), 170, 380);
+    ctx.font = `bold 13px "Inter", Arial, sans-serif`;
+    ctx.fillStyle = "#e2e8f0";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(info.school.toUpperCase(), LEFT_W / 2 + 5, 282);
     ctx.restore();
   }
 
-  // Measurables in left panel
+  // Measurables
   const measLines = [
-    info.heightFt ? `${info.heightFt}'${info.heightIn||"0"}"  HT` : null,
+    info.heightFt ? `${info.heightFt}'${info.heightIn || "0"}"  HEIGHT` : null,
     info.weight ? `${info.weight} LBS` : null,
     info.gradYear ? `CLASS OF ${info.gradYear}` : null,
+    info.gpa ? `GPA  ${info.gpa}` : null,
   ].filter(Boolean) as string[];
   measLines.forEach((line, i) => {
     ctx.save();
-    ctx.font = `${Math.round(12 * s)}px Arial, sans-serif`;
-    ctx.fillStyle = "#94a3b8"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText(line, 170, 440 + i * 26);
+    ctx.font = `11px "Inter", Arial, sans-serif`;
+    ctx.fillStyle = "#94a3b8";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(line, LEFT_W / 2 + 5, 318 + i * 22);
     ctx.restore();
   });
 
-  // QR placeholder
-  const qrX = 90, qrY = 560, qrS = 160;
-  ctx.strokeStyle = accentHex + "50"; ctx.lineWidth = 1.5;
-  ctx.strokeRect(qrX, qrY, qrS, qrS);
-  ctx.fillStyle = accentHex + "08"; ctx.fillRect(qrX, qrY, qrS, qrS);
-  // Draw a simple QR-like grid pattern
-  const cell = 10;
-  ctx.fillStyle = accentHex + "25";
-  for (let r = 0; r < 16; r++) {
-    for (let c = 0; c < 16; c++) {
-      if (Math.random() > 0.5) ctx.fillRect(qrX + 4 + c * cell, qrY + 4 + r * cell, cell - 1, cell - 1);
-    }
+  // Real QR code pointing to cliptapp.com
+  try {
+    const qrDataUrl = await QRCode.toDataURL("https://cliptapp.com", {
+      width: 128,
+      margin: 1,
+      color: { dark: "#FFFFFF", light: "#00000000" },
+    });
+    const qrImg = new Image();
+    await new Promise<void>((resolve) => {
+      qrImg.onload = () => resolve();
+      qrImg.onerror = () => resolve();
+      qrImg.src = qrDataUrl;
+    });
+    const qrSize = 128;
+    const qrX = Math.round((LEFT_W - qrSize) / 2) + 5;
+    const qrY = H - 185;
+    // Background box behind QR
+    ctx.fillStyle = "rgba(255,255,255,0.04)";
+    ctx.beginPath();
+    (ctx as unknown as { roundRect: (x: number, y: number, w: number, h: number, r: number) => void }).roundRect(qrX - 8, qrY - 8, qrSize + 16, qrSize + 16, 8);
+    ctx.fill();
+    ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
+    // Label
+    ctx.save();
+    ctx.font = `bold 10px "Inter", Arial, sans-serif`;
+    ctx.fillStyle = "#64748b";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    (ctx as unknown as { letterSpacing: string }).letterSpacing = "1px";
+    ctx.fillText("SCAN FOR FULL REEL", LEFT_W / 2 + 5, qrY + qrSize + 10);
+    ctx.restore();
+  } catch { /* skip QR on error */ }
+
+  // ── Right Panel ──────────────────────────────────────────────────────────────
+  const rx = LEFT_W + 28;
+  const rw = W - rx - 28;
+
+  // Athlete name
+  ctx.save();
+  ctx.font = `bold 56px "Oswald", Arial, sans-serif`;
+  ctx.fillStyle = "#FFFFFF";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  let nameText = (info.firstName || "ATHLETE").toUpperCase();
+  while (ctx.measureText(nameText).width > rw && nameText.length > 1) {
+    nameText = nameText.slice(0, -1);
   }
-  ctx.save();
-  ctx.font = `bold ${Math.round(8 * s)}px Arial, sans-serif`;
-  ctx.fillStyle = accentHex; ctx.textAlign = "center"; ctx.textBaseline = "top";
-  (ctx as unknown as { letterSpacing: string }).letterSpacing = "1px";
-  ctx.fillText("LINK TO FULL REEL", qrX + qrS / 2, qrY + qrS + 8);
-  ctx.fillStyle = "#475569"; ctx.font = `${Math.round(7 * s)}px Arial, sans-serif`;
-  ctx.fillText("CLIPTAPP.COM", qrX + qrS / 2, qrY + qrS + 22);
+  ctx.fillText(nameText, rx, 26);
   ctx.restore();
 
-  // Right panel — Athlete name
-  const rx = 380;
-  ctx.save();
-  ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 4;
-  ctx.font = `bold ${Math.round(64 * s)}px Arial, sans-serif`;
-  ctx.fillStyle = "#FFFFFF"; ctx.textAlign = "left"; ctx.textBaseline = "top";
-  ctx.fillText((info.firstName || "ATHLETE").toUpperCase(), rx, 40);
-  ctx.restore();
-  ctx.fillStyle = accentHex; ctx.fillRect(rx, 118, 400, 3);
+  // Accent divider line under name
+  ctx.fillStyle = accentHex;
+  ctx.fillRect(rx, 96, Math.min(rw, 440), 3);
 
-  // Stats grid
-  const statEntries = Object.entries(info.statsData || {}).filter(([,v]) => v?.trim()).slice(0, 9);
+  // Stats section
+  const statEntries = Object.entries(info.statsData || {}).filter(([, v]) => v?.trim()).slice(0, 6);
   if (statEntries.length > 0) {
     ctx.save();
-    ctx.font = `bold ${Math.round(10 * s)}px Arial, sans-serif`;
-    ctx.fillStyle = accentHex; ctx.textAlign = "left";
+    ctx.font = `bold 10px "Inter", Arial, sans-serif`;
+    ctx.fillStyle = accentHex;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
     (ctx as unknown as { letterSpacing: string }).letterSpacing = "3px";
-    ctx.fillText("SEASON STATS", rx, 145);
+    ctx.fillText("SEASON STATS", rx, 112);
     ctx.restore();
-    const cols = 3, cw = 230, ch = 72, gx = 16, gy = 10;
-    const sy = 170;
+
+    const cols = 3;
+    const gx = 12, gy = 10;
+    const cw = Math.floor((rw - (cols - 1) * gx) / cols);
+    const ch = 78;
+    const sy = 134;
+
     statEntries.forEach(([label, value], idx) => {
-      const col = idx % cols, row = Math.floor(idx / cols);
-      const x = rx + col * (cw + gx), y = sy + row * (ch + gy);
+      const col = idx % cols;
+      const row = Math.floor(idx / cols);
+      const x = rx + col * (cw + gx);
+      const y = sy + row * (ch + gy);
+
       ctx.fillStyle = "rgba(255,255,255,0.04)";
       ctx.beginPath();
-      ctx.roundRect(x, y, cw, ch, 8);
+      (ctx as unknown as { roundRect: (x: number, y: number, w: number, h: number, r: number) => void }).roundRect(x, y, cw, ch, 8);
       ctx.fill();
-      ctx.strokeStyle = accentHex + "30"; ctx.lineWidth = 1;
+      ctx.strokeStyle = accentHex + "30";
+      ctx.lineWidth = 1;
       ctx.stroke();
+
       ctx.save();
-      ctx.font = `bold ${Math.round(28 * s)}px Arial, sans-serif`;
-      ctx.fillStyle = accentHex; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.font = `bold 30px "Oswald", Arial, sans-serif`;
+      ctx.fillStyle = accentHex;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
       ctx.fillText(value, x + cw / 2, y + ch * 0.42);
       ctx.restore();
+
       ctx.save();
-      ctx.font = `${Math.round(9 * s)}px Arial, sans-serif`;
-      ctx.fillStyle = "#64748b"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.font = `10px "Inter", Arial, sans-serif`;
+      ctx.fillStyle = "#64748b";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
       (ctx as unknown as { letterSpacing: string }).letterSpacing = "1px";
       ctx.fillText(label.toUpperCase(), x + cw / 2, y + ch * 0.78);
       ctx.restore();
     });
   }
 
-  // Contact + academic info at bottom
-  const bY = 640;
-  ctx.fillStyle = "rgba(255,255,255,0.05)"; ctx.fillRect(rx, bY, W - rx - 40, 1);
-  const bottomInfo = [
-    info.email ? `📧 ${info.email}` : null,
-    info.gpa ? `GPA ${info.gpa}` : null,
-    info.coachName ? `Coach: ${info.coachName}` : null,
-  ].filter(Boolean) as string[];
-  bottomInfo.forEach((line, i) => {
+  // Contact info at bottom of right panel
+  const contactY = H - 130;
+  ctx.fillStyle = "rgba(255,255,255,0.07)";
+  ctx.fillRect(rx, contactY, rw, 1);
+
+  const contactLines: Array<{ text: string; color: string }> = [];
+  if (info.email) contactLines.push({ text: info.email, color: "#00A3FF" });
+  if (info.coachName) contactLines.push({ text: `Recruiting Contact: ${info.coachName}`, color: "#94a3b8" });
+  if (info.coachEmail) contactLines.push({ text: info.coachEmail, color: "#64748b" });
+
+  contactLines.forEach(({ text, color }, i) => {
     ctx.save();
-    ctx.font = `${Math.round(11 * s)}px Arial, sans-serif`;
-    ctx.fillStyle = i === 0 ? "#e2e8f0" : "#64748b"; ctx.textAlign = "left"; ctx.textBaseline = "top";
-    ctx.fillText(line, rx, bY + 18 + i * 24);
+    ctx.font = `13px "Inter", Arial, sans-serif`;
+    ctx.fillStyle = color;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText(text, rx, contactY + 14 + i * 24);
     ctx.restore();
   });
 
-  // CLIPT branding — bottom right
+  // CLIPT watermark — bottom right
   ctx.save();
-  ctx.font = `bold ${Math.round(10 * s)}px 'Courier New', monospace`;
-  ctx.fillStyle = `${accentHex}80`; ctx.textAlign = "right"; ctx.textBaseline = "bottom";
-  (ctx as unknown as { letterSpacing: string }).letterSpacing = "4px";
-  ctx.fillText("CLIPT · CLIPTAPP.COM", W - 20, H - 12);
+  ctx.font = `bold 11px "Inter", monospace`;
+  ctx.fillStyle = "#00A3FF" + "66";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "bottom";
+  (ctx as unknown as { letterSpacing: string }).letterSpacing = "3px";
+  ctx.fillText("CLIPT · CLIPTAPP.COM", W - 16, H - 10);
   ctx.restore();
 
   return canvas.toDataURL("image/png");
@@ -741,6 +791,33 @@ function drawTitleFrame(ctx: CanvasRenderingContext2D, info: TitleInfo, accent: 
   drawStamp(ctx, dim, "clipt", info, accent);
 }
 
+// ── Unsharp mask — 3×3 sharpening kernel applied to canvas pixels ──────────────
+function applyUnsharpMask(ctx: CanvasRenderingContext2D, w: number, h: number) {
+  try {
+    const id = ctx.getImageData(0, 0, w, h);
+    const src = id.data;
+    const out = new Uint8ClampedArray(src);
+    // 3×3 sharpening kernel: -1 -1 -1 / -1 9 -1 / -1 -1 -1 (gentle unsharp)
+    const k = [0, -0.5, 0, -0.5, 3, -0.5, 0, -0.5, 0];
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const i = (y * w + x) * 4;
+        for (let c = 0; c < 3; c++) {
+          let v = 0;
+          for (let ky = -1; ky <= 1; ky++) {
+            for (let kx = -1; kx <= 1; kx++) {
+              v += src[((y + ky) * w + (x + kx)) * 4 + c] * k[(ky + 1) * 3 + (kx + 1)];
+            }
+          }
+          out[i + c] = Math.max(0, Math.min(255, Math.round(v)));
+        }
+      }
+    }
+    id.data.set(out);
+    ctx.putImageData(id, 0, 0);
+  } catch { /* ignore SecurityError on cross-origin frames */ }
+}
+
 function drawStatsFrame(ctx: CanvasRenderingContext2D, statsData: Record<string, string>, info: TitleInfo, accent: string, dim: Dim) {
   const cx = dim.w / 2, cy = dim.h / 2, s = dim.h / 1080;
   ctx.imageSmoothingEnabled = true;
@@ -826,70 +903,123 @@ function drawMeasurablesFrame(ctx: CanvasRenderingContext2D, info: TitleInfo, ac
 function drawEndFrame(ctx: CanvasRenderingContext2D, info: TitleInfo, accent: string, dim: Dim) {
   const cx = dim.w / 2, s = dim.h / 1080;
   ctx.imageSmoothingEnabled = true;
+  (ctx as unknown as { imageSmoothingQuality: string }).imageSmoothingQuality = "high";
+
+  // Background + depth gradient
   ctx.fillStyle = "#050A14"; ctx.fillRect(0, 0, dim.w, dim.h);
-  drawGrid(ctx, dim); drawDiagonalPattern(ctx, dim, accent);
-  const grd = ctx.createRadialGradient(cx, dim.h * 0.4, 0, cx, dim.h * 0.4, Math.min(dim.w, dim.h) * 0.5);
-  grd.addColorStop(0, accent + "22"); grd.addColorStop(1, "transparent");
-  ctx.fillStyle = grd; ctx.fillRect(0, 0, dim.w, dim.h);
+  drawDiagonalPattern(ctx, dim, accent);
+  const bg = ctx.createRadialGradient(cx, dim.h * 0.38, 0, cx, dim.h * 0.38, Math.min(dim.w, dim.h) * 0.55);
+  bg.addColorStop(0, accent + "1E"); bg.addColorStop(1, "transparent");
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, dim.w, dim.h);
+
+  // Top stripe 8px
   ctx.fillStyle = accent; ctx.fillRect(0, 0, dim.w, 8);
-  ctx.fillStyle = accent; ctx.fillRect(0, dim.h - 4, dim.w, 4);
-  const headingY = Math.round(dim.h * 0.14);
+
+  // "CONTACT ME" heading
+  const headingY = Math.round(dim.h * 0.13);
   ctx.save();
-  ctx.font = `bold ${Math.round(22 * s)}px Arial, sans-serif`;
+  ctx.font = `bold ${Math.round(20 * s)}px Arial, sans-serif`;
   ctx.fillStyle = accent; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  (ctx as unknown as { letterSpacing: string }).letterSpacing = "8px";
+  (ctx as unknown as { letterSpacing: string }).letterSpacing = "10px";
   ctx.fillText("CONTACT ME", cx, headingY); ctx.restore();
-  ctx.fillStyle = accent; ctx.fillRect(cx - Math.round(36 * s), headingY + Math.round(20 * s), Math.round(72 * s), 2);
-  const nameY = headingY + Math.round(70 * s);
+
+  // Accent line under heading
+  ctx.fillStyle = accent; ctx.fillRect(cx - Math.round(40 * s), headingY + Math.round(18 * s), Math.round(80 * s), 2);
+
+  // Athlete name — 48px bold
+  const nameY = headingY + Math.round(62 * s);
   ctx.save();
-  ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 6;
-  ctx.font = `bold ${Math.round(56 * s)}px Arial, sans-serif`;
+  ctx.shadowColor = "rgba(0,0,0,0.6)"; ctx.shadowBlur = 8;
+  ctx.font = `bold ${Math.round(48 * s)}px Arial, sans-serif`;
   ctx.fillStyle = "#FFFFFF"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.fillText((info.firstName || "ATHLETE").toUpperCase(), cx, nameY); ctx.restore();
-  const sub = [info.position, info.sport].filter(Boolean).join("  ·  ");
-  if (sub) {
-    ctx.save(); ctx.font = `bold ${Math.round(26 * s)}px Arial, sans-serif`;
+  const nameText = (info.firstName || "ATHLETE").toUpperCase();
+  ctx.fillText(nameText, cx, nameY); ctx.restore();
+
+  // Jersey # in accent — 32px
+  if (info.jerseyNumber) {
+    ctx.save();
+    ctx.font = `bold ${Math.round(32 * s)}px Arial, sans-serif`;
     ctx.fillStyle = accent; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    (ctx as unknown as { letterSpacing: string }).letterSpacing = "4px";
-    ctx.fillText(sub.toUpperCase(), cx, nameY + Math.round(48 * s)); ctx.restore();
+    ctx.fillText(`#${info.jerseyNumber}`, cx, nameY + Math.round(44 * s)); ctx.restore();
   }
-  const sepY = nameY + Math.round(80 * s);
-  ctx.fillStyle = "rgba(255,255,255,0.08)"; ctx.fillRect(Math.round(dim.w * 0.25), sepY, Math.round(dim.w * 0.5), 1);
-  let infoY = sepY + Math.round(28 * s);
-  const contactLines: Array<{ text: string; color: string; size: number }> = [];
-  if (info.email) contactLines.push({ text: info.email, color: "#e2e8f0", size: Math.round(22 * s) });
-  if (info.school) contactLines.push({ text: info.school.toUpperCase(), color: "#94a3b8", size: Math.round(20 * s) });
-  const metaMini = [info.jerseyNumber ? `#${info.jerseyNumber}` : null, info.gradYear ? `Class of ${info.gradYear}` : null, info.heightFt ? `${info.heightFt}'${info.heightIn||"0"}"` : null].filter(Boolean).join("  ·  ");
-  if (metaMini) contactLines.push({ text: metaMini.toUpperCase(), color: "#64748b", size: Math.round(18 * s) });
-  contactLines.forEach((cl) => {
-    ctx.save(); ctx.font = `${cl.size}px Arial, sans-serif`;
-    ctx.fillStyle = cl.color; ctx.textAlign = "center"; ctx.textBaseline = "top";
-    ctx.fillText(cl.text, cx, infoY); ctx.restore();
-    infoY += cl.size + Math.round(10 * s);
-  });
-  const urlY = Math.round(dim.h * 0.82);
-  ctx.save(); ctx.font = `bold ${Math.round(16 * s)}px 'Courier New', monospace`;
-  ctx.fillStyle = "#00A3FF"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  (ctx as unknown as { letterSpacing: string }).letterSpacing = "3px";
-  ctx.fillText("POWERED BY CLIPT · CLIPTAPP.COM", cx, urlY); ctx.restore();
+
+  // Position · Sport — 24px gray
+  const posLine = [info.position, info.sport].filter(Boolean).join("  ·  ");
+  if (posLine) {
+    ctx.save();
+    ctx.font = `${Math.round(24 * s)}px Arial, sans-serif`;
+    ctx.fillStyle = "#94a3b8"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(posLine.toUpperCase(), cx, nameY + Math.round(84 * s)); ctx.restore();
+  }
+
+  // School · grad year — 20px gray
+  const schoolLine = [info.school, info.gradYear ? `Class of ${info.gradYear}` : ""].filter(Boolean).join("  ·  ");
+  if (schoolLine) {
+    ctx.save();
+    ctx.font = `${Math.round(20 * s)}px Arial, sans-serif`;
+    ctx.fillStyle = "#64748b"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(schoolLine, cx, nameY + Math.round(116 * s)); ctx.restore();
+  }
+
+  // Divider line in accent at 40% opacity
+  const divY = nameY + Math.round(146 * s);
+  ctx.fillStyle = accent + "66";
+  ctx.fillRect(Math.round(dim.w * 0.2), divY, Math.round(dim.w * 0.6), 1);
+
+  // Top 3 stats grid
   const topStats = Object.entries(info.statsData || {}).filter(([,v]) => v.trim()).slice(0, 3);
   if (topStats.length > 0) {
-    const statsY = urlY + Math.round(40 * s);
-    const cw = Math.round(160 * s), ch = Math.round(70 * s), gx = Math.round(20 * s);
-    const totalW = topStats.length * cw + (topStats.length - 1) * gx, sx = cx - totalW / 2;
+    const statsY = divY + Math.round(24 * s);
+    const cw = Math.round(170 * s), ch = Math.round(80 * s), gx = Math.round(24 * s);
+    const totalW = topStats.length * cw + (topStats.length - 1) * gx;
+    const sx = cx - totalW / 2;
     topStats.forEach(([label, value], i) => {
       const x = sx + i * (cw + gx);
       ctx.fillStyle = "rgba(255,255,255,0.04)";
-      rrect(ctx, x, statsY, cw, ch, Math.round(8 * s)); ctx.fill();
-      ctx.save(); ctx.font = `bold ${Math.round(28 * s)}px Arial, sans-serif`;
+      rrect(ctx, x, statsY, cw, ch, Math.round(10 * s)); ctx.fill();
+      ctx.strokeStyle = accent + "40"; ctx.lineWidth = 1;
+      rrect(ctx, x, statsY, cw, ch, Math.round(10 * s)); ctx.stroke();
+      ctx.save(); ctx.font = `bold ${Math.round(32 * s)}px Arial, sans-serif`;
       ctx.fillStyle = accent; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.shadowColor = accent + "50"; ctx.shadowBlur = 6;
       ctx.fillText(value, x + cw / 2, statsY + ch * 0.42); ctx.restore();
       ctx.save(); ctx.font = `${Math.round(14 * s)}px Arial, sans-serif`;
       ctx.fillStyle = "#64748b"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      (ctx as unknown as { letterSpacing: string }).letterSpacing = "2px";
       ctx.fillText(label.toUpperCase(), x + cw / 2, statsY + ch * 0.78); ctx.restore();
     });
   }
-  drawStamp(ctx, dim, "clipt", info, accent);
+
+  // Email — electric blue 20px
+  if (info.email) {
+    const emailY = Math.round(dim.h * 0.73);
+    ctx.save();
+    ctx.font = `${Math.round(20 * s)}px Arial, sans-serif`;
+    ctx.fillStyle = "#00A3FF"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(`✉ ${info.email}`, cx, emailY); ctx.restore();
+  }
+
+  // Recruiting Contact section (coach)
+  if (info.coachName || info.coachEmail) {
+    const coachY = Math.round(dim.h * 0.79);
+    ctx.save();
+    ctx.font = `bold ${Math.round(11 * s)}px Arial, sans-serif`;
+    ctx.fillStyle = accent; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    (ctx as unknown as { letterSpacing: string }).letterSpacing = "4px";
+    ctx.fillText("RECRUITING CONTACT", cx, coachY); ctx.restore();
+    const coachLine = [info.coachName, info.coachEmail].filter(Boolean).join("  ·  ");
+    ctx.save();
+    ctx.font = `${Math.round(16 * s)}px Arial, sans-serif`;
+    ctx.fillStyle = "#94a3b8"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(coachLine, cx, coachY + Math.round(22 * s)); ctx.restore();
+  }
+
+  // CLIPT watermark bottom right
+  ctx.save();
+  ctx.font = `bold ${Math.round(12 * s)}px 'Courier New', monospace`;
+  ctx.fillStyle = "#94a3b8"; ctx.textAlign = "right"; ctx.textBaseline = "bottom";
+  (ctx as unknown as { letterSpacing: string }).letterSpacing = "3px";
+  ctx.fillText("CLIPT", dim.w - 16, dim.h - 14); ctx.restore();
 }
 
 // ── Animation runners ──────────────────────────────────────────────────────────
@@ -1022,6 +1152,7 @@ interface ClipOpts {
   watermarkStyle: WatermarkStyle;
   onPct: (p: number) => void;
   slowMo?: boolean;
+  isReplay?: boolean;
 }
 
 function runClipInner(vid: HTMLVideoElement, ctx: CanvasRenderingContext2D, isAborted: () => boolean, opts: ClipOpts, speedFactor = 1): Promise<void> {
@@ -1050,11 +1181,13 @@ function runClipInner(vid: HTMLVideoElement, ctx: CanvasRenderingContext2D, isAb
 
     const tick = () => {
       if (isAborted() || vid.ended || vid.currentTime >= tEnd) { done(); return; }
+      // Skip frame if video not decoded yet — keep interval running
+      if (vid.readyState < 4) return;
       const elapsed = vid.currentTime - tStart;
       const realElapsed = (Date.now() - startRealTime) / 1000;
 
       const filters: string[] = [];
-      if (enhanceQuality) filters.push("contrast(1.1) saturate(1.15) brightness(1.03)");
+      if (enhanceQuality) filters.push("contrast(1.12) saturate(1.18) brightness(1.04)");
       if (intensity > 0) filters.push(`saturate(${(1 + intensity * 0.01).toFixed(3)}) contrast(${(1 + intensity * 0.003).toFixed(3)})`);
       if (filters.length) ctx.filter = filters.join(" ");
       drawVideoFrame(ctx, vid, dim, accent);
@@ -1093,6 +1226,14 @@ function runClipInner(vid: HTMLVideoElement, ctx: CanvasRenderingContext2D, isAb
         ctx.fillText("SLOW MOTION", dim.w - 20, 20); ctx.restore();
       }
 
+      if (opts.isReplay) {
+        ctx.save();
+        ctx.font = `bold ${Math.round(dim.h * 0.025)}px Arial, sans-serif`;
+        ctx.fillStyle = accent; ctx.textAlign = "right"; ctx.textBaseline = "top";
+        ctx.shadowColor = "rgba(0,0,0,0.7)"; ctx.shadowBlur = 6;
+        ctx.fillText("REPLAY", dim.w - 20, 20); ctx.restore();
+      }
+
       drawStamp(ctx, dim, watermarkStyle, info, accent);
       if (playDuration > 0) opts.onPct(Math.min(elapsed / playDuration, 1));
     };
@@ -1105,24 +1246,37 @@ function runClipInner(vid: HTMLVideoElement, ctx: CanvasRenderingContext2D, isAb
   });
 }
 
-function runClip(file: File, ctx: CanvasRenderingContext2D, isAborted: () => boolean, opts: ClipOpts): Promise<void> {
+// Wait for canplaythrough with 15-second timeout — definitive fix for clip 1 lag
+function waitForCanPlay(vid: HTMLVideoElement): Promise<void> {
+  return new Promise((resolve) => {
+    if (vid.readyState >= 4) { resolve(); return; }
+    let done = false;
+    const finish = () => { if (!done) { done = true; resolve(); } };
+    vid.addEventListener("canplaythrough", finish, { once: true });
+    setTimeout(finish, 15000); // hard 15-second timeout
+  });
+}
+
+function runClip(file: File, ctx: CanvasRenderingContext2D, isAborted: () => boolean, opts: ClipOpts, speedFactor = 1): Promise<void> {
   const url = URL.createObjectURL(file);
   return new Promise((resolve, reject) => {
     const vid = document.createElement("video");
-    vid.src = url; vid.muted = true; vid.playsInline = true;
-    const cleanup = () => URL.revokeObjectURL(url);
+    vid.preload = "auto"; vid.muted = true; vid.playsInline = true;
+    const cleanup = () => { try { URL.revokeObjectURL(url); } catch {} };
 
+    vid.onerror = () => { cleanup(); reject(new Error("Processing failed — try uploading smaller clips")); };
     vid.onloadedmetadata = async () => {
       const tStart = opts.trimStart > 0 ? opts.trimStart : 0;
       if (tStart > 0) {
         await new Promise<void>((res) => { vid.onseeked = () => res(); vid.currentTime = tStart; });
       }
+      await waitForCanPlay(vid);
       try { await vid.play(); } catch { cleanup(); reject(new Error("Processing failed — try uploading smaller clips")); return; }
       if (opts.highlightPlayer) await runPlayerIDOverlay(ctx, vid, opts.accent, opts.dim, isAborted);
-      await runClipInner(vid, ctx, isAborted, opts, 1);
+      await runClipInner(vid, ctx, isAborted, opts, speedFactor);
       vid.pause(); cleanup(); resolve();
     };
-    vid.onerror = () => { cleanup(); reject(new Error("Processing failed — try uploading smaller clips")); };
+    vid.src = url; vid.load();
   });
 }
 
@@ -1130,37 +1284,42 @@ function runClipSlowMo(file: File, ctx: CanvasRenderingContext2D, isAborted: () 
   const url = URL.createObjectURL(file);
   return new Promise((resolve, reject) => {
     const vid = document.createElement("video");
-    vid.src = url; vid.muted = true; vid.playsInline = true;
-    const cleanup = () => URL.revokeObjectURL(url);
+    vid.preload = "auto"; vid.muted = true; vid.playsInline = true;
+    const cleanup = () => { try { URL.revokeObjectURL(url); } catch {} };
 
+    vid.onerror = () => { cleanup(); reject(new Error("Processing failed")); };
     vid.onloadedmetadata = async () => {
       const tStart = opts.trimStart > 0 ? opts.trimStart : 0;
       if (tStart > 0) {
         await new Promise<void>((res) => { vid.onseeked = () => res(); vid.currentTime = tStart; });
       }
+      await waitForCanPlay(vid);
       try { await vid.play(); } catch { cleanup(); reject(new Error("Processing failed")); return; }
       await runClipInner(vid, ctx, isAborted, { ...opts, playLabel: "REPLAY", isBestPlay: false }, 0.5);
       vid.pause(); cleanup(); resolve();
     };
-    vid.onerror = () => { cleanup(); reject(new Error("Processing failed")); };
+    vid.src = url; vid.load();
   });
 }
 
-function runClipByUrl(url: string, ctx: CanvasRenderingContext2D, isAborted: () => boolean, opts: ClipOpts): Promise<void> {
+function runClipByUrl(url: string, ctx: CanvasRenderingContext2D, isAborted: () => boolean, opts: ClipOpts, speedFactor = 1): Promise<void> {
   return new Promise((resolve, reject) => {
     const vid = document.createElement("video");
-    vid.src = url; vid.muted = true; vid.playsInline = true;
+    vid.preload = "auto"; vid.muted = true; vid.playsInline = true;
+
+    vid.onerror = () => { reject(new Error("Processing failed — could not load clip")); };
     vid.onloadedmetadata = async () => {
       const tStart = opts.trimStart > 0 ? opts.trimStart : 0;
       if (tStart > 0) {
         await new Promise<void>((res) => { vid.onseeked = () => res(); vid.currentTime = tStart; });
       }
+      await waitForCanPlay(vid);
       try { await vid.play(); } catch { reject(new Error("Processing failed — try uploading smaller clips")); return; }
       if (opts.highlightPlayer) await runPlayerIDOverlay(ctx, vid, opts.accent, opts.dim, isAborted);
-      await runClipInner(vid, ctx, isAborted, opts, 1);
+      await runClipInner(vid, ctx, isAborted, opts, speedFactor);
       vid.pause(); resolve();
     };
-    vid.onerror = () => { reject(new Error("Processing failed — could not load clip")); };
+    vid.src = url; vid.load();
   });
 }
 
@@ -1179,6 +1338,7 @@ interface BuildConfig {
   textOverlays: string[]; intensities: number[];
   clipPlayLabels: string[]; bestPlayIndex: number;
   highlightBestPlay: boolean; slowMotionReplay: boolean;
+  starredClipIndices: number[]; starredSlowMo: boolean; starredReplay: boolean;
   watermarkStyle: WatermarkStyle;
   isAborted: () => boolean;
   onProgress: (pct: number, text: string) => void;
@@ -1189,7 +1349,8 @@ async function buildReel(cfg: BuildConfig): Promise<Blob> {
   const { files, clipUrls, info, accent, dim, fps, bitrate, musicTrackId, transitionStyle,
     includeStatsCard, statsData, showMeasurablesCard, highlightPlayer, showJerseyOverlay, enhanceQuality,
     titleCardTemplate, introAnimation, trimStarts, trimEnds, textOverlays, intensities,
-    clipPlayLabels, bestPlayIndex, highlightBestPlay, slowMotionReplay, watermarkStyle,
+    clipPlayLabels, bestPlayIndex, highlightBestPlay, slowMotionReplay,
+    starredClipIndices, starredSlowMo, starredReplay, watermarkStyle,
     isAborted, onProgress, onMusicFailed } = cfg;
 
   // Determine clip source — prefer File objects, fall back to blob URLs
@@ -1209,7 +1370,9 @@ async function buildReel(cfg: BuildConfig): Promise<Blob> {
 
   // Audio setup — failures are non-fatal, export continues without audio
   let audioCtx: AudioContext | null = null, gainNode: GainNode | null = null, audioDest: MediaStreamAudioDestinationNode | null = null;
-  const musicUrl = MUSIC_TRACK_URLS[musicTrackId];
+  const musicUrl = musicTrackId === "custom"
+    ? (() => { try { return localStorage.getItem("clipt_custom_music_url") || undefined; } catch { return undefined; } })()
+    : MUSIC_TRACK_URLS[musicTrackId];
   const isCrowdNoise = musicTrackId === "crowd-noise";
   if (musicUrl) {
     try {
@@ -1239,9 +1402,14 @@ async function buildReel(cfg: BuildConfig): Promise<Blob> {
   const vTracks = canvas.captureStream(fps).getVideoTracks();
   const aTracks = audioDest ? audioDest.stream.getAudioTracks() : [];
   const stream  = new MediaStream([...vTracks, ...aTracks]);
-  const recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: bitrate });
+  const recorder = new MediaRecorder(stream, {
+    mimeType: mime,
+    videoBitsPerSecond: bitrate,
+    videoKeyFrameIntervalDuration: 1000,
+  } as MediaRecorderOptions);
   const chunks: Blob[] = [];
   recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+  const recordStartMs = Date.now();
   recorder.start(100);
 
   try {
@@ -1286,18 +1454,37 @@ async function buildReel(cfg: BuildConfig): Promise<Blob> {
         highlightBestPlay, watermarkStyle,
         onPct: (p) => onProgress(base + p * range, `Processing clip ${i + 1} of ${clipCount}...`),
       };
-      console.log(`[buildReel] Running clip ${i + 1}/${clipCount} via ${useUrls ? "URL" : "File"}`);
+      const isStarred = (starredClipIndices ?? []).includes(i);
+      const clipSpeed = isStarred && starredSlowMo ? 0.5 : 1;
+      console.log(`[buildReel] Running clip ${i + 1}/${clipCount} via ${useUrls ? "URL" : "File"}${isStarred ? " [starred]" : ""}`);
       if (useUrls) {
-        await runClipByUrl(clipUrls![i], ctx, isAborted, clipOpts);
+        await runClipByUrl(clipUrls![i], ctx, isAborted, clipOpts, clipSpeed);
       } else {
-        await runClip(files[i], ctx, isAborted, clipOpts);
+        await runClip(files[i], ctx, isAborted, clipOpts, clipSpeed);
       }
 
-      // Slow motion replay after best play (only available with File objects)
-      if (!isAborted() && slowMotionReplay && i === bestPlayIndex && !useUrls) {
+      // Instant replay for starred clips (play again at full speed with REPLAY overlay)
+      if (!isAborted() && isStarred && starredReplay) {
+        onProgress(base + range, `Instant replay: clip ${i + 1}...`);
+        await runTransition(ctx, "Fade to Black", dim, isAborted);
+        const replayOpts: ClipOpts = { ...clipOpts, isReplay: true, isBestPlay: false };
+        if (useUrls) {
+          await runClipByUrl(clipUrls![i], ctx, isAborted, replayOpts, 1);
+        } else {
+          await runClip(files[i], ctx, isAborted, replayOpts, 1);
+        }
+      }
+
+      // Slow motion replay after best play (legacy single-clip system)
+      if (!isAborted() && slowMotionReplay && i === bestPlayIndex && !useUrls && !isStarred) {
         onProgress(base + range, `Slow motion replay: clip ${i + 1}...`);
         await runTransition(ctx, "Fade to Black", dim, isAborted);
         await runClipSlowMo(files[i], ctx, isAborted, clipOpts);
+      }
+
+      // 500ms clean gap between clips ensures smooth transition
+      if (!isAborted() && i < clipCount - 1) {
+        await new Promise<void>((r) => setTimeout(r, 500));
       }
     }
 
@@ -1318,9 +1505,22 @@ async function buildReel(cfg: BuildConfig): Promise<Blob> {
   }
 
   return new Promise<Blob>((resolve, reject) => {
-    recorder.onstop = () => {
+    recorder.onstop = async () => {
       if (!chunks.length) { reject(new Error("Processing failed — try uploading smaller clips")); return; }
-      resolve(new Blob(chunks, { type: mime }));
+      const rawBlob = new Blob(chunks, { type: mime });
+      // Inject duration metadata into WebM so it can be seeked in any player
+      if (mime.includes("webm")) {
+        try {
+          const { default: fixWebmDuration } = await import("fix-webm-duration");
+          const durationMs = Date.now() - recordStartMs;
+          const fixed = await fixWebmDuration(rawBlob, durationMs, { logger: false });
+          resolve(fixed);
+        } catch {
+          resolve(rawBlob); // fallback — better than nothing
+        }
+      } else {
+        resolve(rawBlob);
+      }
     };
     recorder.onerror = () => reject(new Error("Processing failed — try uploading smaller clips"));
   });
@@ -1465,11 +1665,28 @@ export default function ExportPage() {
     return id;
   }, [reel.reelId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Reel quality analysis (from AI clips)
+  const [qualityData, setQualityData] = useState<{ avg: number; elite: number; strong: number; decent: number } | null>(null);
+
   useEffect(() => {
     // Load stored clip count for display when files are not in context
     try {
       const n = parseInt(localStorage.getItem("clipt_blob_count") || "0", 10);
       if (n > 0) setStoredClipCount(n);
+    } catch {}
+    // Load quality data from AI clips
+    try {
+      const raw: { qualityScore?: number }[] = JSON.parse(localStorage.getItem("aiGeneratedClips") || "[]");
+      const scores = raw.map((c) => c.qualityScore).filter((s): s is number => typeof s === "number");
+      if (scores.length > 0) {
+        const avg = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+        setQualityData({
+          avg,
+          elite:  scores.filter((s) => s >= 80).length,
+          strong: scores.filter((s) => s >= 60 && s < 80).length,
+          decent: scores.filter((s) => s >= 40 && s < 60).length,
+        });
+      }
     } catch {}
     return () => {
       abortRef.current = true;
@@ -1479,17 +1696,30 @@ export default function ExportPage() {
     };
   }, []);
 
-  const buildInfo = (): TitleInfo => ({
-    firstName: reel.firstName, jerseyNumber: reel.jerseyNumber,
-    sport: reel.sport, school: reel.school, position: reel.position,
-    fontFamily: CANVAS_FONT_MAP[reel.fontStyle] ?? "Arial",
-    gradYear: reel.gradYear, heightFt: reel.heightFt, heightIn: reel.heightIn,
-    weight: reel.weight, gpa: reel.gpa,
-    email: reel.email, coachName: reel.coachName, coachEmail: reel.coachEmail,
-    statsData: reel.statsData ?? {},
-    academicStatsData: reel.academicStatsData ?? {},
-    measurablesData: reel.measurablesData ?? {},
-  });
+  const buildInfo = (): TitleInfo => {
+    // Merge cliptSettings from localStorage (saved by customize page) as fallback
+    let saved: Record<string, unknown> = {};
+    try {
+      const raw = localStorage.getItem("cliptSettings");
+      if (raw) saved = JSON.parse(raw);
+    } catch {}
+    const s = (k: string, fallback: string) => (reel[k as keyof typeof reel] as string) || (saved[k] as string) || fallback;
+    const statsData = (reel.statsData && Object.keys(reel.statsData).length > 0)
+      ? reel.statsData
+      : ((saved.statsData as Record<string,string>) ?? {});
+    console.log("[buildInfo] cliptSettings merged:", { firstName: s("firstName",""), email: s("email",""), statsKeys: Object.keys(statsData) });
+    return {
+      firstName: s("firstName", ""), jerseyNumber: s("jerseyNumber", ""),
+      sport: s("sport", ""), school: s("school", ""), position: s("position", ""),
+      fontFamily: CANVAS_FONT_MAP[(s("fontStyle","Modern") as FontStyle)] ?? "Arial",
+      gradYear: s("gradYear", ""), heightFt: s("heightFt", ""), heightIn: s("heightIn", ""),
+      weight: s("weight", ""), gpa: s("gpa", ""),
+      email: s("email", ""), coachName: s("coachName", ""), coachEmail: s("coachEmail", ""),
+      statsData,
+      academicStatsData: (reel.academicStatsData ?? (saved.academicStatsData as Record<string,string>) ?? {}),
+      measurablesData: (reel.measurablesData ?? (saved.measurablesData as Record<string,string>) ?? {}),
+    };
+  };
 
   const baseName = (reel.firstName || "reel").toLowerCase().replace(/\s+/g, "-");
 
@@ -1564,6 +1794,9 @@ export default function ExportPage() {
         bestPlayIndex:  reel.bestPlayIndex   ?? -1,
         highlightBestPlay: reel.highlightBestPlay ?? false,
         slowMotionReplay:  reel.slowMotionReplay  ?? false,
+        starredClipIndices: reel.starredClipIndices ?? [],
+        starredSlowMo:      reel.starredSlowMo ?? false,
+        starredReplay:      reel.starredReplay ?? false,
         watermarkStyle: reel.watermarkStyle || "clipt",
         isAborted: () => abortRef.current,
         onProgress: (p, t) => { setPct(p); setStep(t); },
@@ -1929,6 +2162,62 @@ export default function ExportPage() {
             </div>
           )}
         </div>
+
+        {/* ── REEL ANALYSIS ── */}
+        {qualityData && (
+          <div className="rounded-2xl p-5" style={{ background: "#0A1628", border: "1px solid rgba(255,255,255,0.08)" }}>
+            <p className="text-sm font-bold text-white mb-1">Reel Analysis</p>
+            <p className="text-xs text-slate-500 mb-4">AI quality breakdown of your selected clips</p>
+
+            {/* Average score bar */}
+            <div className="flex items-center gap-3 mb-3">
+              <div className="shrink-0 text-center">
+                <div className="text-2xl font-black" style={{
+                  color: qualityData.avg >= 75 ? "#22C55E" : qualityData.avg >= 60 ? "#00A3FF" : "#F59E0B"
+                }}>{qualityData.avg}</div>
+                <div className="text-[9px] text-slate-500 uppercase tracking-wider">avg score</div>
+              </div>
+              <div className="flex-1">
+                <div className="h-2 rounded-full overflow-hidden mb-1" style={{ background: "rgba(255,255,255,0.06)" }}>
+                  <div className="h-full rounded-full transition-all duration-500"
+                    style={{
+                      width: `${qualityData.avg}%`,
+                      background: qualityData.avg >= 75 ? "#22C55E" : qualityData.avg >= 60 ? "#00A3FF" : "#F59E0B"
+                    }} />
+                </div>
+                <p className="text-[10px] font-semibold" style={{
+                  color: qualityData.avg >= 75 ? "#22C55E" : qualityData.avg >= 60 ? "#00A3FF" : "#F59E0B"
+                }}>
+                  {qualityData.avg >= 75 ? "Excellent reel — coaches will be impressed"
+                    : qualityData.avg >= 60 ? "Good reel — consider replacing low scoring clips"
+                    : "Needs work — go back and swap out low scoring clips for better ones"}
+                </p>
+              </div>
+            </div>
+
+            {/* Play type breakdown */}
+            <div className="flex gap-3">
+              {qualityData.elite > 0 && (
+                <div className="flex-1 rounded-lg px-2 py-2 text-center" style={{ background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.2)" }}>
+                  <div className="text-base font-black" style={{ color: "#FBBF24" }}>{qualityData.elite}</div>
+                  <div className="text-[9px] text-slate-500 uppercase tracking-wider">Elite</div>
+                </div>
+              )}
+              {qualityData.strong > 0 && (
+                <div className="flex-1 rounded-lg px-2 py-2 text-center" style={{ background: "rgba(0,163,255,0.08)", border: "1px solid rgba(0,163,255,0.2)" }}>
+                  <div className="text-base font-black" style={{ color: "#00A3FF" }}>{qualityData.strong}</div>
+                  <div className="text-[9px] text-slate-500 uppercase tracking-wider">Strong</div>
+                </div>
+              )}
+              {qualityData.decent > 0 && (
+                <div className="flex-1 rounded-lg px-2 py-2 text-center" style={{ background: "rgba(100,116,139,0.08)", border: "1px solid rgba(100,116,139,0.2)" }}>
+                  <div className="text-base font-black" style={{ color: "#94A3B8" }}>{qualityData.decent}</div>
+                  <div className="text-[9px] text-slate-500 uppercase tracking-wider">Decent</div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* ── COACH READY SCORE ── */}
         {(() => {

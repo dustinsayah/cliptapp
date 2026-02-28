@@ -16,6 +16,7 @@ export interface ReviewClip {
   endTime: number;
   duration: number;
   confidenceScore: number;
+  qualityScore?: number;
   jerseyVisible: boolean;
   aiPicked: boolean;
   sport: string;
@@ -60,6 +61,13 @@ const PLAY_TYPE_COLORS: Record<string, { bg: string; color: string; border: stri
 
 function getPlayColor(playType: string) {
   return PLAY_TYPE_COLORS[playType] ?? PLAY_TYPE_COLORS["Great Play"];
+}
+
+function getQualityMeta(score: number): { color: string; label: string } {
+  if (score >= 80) return { color: "#FBBF24", label: "Elite Play" };
+  if (score >= 60) return { color: "#00A3FF", label: "Strong Play" };
+  if (score >= 40) return { color: "#64748B", label: "Decent Play" };
+  return { color: "#EF4444", label: "Consider Removing" };
 }
 
 function fmtDur(s: number): string {
@@ -216,16 +224,32 @@ function ClipCard({
           )}
         </div>
 
-        {/* Timestamps + confidence */}
+        {/* Timestamps + quality score */}
         <div className="flex items-center justify-between gap-2">
           <span className="text-[11px] text-slate-500 font-mono">
             {fmtTimestamp(clip.startTime)} — {fmtTimestamp(clip.endTime)}
           </span>
-          <div className="flex items-center gap-1.5">
-            <div className="w-10 h-1 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
-              <div className="h-full rounded-full" style={{ width: `${Math.round(clip.confidenceScore * 100)}%`, background: col.color }} />
+          <div className="flex items-center gap-2">
+            {clip.qualityScore !== undefined && (() => {
+              const qm = getQualityMeta(clip.qualityScore);
+              return (
+                <div title={qm.label} style={{
+                  width: 34, height: 34, borderRadius: "50%",
+                  background: qm.color + "22", border: `2px solid ${qm.color}`,
+                  color: qm.color, fontSize: 10, fontWeight: 800,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  flexShrink: 0,
+                }}>
+                  {clip.qualityScore}
+                </div>
+              );
+            })()}
+            <div className="flex items-center gap-1.5">
+              <div className="w-10 h-1 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
+                <div className="h-full rounded-full" style={{ width: `${Math.round(clip.confidenceScore * 100)}%`, background: col.color }} />
+              </div>
+              <span className="text-[10px] text-slate-500 font-mono">{Math.round(clip.confidenceScore * 100)}%</span>
             </div>
-            <span className="text-[10px] text-slate-500 font-mono">{Math.round(clip.confidenceScore * 100)}%</span>
           </div>
         </div>
       </div>
@@ -537,7 +561,7 @@ export default function ReviewPage() {
 
   const handleBuildReel = async () => {
     setSaving(true);
-    const kept = keptClips.map((c) => ({
+    const keptMapped = keptClips.map((c) => ({
       id: c.id,
       clipNumber: c.clipNumber,
       playType: c.playType,
@@ -545,6 +569,7 @@ export default function ReviewPage() {
       endTime: c.endTime,
       duration: c.duration,
       confidenceScore: c.confidenceScore,
+      qualityScore: c.qualityScore,
       jerseyVisible: c.jerseyVisible,
       aiPicked: c.aiPicked,
       sport: c.sport,
@@ -552,8 +577,12 @@ export default function ReviewPage() {
       thumbnailUrl: c.thumbnailUrl,
     }));
 
+    // Auto-sort by quality score (highest first) so best plays are at the front
+    const kept = [...keptMapped].sort((a, b) => (b.qualityScore ?? 0) - (a.qualityScore ?? 0));
+
     // Save to localStorage
     localStorage.setItem("aiGeneratedClips", JSON.stringify(kept));
+    localStorage.setItem("autoSortedByQuality", "true");
     localStorage.setItem("clipSource", "ai");
     localStorage.setItem("reviewComplete", "true");
 

@@ -97,6 +97,11 @@ interface ReelState {
   // Shareable reel
   reelId: string;
 
+  // Starred clip system (multi-clip highlighting)
+  starredClipIndices: number[];
+  starredSlowMo:      boolean;
+  starredReplay:      boolean;
+
   // Legacy
   showIntro: boolean;
   music:     MusicId;
@@ -165,6 +170,10 @@ const DEFAULTS: ReelState = {
   measurablesData:     {},
 
   reelId: "",
+
+  starredClipIndices: [],
+  starredSlowMo:      false,
+  starredReplay:      false,
 
   showIntro: true,
   music:     "hype",

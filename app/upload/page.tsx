@@ -142,6 +142,8 @@ export default function UploadPage() {
   const [school, setSchool]             = useState(reel.school || "");
   const [thumbnails, setThumbnails]     = useState<(string | null)[]>([]);
   const [showUploadTip, setShowUploadTip] = useState(false);
+  const [playLabels, setPlayLabels]     = useState<(string | null)[]>([]);
+  const [classifying, setClassifying]   = useState(false);
 
   // Reset position when sport changes
   const handleSportChange = (newSport: string) => {
@@ -269,7 +271,51 @@ export default function UploadPage() {
     position !== "" &&
     school.trim() !== "";
 
-  const handleContinue = () => {
+  // ── Play type classification ───────────────────────────────────────────────
+  const classifyManualClips = async (blobUrls: string[]): Promise<string[]> => {
+    const sportCfg = SPORTS_CONFIG[sport];
+    const defaults = sportCfg ? sportCfg.getClipTypes(position).map((ct) => ct.label) : ["Highlight"];
+    const results: string[] = files.map((_, i) => defaults[i % defaults.length]);
+
+    // Mark all as classifying
+    setPlayLabels(files.map(() => null));
+    setClassifying(true);
+
+    await Promise.allSettled(blobUrls.map(async (url, i) => {
+      try {
+        const controller = new AbortController();
+        setTimeout(() => controller.abort(), 10000);
+        const res = await fetch("/api/classify-clips", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            videoUrl: url,
+            clips: [{ startTime: 0, endTime: 30, confidence: 0.9 }],
+            sport, position,
+          }),
+          signal: controller.signal,
+        });
+        if (res.ok) {
+          const json = await res.json();
+          const label = json?.clips?.[0]?.playType;
+          if (label) results[i] = label;
+        }
+      } catch {
+        // timeout or network error — keep default
+      }
+      // Show label immediately after each clip is done
+      setPlayLabels((prev) => {
+        const next = [...prev];
+        next[i] = results[i];
+        return next;
+      });
+    }));
+
+    setClassifying(false);
+    return results;
+  };
+
+  const handleContinue = async () => {
     reel.update({
       files,
       firstName: firstName.trim(),
@@ -280,11 +326,19 @@ export default function UploadPage() {
     });
     localStorage.setItem("clipSource", "manual");
     // Store blob URLs so the export page can access clips after navigation
+    let blobUrls: string[] = [];
     try {
-      const blobUrls = files.map((f) => URL.createObjectURL(f));
+      blobUrls = files.map((f) => URL.createObjectURL(f));
       localStorage.setItem("clipt_blob_urls", JSON.stringify(blobUrls));
       localStorage.setItem("clipt_blob_count", String(files.length));
     } catch {}
+
+    // Classify clips if sport/position set (non-blocking — runs fast, falls back to defaults)
+    if (sport && position && blobUrls.length > 0) {
+      const labels = await classifyManualClips(blobUrls);
+      try { localStorage.setItem("clipt_play_labels", JSON.stringify(labels)); } catch {}
+    }
+
     router.push("/customize");
   };
 
@@ -440,10 +494,18 @@ export default function UploadPage() {
 
                 <div className="flex flex-col min-w-0 mr-auto">
                   <span className="text-sm text-white truncate font-medium">{file.name}</span>
-                  <div className="flex items-center gap-2 mt-0.5">
+                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                     <span className="text-xs text-slate-500">{fmtFileSize(file.size)}</span>
                     <span className="text-slate-700 text-xs">·</span>
                     <span className="text-xs text-slate-600 uppercase">{getVideoExt(file) || "video"}</span>
+                    {classifying && playLabels[i] === null && (
+                      <span className="text-[10px] text-slate-400 animate-pulse">Classifying...</span>
+                    )}
+                    {playLabels[i] && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: "rgba(0,163,255,0.15)", color: "#00A3FF", border: "1px solid rgba(0,163,255,0.3)" }}>
+                        {playLabels[i]}
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -585,11 +647,11 @@ export default function UploadPage() {
         {/* ── CONTINUE BUTTON ── */}
         <button
           type="button"
-          disabled={!canContinue}
+          disabled={!canContinue || classifying}
           onClick={handleContinue}
           className="w-full py-4 rounded-xl font-bold text-base text-white transition-all"
           style={
-            canContinue
+            canContinue && !classifying
               ? {
                   background: "linear-gradient(135deg, #0055EE 0%, #00A3FF 100%)",
                   boxShadow: "0 0 28px rgba(0,120,255,0.3)",
@@ -598,12 +660,12 @@ export default function UploadPage() {
               : {
                   background: "rgba(255,255,255,0.06)",
                   color: "#64748b",
-                  cursor: "not-allowed",
+                  cursor: classifying ? "wait" : "not-allowed",
                   border: "1px solid rgba(255,255,255,0.08)",
                 }
           }
         >
-          Continue to Customize →
+          {classifying ? "Analyzing clips..." : "Continue to Customize →"}
         </button>
       </main>
     </div>

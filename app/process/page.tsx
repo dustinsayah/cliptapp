@@ -33,6 +33,26 @@ function isAcceptedFormat(file: File): boolean {
   return ACCEPTED_EXTENSIONS.some((ext) => name.endsWith(ext));
 }
 
+// ── Quality score helper ───────────────────────────────────────────────────
+
+export function computeQualityScore(playType: string, confidenceScore: number, duration: number): number {
+  const confPts = Math.round(confidenceScore * 40);
+  const SCORING   = ["Goal","Home Run","Touchdown","Scoring Play","Score","Point"];
+  const ASSIST    = ["Assist","Completion","RBI"];
+  const DEFENSIVE = ["Defensive Play","Block","Tackle/Sack","Interception","Save","Ground Ball","Strikeout"];
+  const HUSTLE    = ["Steal","Rebound","Stolen Base","Fast Break"];
+  const typePts =
+    SCORING.some((t) => playType.includes(t))   ? 30 :
+    ASSIST.some((t) => playType.includes(t))    ? 25 :
+    DEFENSIVE.some((t) => playType.includes(t)) ? 25 :
+    HUSTLE.some((t) => playType.includes(t))    ? 15 : 10;
+  const durPts =
+    duration >= 4 && duration <= 12 ? 20 :
+    duration > 12 && duration <= 20 ? 15 :
+    duration < 4 ? 5 : 10;
+  return Math.min(100, confPts + typePts + durPts);
+}
+
 // ── Mock clip generation ───────────────────────────────────────────────────
 
 export interface AiClip {
@@ -43,6 +63,7 @@ export interface AiClip {
   endTime: number;
   duration: number;
   confidenceScore: number;
+  qualityScore: number;
   jerseyVisible: boolean;
   aiPicked: boolean;
   sport: string;
@@ -77,6 +98,7 @@ function generateMockClips(sport: string, jerseyNumber: number, position?: strin
       endTime,
       duration: dur,
       confidenceScore,
+      qualityScore: computeQualityScore(playType, confidenceScore, dur),
       jerseyVisible: true,
       aiPicked: true,
       sport,
