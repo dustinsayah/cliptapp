@@ -3,8 +3,17 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { supabase, isConfigured as supabaseConfigured, configError as supabaseConfigError } from "@/lib/supabase";
+import { createClient } from "@supabase/supabase-js";
 import { SPORTS_CONFIG } from "@/lib/sportsConfig";
+
+// ── Inline Supabase client (browser-side only, no lib/supabase.ts) ──────────
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+// Debug: log first 20 chars of URL so we can verify it is being read correctly
+console.log("[Admin] NEXT_PUBLIC_SUPABASE_URL (first 20):", process.env.NEXT_PUBLIC_SUPABASE_URL?.slice(0, 20) ?? "(not set)");
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -258,11 +267,6 @@ export default function AdminPage() {
   // ── Load data ─────────────────────────────────────────────────────────────
 
   const loadJobs = useCallback(async () => {
-    if (!supabaseConfigured) {
-      setJobsError("Supabase not configured — add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to your environment variables.");
-      setJobsLoading(false);
-      return;
-    }
     setJobsLoading(true);
     setJobsError("");
     const { data, error } = await supabase
@@ -271,6 +275,7 @@ export default function AdminPage() {
       .order("created_at", { ascending: false })
       .limit(100);
     if (error) {
+      console.error("Jobs error:", error);
       setJobsError(error.message);
     } else {
       setJobs((data as JobRow[]) ?? []);
@@ -279,11 +284,6 @@ export default function AdminPage() {
   }, []);
 
   const loadWaitlist = useCallback(async () => {
-    if (!supabaseConfigured) {
-      setWaitlistError("Supabase not configured — add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to your environment variables.");
-      setWaitlistLoading(false);
-      return;
-    }
     setWaitlistLoading(true);
     setWaitlistError("");
     const { data, error } = await supabase
@@ -292,6 +292,7 @@ export default function AdminPage() {
       .order("created_at", { ascending: false })
       .limit(200);
     if (error) {
+      console.error("Waitlist error:", error);
       setWaitlistError(error.message);
     } else {
       setWaitlist((data as WaitlistRow[]) ?? []);
@@ -771,12 +772,14 @@ export default function AdminPage() {
         </section>
 
         {/* ── Supabase Config Status ── */}
-        {!supabaseConfigured && (
+        {(!process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL === "https://placeholder.supabase.co") && (
           <section className="rounded-2xl p-6" style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.25)" }}>
             <h2 className="text-sm font-black text-red-400 uppercase tracking-widest mb-2">Database Not Configured</h2>
-            <p className="text-red-300 text-sm leading-relaxed">{supabaseConfigError}</p>
+            <p className="text-red-300 text-sm leading-relaxed">
+              NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are not set.
+            </p>
             <p className="text-slate-500 text-xs mt-3">
-              Add your real Supabase credentials to <code className="text-slate-400">.env.local</code> (local) or Vercel Environment Variables (production), then restart the dev server.
+              Add your real Supabase credentials to <code className="text-slate-400">.env.local</code> (local) or Vercel Environment Variables (production), then redeploy.
             </p>
           </section>
         )}
