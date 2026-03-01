@@ -4,16 +4,26 @@ import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useReel } from "../providers";
 import type { ColorAccent, FontStyle } from "../providers";
+import { classifyClipViaApi, playTypeBadgeColor } from "../../lib/clipClassifier";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface ClipItem {
-  id:          string;
-  file:        File;
-  duration:    number;
-  trimStart:   number;
-  trimEnd:     number;
-  textOverlay: string;
-  intensity:   number;
+  id:           string;
+  file:         File | null;
+  blobUrl:      string;
+  name:         string;
+  thumbnailUrl: string | null;
+  duration:     number;
+  trimStart:    number;
+  trimEnd:      number;
+  textOverlay:  string;
+  intensity:    number;
+  starred:      boolean;
+  // AI / estimated classification
+  playType?:     string;
+  qualityScore?: number;
+  confidence?:   number;
+  classifiedBy?: "google-ai" | "estimated";
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -101,9 +111,13 @@ const SunIcon = () => (
 export default function EditorPage() {
   const router = useRouter();
   const reel   = useReel();
-  const accentHex    = COLOR_MAP[reel.colorAccent] ?? "#00A3FF";
-  const accentIsWhite = reel.colorAccent === "White";
-  const fontFamily   = FONT_MAP[reel.fontStyle] ?? "Arial";
+
+  // Read accent/font from cliptSettings (new flow) or fall back to reel context
+  const settingsAccent = (() => { try { const s = JSON.parse(localStorage.getItem("cliptSettings") || "{}"); return s.accentHex || null; } catch { return null; } })();
+  const settingsFont   = (() => { try { const s = JSON.parse(localStorage.getItem("cliptSettings") || "{}"); return s.fontStyle || null; } catch { return null; } })();
+  const accentHex    = settingsAccent || COLOR_MAP[reel.colorAccent] || "#00A3FF";
+  const accentIsWhite = accentHex === "#F1F5F9" || accentHex === "#FFFFFF";
+  const fontFamily   = FONT_MAP[(settingsFont as FontStyle) || reel.fontStyle] ?? "Arial";
 
   // ── State ──────────────────────────────────────────────────────────────────
   const [clips, setClips]           = useState<ClipItem[]>([]);
@@ -117,6 +131,10 @@ export default function EditorPage() {
   const [dragFrom, setDragFrom]     = useState<number | null>(null);
   const [dragOver, setDragOver]     = useState<number | null>(null);
   const [ready, setReady]           = useState(false);
+  const [reclassifyingIdx, setReclassifyingIdx] = useState<number | null>(null);
+  // Read sport/position from cliptSettings for reclassify
+  const editorSport    = (() => { try { return JSON.parse(localStorage.getItem("cliptSettings") || "{}").sport    || ""; } catch { return ""; } })();
+  const editorPosition = (() => { try { return JSON.parse(localStorage.getItem("cliptSettings") || "{}").position || ""; } catch { return ""; } })();
 
   // ── Refs ───────────────────────────────────────────────────────────────────
   const videoRef    = useRef<HTMLVideoElement>(null);
@@ -124,27 +142,71 @@ export default function EditorPage() {
   const trimBarRef  = useRef<HTMLDivElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
 
-  // ── Init: load clips from reel context ────────────────────────────────────
+  // ── Init: load clips from cliptSettings (primary) or reel context (fallback) ─
   useEffect(() => {
-    if (reel.files.length === 0) { router.push("/upload"); return; }
+    let initial: ClipItem[] = [];
 
-    const initial: ClipItem[] = reel.files.map((f, i) => ({
-      id:          `clip-${i}-${f.name.replace(/\W+/g, "")}`,
-      file:        f,
-      duration:    0,
-      trimStart:   reel.clipTrimStarts[i]   ?? 0,
-      trimEnd:     reel.clipTrimEnds[i]     ?? 0, // 0 = will become duration
-      textOverlay: reel.clipTextOverlays[i] ?? "",
-      intensity:   reel.clipIntensities[i]  ?? 0,
-    }));
+    // Try cliptSettings first (new flow)
+    try {
+      const raw = localStorage.getItem("cliptSettings");
+      if (raw) {
+        const settings = JSON.parse(raw);
+        if (Array.isArray(settings.clips) && settings.clips.length > 0) {
+          initial = settings.clips.map((c: { name: string; blobUrl?: string; thumbnailUrl?: string | null; duration?: number; trimStart?: number; trimEnd?: number; textOverlay?: string; starred?: boolean; playType?: string; qualityScore?: number; confidence?: number; classifiedBy?: "google-ai" | "estimated" }, i: number) => ({
+            id:           `clip-${i}-${(c.name || "").replace(/\W+/g, "")}`,
+            file:         null,
+            blobUrl:      c.blobUrl || "",
+            name:         c.name || `Clip ${i + 1}`,
+            thumbnailUrl: c.thumbnailUrl || null,
+            duration:     c.duration || 0,
+            trimStart:    c.trimStart ?? 0,
+            trimEnd:      c.trimEnd ?? (c.duration || 0),
+            textOverlay:  c.textOverlay || "",
+            intensity:    0,
+            starred:      c.starred ?? false,
+            playType:     c.playType,
+            qualityScore: c.qualityScore,
+            confidence:   c.confidence,
+            classifiedBy: c.classifiedBy,
+          }));
+        }
+      }
+    } catch { /* ignore */ }
+
+    // Fallback: reel.files (old flow)
+    if (initial.length === 0 && reel.files.length > 0) {
+      initial = reel.files.map((f, i) => ({
+        id:           `clip-${i}-${f.name.replace(/\W+/g, "")}`,
+        file:         f,
+        blobUrl:      "",
+        name:         f.name,
+        thumbnailUrl: null,
+        duration:     0,
+        trimStart:    reel.clipTrimStarts[i]   ?? 0,
+        trimEnd:      reel.clipTrimEnds[i]     ?? 0,
+        textOverlay:  reel.clipTextOverlays[i] ?? "",
+        intensity:    reel.clipIntensities[i]  ?? 0,
+        starred:      false,
+      }));
+    }
+
+    if (initial.length === 0) { router.push("/customize"); return; }
 
     setClips(initial);
     setReady(true);
 
     // Load metadata + thumbnails for each clip
     initial.forEach((item, idx) => {
+      // Use existing thumbnail if available
+      if (item.thumbnailUrl) {
+        setThumbs((prev) => ({ ...prev, [item.id]: item.thumbnailUrl! }));
+      }
+
+      const src = item.blobUrl || (item.file ? URL.createObjectURL(item.file) : "");
+      if (!src) return;
+      const owned = !item.blobUrl && !!item.file;
+
       const vid = document.createElement("video");
-      const url = URL.createObjectURL(item.file);
       vid.muted = true; vid.playsInline = true; vid.preload = "metadata";
 
       vid.onloadedmetadata = () => {
@@ -156,32 +218,32 @@ export default function EditorPage() {
               : c
           )
         );
-        // Seek for thumbnail
-        vid.currentTime = Math.min(0.8, dur / 4);
+        if (!item.thumbnailUrl) vid.currentTime = Math.min(0.8, dur / 4);
+        else if (owned) URL.revokeObjectURL(src);
       };
 
       vid.onseeked = () => {
-        const canvas = document.createElement("canvas");
-        canvas.width = 160; canvas.height = 90;
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-          const sA = vid.videoWidth / vid.videoHeight;
-          const dA = 160 / 90;
-          if (sA < dA - 0.05) {
-            // Vertical video: letterbox
-            const dw = Math.round(90 * sA);
-            ctx.fillStyle = "#0A1628"; ctx.fillRect(0, 0, 160, 90);
-            ctx.drawImage(vid, (160 - dw) / 2, 0, dw, 90);
-          } else {
-            ctx.drawImage(vid, 0, 0, 160, 90);
+        if (!item.thumbnailUrl) {
+          const canvas = document.createElement("canvas");
+          canvas.width = 160; canvas.height = 90;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            const sA = vid.videoWidth / vid.videoHeight;
+            if (sA < (160 / 90) - 0.05) {
+              const dw = Math.round(90 * sA);
+              ctx.fillStyle = "#0A1628"; ctx.fillRect(0, 0, 160, 90);
+              ctx.drawImage(vid, (160 - dw) / 2, 0, dw, 90);
+            } else {
+              ctx.drawImage(vid, 0, 0, 160, 90);
+            }
+            setThumbs((prev) => ({ ...prev, [item.id]: canvas.toDataURL("image/jpeg", 0.6) }));
           }
-          setThumbs((prev) => ({ ...prev, [item.id]: canvas.toDataURL("image/jpeg", 0.6) }));
         }
-        URL.revokeObjectURL(url);
+        if (owned) URL.revokeObjectURL(src);
       };
 
-      vid.onerror = () => URL.revokeObjectURL(url);
-      vid.src = url;
+      vid.onerror = () => { if (owned) URL.revokeObjectURL(src); };
+      vid.src = src;
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -193,10 +255,17 @@ export default function EditorPage() {
     if (!vid || !clip) return;
 
     vid.pause(); setIsPlaying(false);
-    if (videoUrlRef.current) { URL.revokeObjectURL(videoUrlRef.current); videoUrlRef.current = null; }
+    // Only revoke if it was an owned URL we created
+    if (videoUrlRef.current && !videoUrlRef.current.startsWith("blob:") && videoUrlRef.current !== clip.blobUrl) {
+      URL.revokeObjectURL(videoUrlRef.current);
+    }
+    videoUrlRef.current = null;
 
-    const url = URL.createObjectURL(clip.file);
-    videoUrlRef.current = url;
+    const url = clip.blobUrl || (clip.file ? URL.createObjectURL(clip.file) : "");
+    if (!url) return;
+    const owned = !clip.blobUrl && !!clip.file;
+    if (owned) videoUrlRef.current = url;
+
     vid.src = url;
 
     const onMeta = () => { vid.currentTime = clip.trimStart; setCurrentTime(clip.trimStart); };
@@ -343,14 +412,38 @@ export default function EditorPage() {
 
   // ── Save and navigate to export ────────────────────────────────────────────
   const handleSave = () => {
-    reel.update({
-      files:            clips.map((c) => c.file),
-      clipNames:        clips.map((c) => c.file.name),
-      clipTrimStarts:   clips.map((c) => c.trimStart),
-      clipTrimEnds:     clips.map((c) => c.trimEnd),
-      clipTextOverlays: clips.map((c) => c.textOverlay),
-      clipIntensities:  clips.map((c) => c.intensity),
-    });
+    // Update reel context (legacy flow)
+    if (clips.some(c => c.file)) {
+      reel.update({
+        files:            clips.filter(c => c.file).map((c) => c.file!),
+        clipNames:        clips.map((c) => c.name),
+        clipTrimStarts:   clips.map((c) => c.trimStart),
+        clipTrimEnds:     clips.map((c) => c.trimEnd),
+        clipTextOverlays: clips.map((c) => c.textOverlay),
+        clipIntensities:  clips.map((c) => c.intensity),
+      });
+    }
+
+    // Update cliptSettings with trim data (new flow)
+    try {
+      const raw = localStorage.getItem("cliptSettings");
+      if (raw) {
+        const settings = JSON.parse(raw);
+        settings.clips = clips.map((c) => ({
+          name:         c.name,
+          blobUrl:      c.blobUrl || "",
+          thumbnailUrl: c.thumbnailUrl || null,
+          duration:     c.duration,
+          trimStart:    c.trimStart,
+          trimEnd:      c.trimEnd,
+          textOverlay:  c.textOverlay,
+          starred:      c.starred,
+          size:         0,
+        }));
+        localStorage.setItem("cliptSettings", JSON.stringify(settings));
+      }
+    } catch { /* ignore */ }
+
     router.push("/export");
   };
 
@@ -401,6 +494,40 @@ export default function EditorPage() {
           <div className="relative w-full" style={{ maxWidth: "min(640px, 100vw)" }}>
             {selectedClip ? (
               <>
+                {/* Play type label — shown above video */}
+                {selectedClip.playType && (
+                  <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-3 py-2 z-10"
+                    style={{ background: "linear-gradient(to bottom, rgba(5,10,20,0.9), transparent)", pointerEvents: "none" }}>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-black" style={{ color: accentHex }}>
+                        {selectedClip.playType}
+                      </span>
+                      {selectedClip.classifiedBy && (
+                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded"
+                          style={selectedClip.classifiedBy === "google-ai"
+                            ? { background: "rgba(34,197,94,0.2)", color: "#22C55E", border: "1px solid rgba(34,197,94,0.3)" }
+                            : { background: "rgba(251,191,36,0.15)", color: "#FBBF24", border: "1px solid rgba(251,191,36,0.25)" }}>
+                          {selectedClip.classifiedBy === "google-ai" ? "AI" : "EST"}
+                        </span>
+                      )}
+                      {selectedClip.starred && (
+                        <span style={{ color: "#FBBF24", fontSize: 14 }}>★</span>
+                      )}
+                    </div>
+                    {/* Quality score — top right */}
+                    {selectedClip.qualityScore !== undefined && (() => {
+                      const qs = selectedClip.qualityScore!;
+                      const qc = qs >= 80 ? "#FBBF24" : qs >= 60 ? "#00A3FF" : "#64748b";
+                      return (
+                        <div title={qs >= 80 ? "Elite Play" : qs >= 60 ? "Strong Play" : "Consider Removing"}
+                          style={{ width: 36, height: 36, borderRadius: "50%", background: qc + "22", border: `2px solid ${qc}`, color: qc, fontSize: 11, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          {qs}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+
                 <video
                   ref={videoRef}
                   playsInline
@@ -428,11 +555,19 @@ export default function EditorPage() {
                   </div>
                 </button>
 
-                {/* Time badge */}
-                <div className="absolute top-2 right-2 px-2 py-1 rounded-lg text-[10px] font-mono tabular-nums"
-                  style={{ background: "rgba(0,0,0,0.7)", color: accentHex }}>
-                  {fmtTime(currentTime)} / {fmtTime(selectedClip.trimEnd)}
-                </div>
+                {/* Time badge — bottom right (only when no play type shown) */}
+                {!selectedClip.playType && (
+                  <div className="absolute top-2 right-2 px-2 py-1 rounded-lg text-[10px] font-mono tabular-nums"
+                    style={{ background: "rgba(0,0,0,0.7)", color: accentHex }}>
+                    {fmtTime(currentTime)} / {fmtTime(selectedClip.trimEnd)}
+                  </div>
+                )}
+                {selectedClip.playType && (
+                  <div className="absolute bottom-8 right-2 px-2 py-1 rounded-lg text-[10px] font-mono tabular-nums"
+                    style={{ background: "rgba(0,0,0,0.7)", color: accentHex }}>
+                    {fmtTime(currentTime)} / {fmtTime(selectedClip.trimEnd)}
+                  </div>
+                )}
               </>
             ) : (
               <div className="aspect-video bg-[#0A1628] flex items-center justify-center rounded-xl mx-4">
@@ -446,12 +581,36 @@ export default function EditorPage() {
         {selectedClip && (
           <div className="shrink-0 px-4 py-3 flex items-center gap-3 border-b border-white/5" style={{ background: "#0A1628" }}>
             <div className="flex-1 min-w-0">
-              <p className="text-white text-xs font-semibold truncate">{selectedClip.file.name}</p>
+              <p className="text-white text-xs font-semibold truncate">{selectedClip.name || selectedClip.file?.name || "Clip"}</p>
               <p className="text-slate-500 text-[10px] mt-0.5">
                 Clip {selectedIdx + 1} of {clips.length} · {fmtTime(trimDuration)} selected · {fmtTime(totalDuration)} total
               </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
+              {/* Reclassify with AI */}
+              {editorSport && editorPosition && (
+                <button
+                  onClick={() => {
+                    const clip = clips[selectedIdx];
+                    if (!clip) return;
+                    setReclassifyingIdx(selectedIdx);
+                    classifyClipViaApi(clip.blobUrl || "", clip.duration || 0, editorSport, editorPosition, selectedIdx).then(result => {
+                      setClips(prev => prev.map((c, i) => i === selectedIdx ? { ...c, playType: result.playType, qualityScore: result.qualityScore, confidence: result.confidence, classifiedBy: result.classifiedBy } : c));
+                      setReclassifyingIdx(null);
+                    });
+                  }}
+                  disabled={reclassifyingIdx === selectedIdx}
+                  className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs font-semibold transition-all hover:opacity-80"
+                  style={{ background: "rgba(0,163,255,0.1)", color: "#00A3FF", border: "1px solid rgba(0,163,255,0.2)" }}
+                  title="Reclassify with AI">
+                  {reclassifyingIdx === selectedIdx ? (
+                    <svg className="animate-spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                  ) : (
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                  )}
+                  AI
+                </button>
+              )}
               <button onClick={handleSplit}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all hover:opacity-80"
                 style={{ background: `${accentHex}1A`, color: accentHex, border: `1px solid ${accentHex}30` }}>
@@ -648,17 +807,38 @@ export default function EditorPage() {
               <div className="absolute bottom-0 left-0 right-0 px-1.5 pb-1"
                 style={{ background: "linear-gradient(to top, rgba(5,10,20,0.95), transparent)" }}>
                 <p className="text-white text-[9px] font-black">#{idx + 1}</p>
-                <p className="text-slate-400 text-[8px]">{fmtTime(clip.trimEnd - clip.trimStart)}</p>
+                {clip.playType ? (
+                  <p className="text-[7px] truncate font-bold" style={{ color: playTypeBadgeColor(clip.playType) }}>{clip.playType}</p>
+                ) : (
+                  <p className="text-slate-400 text-[8px]">{fmtTime(clip.trimEnd - clip.trimStart)}</p>
+                )}
               </div>
+
+              {/* Quality score badge */}
+              {clip.qualityScore !== undefined && (() => {
+                const qs = clip.qualityScore!;
+                const qc = qs >= 80 ? "#FBBF24" : qs >= 60 ? "#00A3FF" : "#64748b";
+                return (
+                  <div className="absolute top-1 right-1"
+                    style={{ width: 18, height: 18, borderRadius: "50%", background: qc + "CC", border: `1.5px solid ${qc}`, color: qs >= 80 ? "#000" : "#fff", fontSize: 7, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    {qs}
+                  </div>
+                );
+              })()}
 
               {/* Grip handle */}
               <div className="absolute top-1/2 -translate-y-1/2 left-0.5 opacity-50 pointer-events-none">
                 <GripIcon />
               </div>
 
+              {/* Starred indicator */}
+              {clip.starred && (
+                <div className="absolute top-1 left-1 text-[10px]" style={{ color: "#FBBF24", lineHeight: 1 }}>★</div>
+              )}
+
               {/* Text overlay indicator */}
               {clip.textOverlay && (
-                <div className="absolute top-1 left-1 w-4 h-4 rounded flex items-center justify-center"
+                <div className="absolute top-1 left-5 w-4 h-4 rounded flex items-center justify-center"
                   style={{ background: accentHex + "CC" }}>
                   <span className="text-[7px] font-black" style={{ color: accentIsWhite ? "#050A14" : "#fff" }}>T</span>
                 </div>
@@ -666,7 +846,7 @@ export default function EditorPage() {
 
               {/* Intensity indicator */}
               {clip.intensity > 0 && (
-                <div className="absolute top-1 left-6 w-4 h-4 rounded flex items-center justify-center"
+                <div className="absolute top-6 left-1 w-4 h-4 rounded flex items-center justify-center"
                   style={{ background: "rgba(251,191,36,0.8)" }}>
                   <span className="text-[7px] font-black text-black">✦</span>
                 </div>

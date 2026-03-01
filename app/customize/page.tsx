@@ -8,6 +8,7 @@ import type {
   TitleCardTemplate, IntroAnimation, WatermarkStyle, ExportAspectRatio,
 } from "../providers";
 import { SPORTS_CONFIG } from "../../lib/sportsConfig";
+import { classifyClipViaApi, playTypeBadgeColor } from "../../lib/clipClassifier";
 import QRCode from "qrcode";
 
 // ── Icons ──────────────────────────────────────────────────────────────────────
@@ -1049,6 +1050,24 @@ interface AiJobMeta {
   sport: string;
 }
 
+// ── CliptData clip type ────────────────────────────────────────────────────────
+interface CliptDataClip {
+  name: string;
+  size: number;
+  duration: number;
+  thumbnailUrl: string | null;
+  blobUrl: string;
+  trimStart?: number;
+  trimEnd?: number;
+  textOverlay?: string;
+  starred?: boolean;
+  // AI / estimated classification fields
+  playType?: string;
+  qualityScore?: number;
+  confidence?: number;
+  classifiedBy?: "google-ai" | "estimated";
+}
+
 // ── Main Page ──────────────────────────────────────────────────────────────────
 
 export default function CustomizePage() {
@@ -1059,23 +1078,63 @@ export default function CustomizePage() {
   const [sport,    setSport]    = useState("");
   const [position, setPosition] = useState("");
 
-  // Runs first on page load — reads sport + position directly from localStorage
+  // New fields from cliptData
+  const [lastName,     setLastName]     = useState("");
+  const [school,       setSchool]       = useState(reel.school || "");
+  const [jerseyColor,  setJerseyColor]  = useState("#FFFFFF");
+  const [coachMode,    setCoachMode]    = useState(false);
+
+  // Clips loaded from cliptData
+  const [cliptClips, setCliptClips] = useState<CliptDataClip[]>([]);
+  // Per-clip reclassification loading state (index → boolean)
+  const [reclassifyingSet, setReclassifyingSet] = useState<Set<number>>(new Set());
+  const [showQsTooltip, setShowQsTooltip] = useState(false);
+
+  // Runs first on page load — reads ALL data from cliptData localStorage
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
-      const raw = localStorage.getItem("clipt_reel");
-      if (raw) {
-        const cliptData = JSON.parse(raw);
+      const rawData = localStorage.getItem("cliptData");
+      if (rawData) {
+        const cliptData = JSON.parse(rawData);
+        console.log("CLIPT DATA LOADED:", cliptData);
         const savedSport    = (cliptData.sport    as string) || "";
         const savedPosition = (cliptData.position as string) || "";
-        console.log("[customize] sport read from localStorage:", savedSport, "| position:", savedPosition);
         if (savedSport)    setSport(savedSport);
         if (savedPosition) setPosition(savedPosition);
+        if (cliptData.firstName) {
+          // setFirstName is defined below, use reel-style init
+          reel.update({ firstName: cliptData.firstName, sport: savedSport, position: savedPosition, school: cliptData.school || "", jerseyNumber: cliptData.jerseyNumber || "" });
+        }
+        if (cliptData.lastName)  setLastName(cliptData.lastName);
+        if (cliptData.school)    setSchool(cliptData.school);
+        if (cliptData.jerseyColor) setJerseyColor(cliptData.jerseyColor);
+        if (cliptData.gradYear)  reel.update({ gradYear: cliptData.gradYear });
+        if (cliptData.email)     reel.update({ email: cliptData.email });
+        if (Array.isArray(cliptData.clips) && cliptData.clips.length > 0) {
+          // Sort clips by quality score descending (highest first)
+          const sorted = [...(cliptData.clips as CliptDataClip[])].sort((a, b) => (b.qualityScore ?? 0) - (a.qualityScore ?? 0));
+          console.log("CLIPT AI: clips sorted by quality score:", sorted.map(c => `${c.name}=${c.qualityScore ?? 0}(${c.classifiedBy ?? "?"})`).join(", "));
+          setCliptClips(sorted);
+          // Update cliptData in localStorage with sorted order
+          try { localStorage.setItem("cliptData", JSON.stringify({ ...cliptData, clips: sorted })); } catch { /* ignore */ }
+        }
+      } else {
+        // Fallback: try clipt_reel
+        const raw = localStorage.getItem("clipt_reel");
+        if (raw) {
+          const d = JSON.parse(raw);
+          const savedSport    = (d.sport    as string) || "";
+          const savedPosition = (d.position as string) || "";
+          console.log("[customize] fallback: sport from clipt_reel:", savedSport);
+          if (savedSport)    setSport(savedSport);
+          if (savedPosition) setPosition(savedPosition);
+        }
       }
     } catch {
       // ignore parse errors
     }
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── AI Clips detection ───────────────────────────────────────────────────
   const [aiClips,    setAiClips]    = useState<AiClip[] | null>(null);
@@ -1122,7 +1181,7 @@ export default function CustomizePage() {
     }));
   };
 
-  const [clips, setClips] = useState<{ name: string; label: string; playLabel: string; aiClip?: AiClip }[]>(
+  const [clips, setClips] = useState<{ name: string; label: string; playLabel: string; aiClip?: AiClip; playType?: string; qualityScore?: number; confidence?: number; classifiedBy?: "google-ai" | "estimated" }[]>(
     derivedInitialClips
   );
 
@@ -1236,6 +1295,33 @@ export default function CustomizePage() {
   const [email,       setEmail]       = useState(reel.email || "");
   const [coachName,   setCoachName]   = useState(reel.coachName || "");
   const [coachEmail,  setCoachEmail]  = useState(reel.coachEmail || "");
+
+  // Sync clips state when cliptClips are loaded from localStorage
+  useEffect(() => {
+    if (cliptClips.length > 0) {
+      setClips(cliptClips.map((c) => ({
+        name: c.name,
+        label: "",
+        playLabel: c.playType || "",
+        playType: c.playType,
+        qualityScore: c.qualityScore,
+        confidence: c.confidence,
+        classifiedBy: c.classifiedBy,
+      })));
+      setClipDurations(cliptClips.map(c => c.duration || 0));
+      const thumbMap: Record<string, string> = {};
+      cliptClips.forEach(c => { if (c.thumbnailUrl) thumbMap[c.name] = c.thumbnailUrl; });
+      setClipThumbMap(thumbMap);
+    }
+  }, [cliptClips]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync firstName from reel context when it updates (from cliptData load above)
+  useEffect(() => {
+    if (reel.firstName && !firstName) setFirstName(reel.firstName);
+    if (reel.email && !email) setEmail(reel.email);
+    if (reel.gradYear && !gradYear) setGradYear(reel.gradYear);
+    if (reel.school && !school) setSchool(reel.school);
+  }, [reel.firstName, reel.email, reel.gradYear, reel.school]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Music
   const [musicTrackId,  setMusicTrackId]  = useState(reel.musicTrackId || "no-music");
@@ -1505,19 +1591,63 @@ export default function CustomizePage() {
       clipLabels: clips.map((c) => c.label),
       clipPlayLabels: clips.map((c) => c.playLabel),
     });
-    // Save full settings snapshot to localStorage so export page always has fresh data
+
+    // Resolve music URL
+    let musicUrl: string | undefined;
+    let musicName = "No Music";
+    if (musicTrackId === "custom") {
+      try { musicUrl = localStorage.getItem("clipt_custom_music_url") || undefined; musicName = customMusicName || "Custom Track"; } catch {}
+    } else if (musicTrackId !== "no-music") {
+      const track = getAllTrack(musicTrackId);
+      musicUrl = track?.url;
+      musicName = track?.label || musicTrackId;
+    }
+
+    // Build complete clips array: prefer cliptClips (from upload), fall back to reel.files names
+    const clipsForSettings: CliptDataClip[] = cliptClips.length > 0
+      ? cliptClips.map((c, i) => ({
+          ...c,
+          starred: starredIndices.includes(i),
+          textOverlay: "",
+          trimStart: c.trimStart ?? 0,
+          trimEnd: c.trimEnd ?? (c.duration || 0),
+        }))
+      : clips.map((c, i) => ({
+          name: c.name,
+          size: 0,
+          duration: clipDurations[i] ?? 0,
+          thumbnailUrl: clipThumbMap[c.name] || null,
+          blobUrl: "",
+          starred: starredIndices.includes(i),
+          textOverlay: "",
+          trimStart: 0,
+          trimEnd: clipDurations[i] ?? 0,
+        }));
+
+    // Save full settings snapshot to localStorage so export & editor pages have fresh data
     try {
       const cliptSettings = {
-        firstName, position, gradYear, heightFt, heightIn, weight, gpa, email,
-        coachName, coachEmail, musicTrackId, accentHex, fontStyle, transition,
-        includeStatsCard, statsData, academicStatsData: academicData,
-        measurablesData, sport, school: reel.school,
-        jerseyNumber: reel.jerseyNumber,
+        firstName, lastName, position, gradYear, heightFt, heightIn, weight, gpa, email,
+        coachName, coachEmail, musicTrackId, musicUrl, musicName, accentHex, fontStyle, transition,
+        includeStatsCard, statsEnabled: includeStatsCard, statsData, academicStatsData: academicData,
+        measurablesData, sport, school, jerseyNumber: reel.jerseyNumber, jerseyColor,
+        jerseyOverlay: showJerseyOverlay, coachMode, enhanceQuality,
+        slowMotionStars: addSlowMo, instantReplayStars: addReplay,
+        reelLength: reelLength,
+        clips: clipsForSettings,
+        titleTemplate, introAnim, watermark, aspectRatio,
+        starredIndices,
       };
       localStorage.setItem("cliptSettings", JSON.stringify(cliptSettings));
       console.log("[customize] cliptSettings saved:", cliptSettings);
     } catch {}
-    router.push("/export");
+
+    // Navigate to editor if any clips are starred, else go directly to export
+    if (starredIndices.length > 0) {
+      router.push("/editor");
+    } else {
+      router.push("/export");
+    }
   };
 
   const TRANSITION_OPTIONS = [
@@ -1621,7 +1751,8 @@ export default function CustomizePage() {
           <div className="hidden lg:block">
             <div className="sticky top-28 rounded-2xl overflow-hidden" style={cardBase}>
               <div className="px-4 py-4">
-                <div className="flex items-center justify-between mb-3">
+                {/* Clips header with quality score tooltip */}
+                <div className="flex items-center justify-between mb-1">
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
                     Clips
                     {clips.length >= 3 ? (
@@ -1633,13 +1764,42 @@ export default function CustomizePage() {
                       <span style={{ color: "#F59E0B" }}>({clips.length} — add more)</span>
                     )}
                   </p>
-                  {aiClips && aiClips.length > 0 && (
-                    <span className="text-[9px] font-black px-2 py-0.5 rounded-full"
-                      style={{ background: "rgba(0,163,255,0.12)", color: "#00A3FF", border: "1px solid rgba(0,163,255,0.25)" }}>
-                      AI SORTED
-                    </span>
-                  )}
+                  <div className="relative flex items-center gap-1">
+                    {(aiClips && aiClips.length > 0) && (
+                      <span className="text-[9px] font-black px-2 py-0.5 rounded-full"
+                        style={{ background: "rgba(0,163,255,0.12)", color: "#00A3FF", border: "1px solid rgba(0,163,255,0.25)" }}>
+                        AI SORTED
+                      </span>
+                    )}
+                    <button type="button" onMouseEnter={() => setShowQsTooltip(true)} onMouseLeave={() => setShowQsTooltip(false)}
+                      className="text-slate-500 hover:text-slate-300 transition-colors">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                      </svg>
+                    </button>
+                    {showQsTooltip && (
+                      <div className="absolute right-0 top-5 w-56 p-3 rounded-xl z-50 text-[10px] leading-snug text-slate-300"
+                        style={{ background: "#0A1628", border: "1px solid rgba(255,255,255,0.12)", boxShadow: "0 8px 24px rgba(0,0,0,0.5)" }}>
+                        <p className="font-bold text-white mb-1">AI Quality Score</p>
+                        <p className="mb-1">Calculated from Google AI confidence, play type impact, and clip duration.</p>
+                        <div className="flex flex-col gap-0.5 mt-1.5">
+                          <span style={{ color: "#FBBF24" }}>● 80–100 = Elite Play</span>
+                          <span style={{ color: "#00A3FF" }}>● 60–79 = Strong Play</span>
+                          <span style={{ color: "#64748b" }}>● Below 60 = Consider Removing</span>
+                        </div>
+                        <p className="mt-1.5 text-slate-500">EST = estimated · AI = Google-verified</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
+                {/* AI sort banner */}
+                {clips.some(c => c.qualityScore !== undefined) && (
+                  <div className="mb-2 px-2 py-1.5 rounded-lg text-[9px] text-slate-400 flex items-center gap-1.5"
+                    style={{ background: "rgba(0,163,255,0.05)", border: "1px solid rgba(0,163,255,0.12)" }}>
+                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#00A3FF" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+                    Clips sorted by AI quality score — reorder manually if needed
+                  </div>
+                )}
                 {clips.length === 0 ? (
                   <p className="text-slate-600 text-xs">No clips uploaded</p>
                 ) : (
@@ -1665,9 +1825,10 @@ export default function CustomizePage() {
                             </div>
                           )}
                         </div>
+                        {/* Clip info */}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <p className="text-xs text-slate-300 truncate">{clip.name.length > 25 ? clip.name.slice(0, 22) + "…" : clip.name}</p>
+                            <p className="text-xs text-slate-300 truncate">{clip.name.length > 22 ? clip.name.slice(0, 19) + "…" : clip.name}</p>
                             {clip.aiClip?.aiPicked && (
                               <span className="shrink-0 text-[8px] font-black px-1.5 py-px rounded"
                                 style={{ background: "rgba(251,191,36,0.18)", color: "#FBBF24", border: "1px solid rgba(251,191,36,0.3)" }}>
@@ -1675,57 +1836,100 @@ export default function CustomizePage() {
                               </span>
                             )}
                           </div>
+                          {/* Play type badge */}
+                          {(() => {
+                            const pt = clip.playType || clip.aiClip?.playType || clip.playLabel || "";
+                            const cb = clip.classifiedBy || (clip.aiClip ? "google-ai" : undefined);
+                            if (!pt) return null;
+                            const bc = playTypeBadgeColor(pt);
+                            return (
+                              <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                                <span className="text-[8px] font-black px-1.5 py-0.5 rounded truncate max-w-[80px]"
+                                  style={{ background: bc + "20", color: bc, border: `1px solid ${bc}33` }}>
+                                  {pt}
+                                </span>
+                                {cb && (
+                                  <span className="text-[7px] font-black px-1 py-0.5 rounded"
+                                    style={cb === "google-ai"
+                                      ? { background: "rgba(34,197,94,0.12)", color: "#22C55E", border: "1px solid rgba(34,197,94,0.25)" }
+                                      : { background: "rgba(251,191,36,0.10)", color: "#FBBF24", border: "1px solid rgba(251,191,36,0.2)" }}>
+                                    {cb === "google-ai" ? "AI" : "EST"}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })()}
+                          {/* AI confidence bar */}
                           {clip.aiClip && (
                             <div className="flex items-center gap-1.5 mt-0.5">
-                              <div className="flex-1 h-0.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)", maxWidth: 48 }}>
+                              <div className="flex-1 h-0.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)", maxWidth: 40 }}>
                                 <div className="h-full rounded-full" style={{ width: `${Math.round(clip.aiClip.confidenceScore * 100)}%`, background: "#00A3FF" }} />
                               </div>
-                              <span className="text-[9px] text-slate-500 font-mono">
-                                {Math.round(clip.aiClip.confidenceScore * 100)}%
-                              </span>
+                              <span className="text-[8px] text-slate-500 font-mono">{Math.round(clip.aiClip.confidenceScore * 100)}%</span>
                             </div>
                           )}
-                          {!clip.aiClip && clip.playLabel && (
-                            <p className="text-[10px] text-slate-500 truncate">{clip.playLabel}</p>
-                          )}
                         </div>
-                        <div className="flex items-center gap-1 shrink-0 mt-0.5">
-                          {/* Quality score badge for AI clips */}
-                          {clip.aiClip?.qualityScore !== undefined && (() => {
-                            const qs = clip.aiClip!.qualityScore!;
-                            const qc = qs >= 80 ? "#FBBF24" : qs >= 60 ? "#00A3FF" : qs >= 40 ? "#64748B" : "#EF4444";
+                        {/* Right side: quality score + star + actions */}
+                        <div className="flex flex-col items-end gap-1 shrink-0">
+                          {/* Quality score circle */}
+                          {(() => {
+                            const qs = clip.qualityScore ?? clip.aiClip?.qualityScore;
+                            if (qs === undefined) return null;
+                            const qc = qs >= 80 ? "#FBBF24" : qs >= 60 ? "#00A3FF" : "#64748b";
                             return (
-                              <div title={qs >= 80 ? "Elite Play" : qs >= 60 ? "Strong Play" : qs >= 40 ? "Decent Play" : "Consider Removing"}
-                                style={{
-                                  width: 22, height: 22, borderRadius: "50%",
-                                  background: qc + "22", border: `1.5px solid ${qc}`,
-                                  color: qc, fontSize: 8, fontWeight: 800,
-                                  display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-                                }}>
+                              <div title={qs >= 80 ? "Elite Play" : qs >= 60 ? "Strong Play" : "Consider Removing"}
+                                style={{ width: 22, height: 22, borderRadius: "50%", background: qc + "22", border: `1.5px solid ${qc}`, color: qc, fontSize: 8, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                                 {qs}
                               </div>
                             );
                           })()}
-                          {/* Star button — always visible for multi-clip starring */}
-                          <button type="button" onClick={() => toggleStar(i)}
-                            className="transition-colors" style={{ color: starredIndices.includes(i) ? "#FBBF24" : "#334155" }}>
-                            <StarIcon filled={starredIndices.includes(i)} />
-                          </button>
-                          {/* Remove clip button — works for both AI and manual clips */}
-                          <button type="button"
-                            onClick={() => {
-                              const removedName = clip.name;
-                              setClips((prev) => prev.filter((_, idx) => idx !== i));
-                              if (!clip.aiClip && reel.files.length > 0) {
-                                reel.update({ files: reel.files.filter((f) => f.name !== removedName) });
-                              }
-                            }}
-                            className="text-slate-600 hover:text-red-400 transition-colors" title="Remove clip">
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
-                              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                            </svg>
-                          </button>
-                          <span className="text-[10px] font-bold text-slate-600">{i + 1}</span>
+                          <div className="flex items-center gap-0.5">
+                            {/* Reclassify button */}
+                            {sport && position && (
+                              <button type="button" title="Reclassify with AI"
+                                disabled={reclassifyingSet.has(i)}
+                                onClick={() => {
+                                  const clipData = cliptClips[i];
+                                  if (!clipData) return;
+                                  const blobUrl = clipData.blobUrl || "";
+                                  const dur = clipData.duration || 0;
+                                  setReclassifyingSet(prev => { const n = new Set(prev); n.add(i); return n; });
+                                  classifyClipViaApi(blobUrl, dur, sport, position, i).then(result => {
+                                    setClips(prev => prev.map((c, idx) => idx === i ? { ...c, playType: result.playType, qualityScore: result.qualityScore, confidence: result.confidence, classifiedBy: result.classifiedBy } : c));
+                                    setCliptClips(prev => prev.map((c, idx) => idx === i ? { ...c, ...result } : c));
+                                    setReclassifyingSet(prev => { const n = new Set(prev); n.delete(i); return n; });
+                                  });
+                                }}
+                                className="w-5 h-5 flex items-center justify-center rounded transition-colors text-slate-600 hover:text-[#00A3FF]">
+                                {reclassifyingSet.has(i) ? (
+                                  <svg className="animate-spin" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                                ) : (
+                                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                                )}
+                              </button>
+                            )}
+                            {/* Star */}
+                            <button type="button" onClick={() => toggleStar(i)}
+                              className="transition-colors" style={{ color: starredIndices.includes(i) ? "#FBBF24" : "#334155" }}>
+                              <StarIcon filled={starredIndices.includes(i)} />
+                            </button>
+                            {/* Remove */}
+                            <button type="button"
+                              onClick={() => {
+                                const removedName = clip.name;
+                                setClips((prev) => prev.filter((_, idx) => idx !== i));
+                                setCliptClips((prev) => prev.filter((_, idx) => idx !== i));
+                                if (!clip.aiClip && reel.files.length > 0) {
+                                  reel.update({ files: reel.files.filter((f) => f.name !== removedName) });
+                                }
+                              }}
+                              className="text-slate-600 hover:text-red-400 transition-colors" title="Remove clip">
+                              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+                                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                              </svg>
+                            </button>
+                          </div>
+                          <span className="text-[9px] font-bold text-slate-600">{i + 1}</span>
                         </div>
                       </div>
                     ))}
@@ -2119,10 +2323,19 @@ export default function CustomizePage() {
               {/* Jersey overlay */}
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <p className="text-sm font-semibold text-white">Jersey Number Overlay</p>
-                  <p className="text-xs text-slate-500">Persistent lower-third on all clips</p>
+                  <p className="text-sm font-semibold text-white">Show Jersey Number On Screen</p>
+                  <p className="text-xs text-slate-500">Displays your number in the corner of every clip so coaches can track you</p>
                 </div>
                 <Toggle on={showJerseyOverlay} onToggle={() => setShowJerseyOverlay((o) => !o)} accent={accentHex} />
+              </div>
+
+              {/* Coach Mode */}
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <p className="text-sm font-semibold text-white">Coach Mode</p>
+                  <p className="text-xs text-slate-500">Removes music, adds hard cuts, optimizes for email viewing</p>
+                </div>
+                <Toggle on={coachMode} onToggle={() => setCoachMode((o) => !o)} accent={accentHex} />
               </div>
 
               <div className="h-px my-4" style={{ background: "rgba(255,255,255,0.05)" }} />
@@ -2427,7 +2640,7 @@ export default function CustomizePage() {
             <button type="button" onClick={handleNext}
               className="w-full py-4 rounded-2xl font-bold text-base transition-all hover:opacity-90 active:scale-[0.99]"
               style={{ background: accentHex, color: btnColor }}>
-              Next: Export Your Reel →
+              {starredIndices.length > 0 ? "Trim Starred Clips →" : "Generate My Reel →"}
             </button>
           </div>
 
@@ -2438,7 +2651,7 @@ export default function CustomizePage() {
                 <LivePreviewPanel
                   firstName={firstName}
                   position={position}
-                  school={reel.school}
+                  school={school || reel.school}
                   jerseyNumber={reel.jerseyNumber}
                   fontStyle={fontStyle}
                   accentHex={accentHex}

@@ -1598,7 +1598,12 @@ export default function ExportPage() {
   const router = useRouter();
   const reel   = useReel();
 
-  const accentHex    = reel.accentHex || "#00A3FF";
+  const accentHex = (() => {
+    try {
+      const s = JSON.parse(localStorage.getItem("cliptSettings") || "{}");
+      return s.accentHex || reel.accentHex || "#00A3FF";
+    } catch { return reel.accentHex || "#00A3FF"; }
+  })();
   const accentIsWhite = isLightColor(accentHex);
 
   const [device, setDevice] = useState<DeviceType>("desktop");
@@ -1641,7 +1646,7 @@ export default function ExportPage() {
   // Duration enforcement
   const [durationModal, setDurationModal] = useState(false);
 
-  const sport        = reel.sport || "";
+  const sport = (() => { try { return JSON.parse(localStorage.getItem("cliptSettings") || "{}").sport || reel.sport || ""; } catch { return reel.sport || ""; } })();
   const reelMinutes  = reel.reelLength || 3;
   const limitMin     = sport === "Basketball" ? 4 : 5;
   const isOverLimit  = reelMinutes > limitMin && (sport === "Basketball" || sport === "Football");
@@ -1663,10 +1668,20 @@ export default function ExportPage() {
       const n = parseInt(localStorage.getItem("clipt_blob_count") || "0", 10);
       if (n > 0) setStoredClipCount(n);
     } catch {}
-    // Load quality data from AI clips
+    // Load quality data — prefer cliptSettings.clips (manual), fall back to aiGeneratedClips
     try {
-      const raw: { qualityScore?: number }[] = JSON.parse(localStorage.getItem("aiGeneratedClips") || "[]");
-      const scores = raw.map((c) => c.qualityScore).filter((s): s is number => typeof s === "number");
+      let scores: number[] = [];
+      try {
+        const settings = JSON.parse(localStorage.getItem("cliptSettings") || "{}");
+        if (Array.isArray(settings.clips)) {
+          const settingsScores = settings.clips.map((c: { qualityScore?: number }) => c.qualityScore).filter((s: unknown): s is number => typeof s === "number");
+          if (settingsScores.length > 0) scores = settingsScores;
+        }
+      } catch { /* ignore */ }
+      if (scores.length === 0) {
+        const raw: { qualityScore?: number }[] = JSON.parse(localStorage.getItem("aiGeneratedClips") || "[]");
+        scores = raw.map((c) => c.qualityScore).filter((s): s is number => typeof s === "number");
+      }
       if (scores.length > 0) {
         const avg = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
         setQualityData({
@@ -1686,17 +1701,34 @@ export default function ExportPage() {
   }, []);
 
   const buildInfo = (): TitleInfo => {
-    // Merge cliptSettings from localStorage (saved by customize page) as fallback
+    // Read cliptSettings (saved by customize page) — primary source for new flow
     let saved: Record<string, unknown> = {};
     try {
       const raw = localStorage.getItem("cliptSettings");
       if (raw) saved = JSON.parse(raw);
     } catch {}
-    const s = (k: string, fallback: string) => (reel[k as keyof typeof reel] as string) || (saved[k] as string) || fallback;
-    const statsData = (reel.statsData && Object.keys(reel.statsData).length > 0)
-      ? reel.statsData
-      : ((saved.statsData as Record<string,string>) ?? {});
-    console.log("[buildInfo] cliptSettings merged:", { firstName: s("firstName",""), email: s("email",""), statsKeys: Object.keys(statsData) });
+    // Also read cliptData (saved by upload page) for fields not in cliptSettings
+    let uploadData: Record<string, unknown> = {};
+    try {
+      const raw = localStorage.getItem("cliptData");
+      if (raw) uploadData = JSON.parse(raw);
+    } catch {}
+
+    // cliptSettings takes priority, then reel context, then uploadData
+    const s = (k: string, fallback: string): string => {
+      const sv = saved[k]; if (sv && typeof sv === "string" && sv.trim()) return sv;
+      const rv = reel[k as keyof typeof reel]; if (rv && typeof rv === "string" && (rv as string).trim()) return rv as string;
+      const uv = uploadData[k]; if (uv && typeof uv === "string" && uv.trim()) return uv;
+      return fallback;
+    };
+
+    const statsData = (saved.statsData && Object.keys(saved.statsData as object).length > 0)
+      ? (saved.statsData as Record<string,string>)
+      : (reel.statsData && Object.keys(reel.statsData).length > 0)
+        ? reel.statsData
+        : {};
+
+    console.log("[buildInfo] merged:", { firstName: s("firstName",""), email: s("email",""), sport: s("sport",""), statsKeys: Object.keys(statsData) });
     return {
       firstName: s("firstName", ""), jerseyNumber: s("jerseyNumber", ""),
       sport: s("sport", ""), school: s("school", ""), position: s("position", ""),
@@ -1705,12 +1737,19 @@ export default function ExportPage() {
       weight: s("weight", ""), gpa: s("gpa", ""),
       email: s("email", ""), coachName: s("coachName", ""), coachEmail: s("coachEmail", ""),
       statsData,
-      academicStatsData: (reel.academicStatsData ?? (saved.academicStatsData as Record<string,string>) ?? {}),
-      measurablesData: (reel.measurablesData ?? (saved.measurablesData as Record<string,string>) ?? {}),
+      academicStatsData: (saved.academicStatsData as Record<string,string>) ?? reel.academicStatsData ?? {},
+      measurablesData: (saved.measurablesData as Record<string,string>) ?? reel.measurablesData ?? {},
     };
   };
 
-  const baseName = (reel.firstName || "reel").toLowerCase().replace(/\s+/g, "-");
+  const baseName = (() => {
+    try {
+      const s = JSON.parse(localStorage.getItem("cliptSettings") || "{}");
+      const fn = s.firstName || reel.firstName || "reel";
+      const ln = s.lastName || "";
+      return `${fn}${ln ? "-" + ln : ""}`.toLowerCase().replace(/\s+/g, "-");
+    } catch { return (reel.firstName || "reel").toLowerCase().replace(/\s+/g, "-"); }
+  })();
 
   const handleBuild = async () => {
     if (isOverLimit) { setDurationModal(true); return; }
@@ -1721,21 +1760,39 @@ export default function ExportPage() {
     setDurationModal(false);
     setMusicFailed(false);
 
-    // Try reel.files first; fall back to stored blob URLs if context lost files after navigation
+    // Try reel.files first; fall back to cliptSettings.clips blobUrls, then clipt_blob_urls
     let buildFiles: File[] = reel.files;
     let buildUrls: string[] | undefined;
 
+    // Read cliptSettings for clip-specific config
+    let settingsClips: Array<{ blobUrl?: string; trimStart?: number; trimEnd?: number; textOverlay?: string; starred?: boolean }> = [];
+    try {
+      const raw = localStorage.getItem("cliptSettings");
+      if (raw) {
+        const s = JSON.parse(raw);
+        if (Array.isArray(s.clips)) settingsClips = s.clips;
+      }
+    } catch {}
+
     if (buildFiles.length === 0) {
-      try {
-        const stored = localStorage.getItem("clipt_blob_urls");
-        if (stored) {
-          const parsed: string[] = JSON.parse(stored);
-          if (parsed.length > 0) {
-            buildUrls = parsed;
-            console.log("[doBuild] Using", parsed.length, "stored blob URLs");
+      // Try cliptSettings.clips blobUrls first
+      const clipBlobUrls = settingsClips.map(c => c.blobUrl).filter(Boolean) as string[];
+      if (clipBlobUrls.length > 0) {
+        buildUrls = clipBlobUrls;
+        console.log("[doBuild] Using", clipBlobUrls.length, "cliptSettings blob URLs");
+      } else {
+        // Fallback to clipt_blob_urls
+        try {
+          const stored = localStorage.getItem("clipt_blob_urls");
+          if (stored) {
+            const parsed: string[] = JSON.parse(stored);
+            if (parsed.length > 0) {
+              buildUrls = parsed;
+              console.log("[doBuild] Using", parsed.length, "stored blob URLs from clipt_blob_urls");
+            }
           }
-        }
-      } catch {}
+        } catch {}
+      }
 
       if (!buildUrls || buildUrls.length === 0) {
         setErrMsg("No clips found — go back and upload your clips first."); setPhase("error"); return;
@@ -1745,14 +1802,29 @@ export default function ExportPage() {
     abortRef.current = false;
     setPhase("processing"); setPct(0); setStep("Starting...");
 
-    // Save reel profile to localStorage
+    // Build trim/overlay arrays from settingsClips if available, else fall back to reel
+    const trimStarts = settingsClips.length > 0 ? settingsClips.map(c => c.trimStart ?? 0) : reel.clipTrimStarts ?? [];
+    const trimEnds   = settingsClips.length > 0 ? settingsClips.map(c => c.trimEnd   ?? 0) : reel.clipTrimEnds   ?? [];
+    const textOverlays = settingsClips.length > 0 ? settingsClips.map(c => c.textOverlay ?? "") : reel.clipTextOverlays ?? [];
+    const starredIndices = settingsClips.length > 0
+      ? settingsClips.map((c, i) => c.starred ? i : -1).filter(i => i >= 0)
+      : reel.starredClipIndices ?? [];
+
+    // Read settings preferences
+    let settings: Record<string, unknown> = {};
+    try { settings = JSON.parse(localStorage.getItem("cliptSettings") || "{}"); } catch {}
+    const sGet = <T,>(key: string, fallback: T): T => {
+      const v = settings[key]; return (v !== undefined && v !== null) ? v as T : fallback;
+    };
+
+    // Save reel profile
     try {
       const profiles = JSON.parse(localStorage.getItem("clipt_profiles") || "{}");
+      const info = buildInfo();
       profiles[reelId] = {
-        firstName: reel.firstName, jerseyNumber: reel.jerseyNumber, sport: reel.sport,
-        school: reel.school, position: reel.position, gradYear: reel.gradYear,
-        email: reel.email, accentHex, statsData: reel.statsData,
-        titleCardTemplate: reel.titleCardTemplate, fontStyle: reel.fontStyle,
+        firstName: info.firstName, jerseyNumber: info.jerseyNumber, sport: info.sport,
+        school: info.school, position: info.position, gradYear: info.gradYear,
+        email: info.email, accentHex, statsData: info.statsData,
         createdAt: Date.now(),
       };
       localStorage.setItem("clipt_profiles", JSON.stringify(profiles));
@@ -1765,27 +1837,27 @@ export default function ExportPage() {
       const blob = await buildReel({
         files: buildFiles, clipUrls: buildUrls, info: buildInfo(), accent: accentHex,
         dim, fps, bitrate,
-        musicTrackId: reel.musicTrackId || "no-music",
-        transitionStyle: reel.transition || "Hard Cut",
-        includeStatsCard: reel.includeStatsCard,
-        statsData: reel.statsData ?? {},
+        musicTrackId: sGet("musicTrackId", reel.musicTrackId || "no-music"),
+        transitionStyle: sGet("transition", reel.transition || "Hard Cut"),
+        includeStatsCard: sGet("statsEnabled", reel.includeStatsCard) as boolean,
+        statsData: (sGet("statsData", reel.statsData) as Record<string,string>) ?? {},
         showMeasurablesCard: reel.showMeasurablesCard,
         highlightPlayer: reel.highlightPlayer,
-        showJerseyOverlay: reel.showJerseyOverlay ?? true,
-        enhanceQuality: reel.enhanceQuality ?? true,
-        titleCardTemplate: reel.titleCardTemplate || "espn-classic",
-        introAnimation: reel.introAnimation || "clean-cut",
-        trimStarts:    reel.clipTrimStarts   ?? [],
-        trimEnds:      reel.clipTrimEnds     ?? [],
-        textOverlays:  reel.clipTextOverlays ?? [],
+        showJerseyOverlay: sGet("jerseyOverlay", reel.showJerseyOverlay ?? true) as boolean,
+        enhanceQuality: sGet("enhanceQuality", reel.enhanceQuality ?? true) as boolean,
+        titleCardTemplate: sGet("titleTemplate", reel.titleCardTemplate || "espn-classic") as TitleCardTemplate,
+        introAnimation: sGet("introAnim", reel.introAnimation || "clean-cut") as string,
+        trimStarts,
+        trimEnds,
+        textOverlays,
         intensities:   reel.clipIntensities  ?? [],
         clipPlayLabels: reel.clipPlayLabels  ?? [],
         bestPlayIndex:  reel.bestPlayIndex   ?? -1,
         highlightBestPlay: reel.highlightBestPlay ?? false,
-        slowMotionReplay:  reel.slowMotionReplay  ?? false,
-        starredClipIndices: reel.starredClipIndices ?? [],
-        starredSlowMo:      reel.starredSlowMo ?? false,
-        starredReplay:      reel.starredReplay ?? false,
+        slowMotionReplay:  sGet("slowMotionStars", reel.slowMotionReplay ?? false) as boolean,
+        starredClipIndices: starredIndices,
+        starredSlowMo:      sGet("slowMotionStars", reel.starredSlowMo ?? false) as boolean,
+        starredReplay:      sGet("instantReplayStars", reel.starredReplay ?? false) as boolean,
         watermarkStyle: reel.watermarkStyle || "clipt",
         isAborted: () => abortRef.current,
         onProgress: (p, t) => { setPct(p); setStep(t); },
@@ -2153,9 +2225,35 @@ export default function ExportPage() {
         </div>
 
         {/* ── REEL ANALYSIS ── */}
-        {qualityData && (
+        {qualityData && (() => {
+          let aiVerifiedCount = 0;
+          let estimatedCount = 0;
+          try {
+            const s = JSON.parse(localStorage.getItem("cliptSettings") || "{}");
+            if (Array.isArray(s.clips)) {
+              s.clips.forEach((c: { classifiedBy?: string }) => {
+                if (c.classifiedBy === "google-ai") aiVerifiedCount++;
+                else if (c.classifiedBy === "estimated") estimatedCount++;
+              });
+            }
+          } catch { /* ignore */ }
+          return (
           <div className="rounded-2xl p-5" style={{ background: "#0A1628", border: "1px solid rgba(255,255,255,0.08)" }}>
-            <p className="text-sm font-bold text-white mb-1">Reel Analysis</p>
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-sm font-bold text-white">Reel Analysis</p>
+              {aiVerifiedCount > 0 && (
+                <span className="text-[9px] font-black px-2 py-1 rounded-full flex items-center gap-1"
+                  style={{ background: "rgba(34,197,94,0.12)", color: "#22C55E", border: "1px solid rgba(34,197,94,0.25)" }}>
+                  ✓ AI Verified · {aiVerifiedCount} clips
+                </span>
+              )}
+              {aiVerifiedCount === 0 && estimatedCount > 0 && (
+                <span className="text-[9px] font-bold px-2 py-1 rounded-full"
+                  style={{ background: "rgba(251,191,36,0.10)", color: "#FBBF24", border: "1px solid rgba(251,191,36,0.2)" }}>
+                  EST · {estimatedCount} clips
+                </span>
+              )}
+            </div>
             <p className="text-xs text-slate-500 mb-4">AI quality breakdown of your selected clips</p>
 
             {/* Average score bar */}
@@ -2206,26 +2304,30 @@ export default function ExportPage() {
               )}
             </div>
           </div>
-        )}
+          );
+        })()}
 
         {/* ── COACH READY SCORE ── */}
         {(() => {
+          const _info = buildInfo();
+          let _settings: Record<string, unknown> = {};
+          try { _settings = JSON.parse(localStorage.getItem("cliptSettings") || "{}"); } catch {}
           const scoreData = calcCoachReadyScore({
             reelLength: reel.reelLength || 3,
-            sport: reel.sport || "",
-            musicTrackId: reel.musicTrackId || "no-music",
-            includeStatsCard: reel.includeStatsCard,
-            gradYear: reel.gradYear || "",
-            heightFt: reel.heightFt || "",
-            weight: reel.weight || "",
-            email: reel.email || "",
-            gpa: reel.gpa || "",
-            fontStyle: reel.fontStyle || "Modern",
-            transition: reel.transition || "Hard Cut",
-            firstName: reel.firstName || "",
-            school: reel.school || "",
-            position: reel.position || "",
-            jerseyNumber: reel.jerseyNumber || "",
+            sport: _info.sport || reel.sport || "",
+            musicTrackId: (typeof _settings.musicTrackId === "string" ? _settings.musicTrackId : null) || reel.musicTrackId || "no-music",
+            includeStatsCard: (typeof _settings.statsEnabled === "boolean" ? _settings.statsEnabled : null) ?? reel.includeStatsCard,
+            gradYear: _info.gradYear || reel.gradYear || "",
+            heightFt: _info.heightFt || reel.heightFt || "",
+            weight: _info.weight || reel.weight || "",
+            email: _info.email || reel.email || "",
+            gpa: _info.gpa || reel.gpa || "",
+            fontStyle: (typeof _settings.fontStyle === "string" ? _settings.fontStyle : null) || reel.fontStyle || "Modern",
+            transition: (typeof _settings.transition === "string" ? _settings.transition : null) || reel.transition || "Hard Cut",
+            firstName: _info.firstName || reel.firstName || "",
+            school: _info.school || reel.school || "",
+            position: _info.position || reel.position || "",
+            jerseyNumber: _info.jerseyNumber || reel.jerseyNumber || "",
           });
           const gradeColor = scoreData.score >= 90 ? "#22C55E" : scoreData.score >= 80 ? "#00A3FF" : scoreData.score >= 70 ? "#F59E0B" : "#EF4444";
           const circumference = 2 * Math.PI * 44;

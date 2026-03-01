@@ -346,6 +346,9 @@ export async function classifyClipPlayType(
 ): Promise<{ playType: string; confidence: number; rawLabels: string[] }> {
   const FALLBACK = { playType: "Great Play", confidence: 0.5, rawLabels: [] };
 
+  // ── CLIPT AI debug log ──────────────────────────────────────────────────
+  console.log(`GOOGLE AI CALLED FOR CLIP: ${videoUrl}`);
+
   if (!isGoogleConfigured()) {
     return FALLBACK;
   }
@@ -417,6 +420,7 @@ export async function classifyClipPlayType(
     const playType = labelsToPlayType(rawLabels, sport);
 
     console.log(`[GVI] Clip ${startTime}s–${endTime}s → ${playType} (labels: ${rawLabels.slice(0, 5).join(", ")})`);
+    console.log(`GOOGLE AI RESULT: playType="${playType}" confidence=${Math.round(avgConfidence * 100) / 100} rawLabels=[${rawLabels.slice(0, 5).join(", ")}]`);
 
     return {
       playType,

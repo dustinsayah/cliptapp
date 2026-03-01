@@ -183,11 +183,14 @@ export default function AdminPage() {
           { playType: "Fast Break",     confidence: 0.67 },
         ];
     let cursor = 45;
+    const baseQs = 94;
     const mockClips = playDefs.slice(0, 8).map(({ playType, confidence }, i) => {
       const startTime = cursor;
       const dur = Math.round((4 + Math.random() * 5) * 10) / 10;
       const endTime = Math.round((startTime + dur) * 10) / 10;
       cursor = endTime + 55 + Math.floor(Math.random() * 40);
+      const qualityScore = Math.max(30, baseQs - i * 4);
+      console.log(`CLIPT AI: [admin mock] clip ${i + 1} → playType="${playType}" confidence=${confidence} quality=${qualityScore} classifiedBy=estimated`);
       return {
         id: `mock-${i + 1}`,
         clipNumber: i + 1,
@@ -196,6 +199,8 @@ export default function AdminPage() {
         endTime,
         duration: dur,
         confidenceScore: confidence,
+        qualityScore,
+        classifiedBy: "estimated" as const,
         jerseyVisible: true,
         aiPicked: true,
         sport: reviewSport,
@@ -205,7 +210,7 @@ export default function AdminPage() {
     });
     localStorage.setItem("clipSource", "ai");
     localStorage.setItem("aiGeneratedClips", JSON.stringify(mockClips));
-    localStorage.setItem("aiJobMeta", JSON.stringify({ jerseyNumber: 23, firstName: "Marcus", sport: reviewSport }));
+    localStorage.setItem("aiJobMeta", JSON.stringify({ jerseyNumber: 23, firstName: "Marcus", sport: reviewSport, position: reviewPosition }));
     localStorage.setItem("reviewComplete", "false");
     router.push("/review");
   };
