@@ -45,6 +45,17 @@ const MEAS_MS   = 3000;
 const END_MS    = 5000;
 const PLAYER_MS = 800;
 
+// ── Music track display name map ──────────────────────────────────────────────
+const MUSIC_TRACK_LABELS: Record<string, string> = {
+  "nba-warmup":   "NBA Warmup",   "championship":  "Championship",  "playoff-mode": "Playoff Mode",
+  "game-time":    "Game Time",    "court-vision":  "Court Vision",  "espn-feature": "ESPN Feature",
+  "rise-up":      "Rise Up",      "legacy":        "Legacy",        "the-journey":  "The Journey",
+  "triumph":      "Triumph",      "trap-god":      "Trap God",      "drill-season": "Drill Season",
+  "ice-cold":     "Ice Cold",     "street-ball":   "Street Ball",   "pressure":     "Pressure",
+  "focus":        "Focus",        "late-night":    "Late Night",    "smooth":       "Smooth",
+  "crowd-noise":  "Crowd Noise",  "custom":        "Your Track",
+};
+
 // ── Music track URL map ────────────────────────────────────────────────────────
 const MUSIC_TRACK_URLS: Record<string, string | undefined> = {
   "nba-warmup":   "https://assets.mixkit.co/music/370/370.mp3",
@@ -86,12 +97,31 @@ const STEPS = [
 // ── Device helpers ─────────────────────────────────────────────────────────────
 type DeviceType = "ios" | "android" | "desktop";
 
+interface DeviceDetails {
+  type: DeviceType;
+  isIOS: boolean;
+  isSafari: boolean;
+  isAndroid: boolean;
+  isMobileChrome: boolean;
+}
+
 function detectDevice(): DeviceType {
   if (typeof navigator === "undefined") return "desktop";
   const ua = navigator.userAgent;
   if (/iPad|iPhone|iPod/.test(ua) && !/Windows Phone/.test(ua)) return "ios";
   if (/Android/.test(ua)) return "android";
   return "desktop";
+}
+
+function detectDeviceDetails(): DeviceDetails {
+  if (typeof navigator === "undefined") return { type: "desktop", isIOS: false, isSafari: false, isAndroid: false, isMobileChrome: false };
+  const ua = navigator.userAgent;
+  const isIOS = /iPad|iPhone|iPod/.test(ua) && !/Windows Phone/.test(ua);
+  const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
+  const isAndroid = /android/i.test(ua);
+  const isMobileChrome = isAndroid && /chrome/i.test(ua);
+  const type: DeviceType = isIOS ? "ios" : isAndroid ? "android" : "desktop";
+  return { type, isIOS, isSafari, isAndroid, isMobileChrome };
 }
 
 function getSupportedMime(): string | null {
@@ -555,23 +585,6 @@ function drawLowerThird(ctx: CanvasRenderingContext2D, info: TitleInfo, accent: 
   ctx.restore();
 }
 
-function drawClipLabel(ctx: CanvasRenderingContext2D, label: string, alpha: number, accent: string, dim: Dim) {
-  if (!label || alpha <= 0) return;
-  ctx.save(); ctx.globalAlpha = alpha;
-  const fs = Math.round(dim.h * 0.024);
-  ctx.font = `bold ${fs}px Arial, sans-serif`;
-  const tw = ctx.measureText(label).width;
-  const padX = Math.round(dim.h * 0.016), padY = Math.round(dim.h * 0.01);
-  const pw = tw + padX * 2, ph = fs + padY * 2;
-  const px = (dim.w - pw) / 2, py = dim.h - ph - Math.round(dim.h * 0.13);
-  ctx.fillStyle = "rgba(5,10,20,0.87)";
-  rrect(ctx, px, py, pw, ph, ph / 2); ctx.fill();
-  ctx.fillStyle = "#FFFFFF"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 2;
-  ctx.fillText(label, dim.w / 2, py + ph / 2);
-  ctx.globalAlpha = 1; ctx.restore();
-}
-
 function drawHighlightBorder(ctx: CanvasRenderingContext2D, accent: string, alpha: number, dim: Dim) {
   if (alpha <= 0) return;
   const bw = Math.round(dim.h * 0.008);
@@ -897,123 +910,128 @@ function drawEndFrame(ctx: CanvasRenderingContext2D, info: TitleInfo, accent: st
   // Background + depth gradient
   ctx.fillStyle = "#050A14"; ctx.fillRect(0, 0, dim.w, dim.h);
   drawDiagonalPattern(ctx, dim, accent);
-  const bg = ctx.createRadialGradient(cx, dim.h * 0.38, 0, cx, dim.h * 0.38, Math.min(dim.w, dim.h) * 0.55);
-  bg.addColorStop(0, accent + "1E"); bg.addColorStop(1, "transparent");
+  const bg = ctx.createRadialGradient(cx, dim.h * 0.40, 0, cx, dim.h * 0.40, Math.min(dim.w, dim.h) * 0.55);
+  bg.addColorStop(0, accent + "22"); bg.addColorStop(1, "transparent");
   ctx.fillStyle = bg; ctx.fillRect(0, 0, dim.w, dim.h);
 
-  // Top stripe 8px
-  ctx.fillStyle = accent; ctx.fillRect(0, 0, dim.w, 8);
+  // Top accent stripe 8px
+  ctx.fillStyle = accent; ctx.fillRect(0, 0, dim.w, Math.round(8 * s));
+  // Bottom accent stripe 8px
+  ctx.fillStyle = accent; ctx.fillRect(0, dim.h - Math.round(8 * s), dim.w, Math.round(8 * s));
 
   // "CONTACT ME" heading
-  const headingY = Math.round(dim.h * 0.13);
+  const headingY = Math.round(dim.h * 0.12);
   ctx.save();
-  ctx.font = `bold ${Math.round(20 * s)}px Arial, sans-serif`;
+  ctx.font = `bold ${Math.round(22 * s)}px Arial, sans-serif`;
   ctx.fillStyle = accent; ctx.textAlign = "center"; ctx.textBaseline = "middle";
   (ctx as unknown as { letterSpacing: string }).letterSpacing = "10px";
   ctx.fillText("CONTACT ME", cx, headingY); ctx.restore();
 
   // Accent line under heading
-  ctx.fillStyle = accent; ctx.fillRect(cx - Math.round(40 * s), headingY + Math.round(18 * s), Math.round(80 * s), 2);
+  ctx.fillStyle = accent + "BB";
+  ctx.fillRect(cx - Math.round(60 * s), headingY + Math.round(20 * s), Math.round(120 * s), 2);
 
-  // Athlete name — 48px bold
-  const nameY = headingY + Math.round(62 * s);
+  // Athlete name — 72px bold
+  const nameY = headingY + Math.round(74 * s);
   ctx.save();
-  ctx.shadowColor = "rgba(0,0,0,0.6)"; ctx.shadowBlur = 8;
-  ctx.font = `bold ${Math.round(48 * s)}px Arial, sans-serif`;
+  ctx.shadowColor = "rgba(0,0,0,0.7)"; ctx.shadowBlur = 10;
+  ctx.font = `bold ${Math.round(72 * s)}px Arial, sans-serif`;
   ctx.fillStyle = "#FFFFFF"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  const nameText = (info.firstName || "ATHLETE").toUpperCase();
-  ctx.fillText(nameText, cx, nameY); ctx.restore();
+  ctx.fillText((info.firstName || "ATHLETE").toUpperCase(), cx, nameY); ctx.restore();
 
-  // Jersey # in accent — 32px
+  // Jersey # in accent — 52px
   if (info.jerseyNumber) {
     ctx.save();
-    ctx.font = `bold ${Math.round(32 * s)}px Arial, sans-serif`;
+    ctx.font = `bold ${Math.round(52 * s)}px Arial, sans-serif`;
     ctx.fillStyle = accent; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText(`#${info.jerseyNumber}`, cx, nameY + Math.round(44 * s)); ctx.restore();
+    ctx.shadowColor = accent + "66"; ctx.shadowBlur = 8;
+    ctx.fillText(`#${info.jerseyNumber}`, cx, nameY + Math.round(60 * s)); ctx.restore();
   }
 
-  // Position · Sport — 24px gray
+  // Position · Sport — 26px gray
   const posLine = [info.position, info.sport].filter(Boolean).join("  ·  ");
   if (posLine) {
     ctx.save();
-    ctx.font = `${Math.round(24 * s)}px Arial, sans-serif`;
+    ctx.font = `${Math.round(26 * s)}px Arial, sans-serif`;
     ctx.fillStyle = "#94a3b8"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText(posLine.toUpperCase(), cx, nameY + Math.round(84 * s)); ctx.restore();
+    ctx.fillText(posLine.toUpperCase(), cx, nameY + Math.round((info.jerseyNumber ? 112 : 56) * s)); ctx.restore();
   }
 
-  // School · grad year — 20px gray
+  // School · grad year — 22px gray
   const schoolLine = [info.school, info.gradYear ? `Class of ${info.gradYear}` : ""].filter(Boolean).join("  ·  ");
   if (schoolLine) {
+    const schoolOffset = info.jerseyNumber ? 146 : posLine ? 90 : 56;
     ctx.save();
-    ctx.font = `${Math.round(20 * s)}px Arial, sans-serif`;
+    ctx.font = `${Math.round(22 * s)}px Arial, sans-serif`;
     ctx.fillStyle = "#64748b"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText(schoolLine, cx, nameY + Math.round(116 * s)); ctx.restore();
+    ctx.fillText(schoolLine, cx, nameY + Math.round(schoolOffset * s)); ctx.restore();
   }
 
-  // Divider line in accent at 40% opacity
-  const divY = nameY + Math.round(146 * s);
-  ctx.fillStyle = accent + "66";
-  ctx.fillRect(Math.round(dim.w * 0.2), divY, Math.round(dim.w * 0.6), 1);
+  // Divider
+  const divY = nameY + Math.round(172 * s);
+  ctx.fillStyle = accent + "55";
+  ctx.fillRect(Math.round(dim.w * 0.15), divY, Math.round(dim.w * 0.7), 1);
 
-  // Top 3 stats grid
+  // Top 3 stats grid (48px values)
   const topStats = Object.entries(info.statsData || {}).filter(([,v]) => v.trim()).slice(0, 3);
   if (topStats.length > 0) {
-    const statsY = divY + Math.round(24 * s);
-    const cw = Math.round(170 * s), ch = Math.round(80 * s), gx = Math.round(24 * s);
+    const statsY = divY + Math.round(28 * s);
+    const cw = Math.round(200 * s), ch = Math.round(100 * s), gx = Math.round(30 * s);
     const totalW = topStats.length * cw + (topStats.length - 1) * gx;
     const sx = cx - totalW / 2;
     topStats.forEach(([label, value], i) => {
       const x = sx + i * (cw + gx);
       ctx.fillStyle = "rgba(255,255,255,0.04)";
-      rrect(ctx, x, statsY, cw, ch, Math.round(10 * s)); ctx.fill();
-      ctx.strokeStyle = accent + "40"; ctx.lineWidth = 1;
-      rrect(ctx, x, statsY, cw, ch, Math.round(10 * s)); ctx.stroke();
-      ctx.save(); ctx.font = `bold ${Math.round(32 * s)}px Arial, sans-serif`;
+      rrect(ctx, x, statsY, cw, ch, Math.round(12 * s)); ctx.fill();
+      ctx.strokeStyle = accent + "44"; ctx.lineWidth = 1.5;
+      rrect(ctx, x, statsY, cw, ch, Math.round(12 * s)); ctx.stroke();
+      ctx.save(); ctx.font = `bold ${Math.round(48 * s)}px Arial, sans-serif`;
       ctx.fillStyle = accent; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      ctx.shadowColor = accent + "50"; ctx.shadowBlur = 6;
-      ctx.fillText(value, x + cw / 2, statsY + ch * 0.42); ctx.restore();
-      ctx.save(); ctx.font = `${Math.round(14 * s)}px Arial, sans-serif`;
+      ctx.shadowColor = accent + "60"; ctx.shadowBlur = 8;
+      ctx.fillText(value, x + cw / 2, statsY + ch * 0.43); ctx.restore();
+      ctx.save(); ctx.font = `${Math.round(16 * s)}px Arial, sans-serif`;
       ctx.fillStyle = "#64748b"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
       (ctx as unknown as { letterSpacing: string }).letterSpacing = "2px";
-      ctx.fillText(label.toUpperCase(), x + cw / 2, statsY + ch * 0.78); ctx.restore();
+      ctx.fillText(label.toUpperCase(), x + cw / 2, statsY + ch * 0.80); ctx.restore();
     });
   }
 
-  // Email — electric blue 20px
+  // Email — electric blue
   if (info.email) {
-    const emailY = Math.round(dim.h * 0.73);
+    const emailY = Math.round(dim.h * 0.74);
     ctx.save();
-    ctx.font = `${Math.round(20 * s)}px Arial, sans-serif`;
+    ctx.font = `${Math.round(22 * s)}px Arial, sans-serif`;
     ctx.fillStyle = "#00A3FF"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText(`✉ ${info.email}`, cx, emailY); ctx.restore();
+    ctx.shadowColor = "#00A3FF44"; ctx.shadowBlur = 6;
+    ctx.fillText(`✉  ${info.email}`, cx, emailY); ctx.restore();
   }
 
   // Recruiting Contact section (coach)
   if (info.coachName || info.coachEmail) {
-    const coachY = Math.round(dim.h * 0.79);
+    const coachY = Math.round(dim.h * 0.81);
     ctx.save();
-    ctx.font = `bold ${Math.round(11 * s)}px Arial, sans-serif`;
+    ctx.font = `bold ${Math.round(13 * s)}px Arial, sans-serif`;
     ctx.fillStyle = accent; ctx.textAlign = "center"; ctx.textBaseline = "middle";
     (ctx as unknown as { letterSpacing: string }).letterSpacing = "4px";
     ctx.fillText("RECRUITING CONTACT", cx, coachY); ctx.restore();
     const coachLine = [info.coachName, info.coachEmail].filter(Boolean).join("  ·  ");
     ctx.save();
-    ctx.font = `${Math.round(16 * s)}px Arial, sans-serif`;
+    ctx.font = `${Math.round(17 * s)}px Arial, sans-serif`;
     ctx.fillStyle = "#94a3b8"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText(coachLine, cx, coachY + Math.round(22 * s)); ctx.restore();
+    ctx.fillText(coachLine, cx, coachY + Math.round(26 * s)); ctx.restore();
   }
 
-  // CLIPT watermark bottom right
+  // "Powered by CLIPT" at very bottom center
   ctx.save();
-  ctx.font = `bold ${Math.round(12 * s)}px 'Courier New', monospace`;
-  ctx.fillStyle = "#94a3b8"; ctx.textAlign = "right"; ctx.textBaseline = "bottom";
-  (ctx as unknown as { letterSpacing: string }).letterSpacing = "3px";
-  ctx.fillText("CLIPT", dim.w - 16, dim.h - 14); ctx.restore();
+  ctx.font = `bold ${Math.round(13 * s)}px Arial, sans-serif`;
+  ctx.fillStyle = "#475569"; ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+  (ctx as unknown as { letterSpacing: string }).letterSpacing = "4px";
+  ctx.fillText("POWERED BY CLIPT", cx, dim.h - Math.round(20 * s)); ctx.restore();
 }
 
 // ── Animation runners ──────────────────────────────────────────────────────────
 
-function runCard(drawFn: () => void, ms: number, isAborted: () => boolean): Promise<void> {
+function runCard(drawFn: () => void, ms: number, isAborted: () => boolean, fadeCtx?: CanvasRenderingContext2D, fadeDim?: Dim): Promise<void> {
   console.log("[runCard] START ms=" + ms);
   return new Promise((resolve) => {
     let ivl: ReturnType<typeof setInterval> | undefined;
@@ -1027,8 +1045,17 @@ function runCard(drawFn: () => void, ms: number, isAborted: () => boolean): Prom
     };
     const t0 = Date.now();
     const tick = () => {
-      if (isAborted() || Date.now() - t0 >= ms) { done(); return; }
+      const el = Date.now() - t0;
+      if (isAborted() || el >= ms) { done(); return; }
       try { drawFn(); } catch (e) { console.warn("[runCard] drawFn error", e); }
+      // 15-frame (~495ms) fade-in overlay
+      if (fadeCtx && fadeDim && el < 495) {
+        const alpha = 1 - (el / 495);
+        fadeCtx.fillStyle = "#050A14";
+        fadeCtx.globalAlpha = alpha;
+        fadeCtx.fillRect(0, 0, fadeDim.w, fadeDim.h);
+        fadeCtx.globalAlpha = 1;
+      }
     };
     drawFn(); // draw first frame immediately
     ivl = setInterval(tick, 33);
@@ -1054,9 +1081,10 @@ function runTitleCardAnimated(ctx: CanvasRenderingContext2D, info: TitleInfo, ac
       if (ab() || el >= TITLE_MS) { done(); return; }
       ctx.clearRect(0, 0, dim.w, dim.h);
       drawTitleFrame(ctx, info, accent, dim, template);
-      if (anim === "fade-in") {
-        const alpha = el < 800 ? 1 - (el / 800) : 0;
-        if (alpha > 0) { ctx.fillStyle = "#050A14"; ctx.globalAlpha = alpha; ctx.fillRect(0, 0, dim.w, dim.h); ctx.globalAlpha = 1; }
+      // Always apply 15-frame (~495ms) fade-in at start
+      if (el < 495) {
+        const alpha = 1 - (el / 495);
+        ctx.fillStyle = "#050A14"; ctx.globalAlpha = alpha; ctx.fillRect(0, 0, dim.w, dim.h); ctx.globalAlpha = 1;
       } else if (anim === "reveal" && el < 600) {
         const pct = el / 600;
         ctx.fillStyle = accent; ctx.fillRect(0, 0, dim.w * (1 - pct), dim.h);
@@ -1147,15 +1175,13 @@ interface ClipOpts {
 function runClipInner(vid: HTMLVideoElement, ctx: CanvasRenderingContext2D, isAborted: () => boolean, opts: ClipOpts, speedFactor = 1): Promise<void> {
   return new Promise((resolve) => {
     const { dim, showJerseyOverlay, enhanceQuality, info, accent,
-      trimStart, trimEnd, textOverlay, intensity, playLabel, isBestPlay,
+      trimStart, trimEnd, textOverlay, intensity, isBestPlay,
       highlightBestPlay, watermarkStyle } = opts;
 
     vid.playbackRate = speedFactor;
     const tEnd = (trimEnd > 0 && trimEnd <= vid.duration) ? trimEnd : vid.duration;
     const tStart = trimStart > 0 ? trimStart : 0;
     const playDuration = tEnd - tStart;
-    const labelDuration = 1.5 / speedFactor;
-    const labelFadeEnd = 2.0 / speedFactor;
     const flashDuration = 1.2 / speedFactor;
     const startRealTime = Date.now();
 
@@ -1190,16 +1216,6 @@ function runClipInner(vid: HTMLVideoElement, ctx: CanvasRenderingContext2D, isAb
         ctx.save(); ctx.font = `bold ${Math.round(barH * 0.48)}px Arial, sans-serif`;
         ctx.fillStyle = "#FFFFFF"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
         ctx.fillText(textOverlay.slice(0, 30), dim.w / 2, y + barH / 2); ctx.restore();
-      }
-
-      if (playLabel) {
-        let labelAlpha = 1;
-        if (elapsed > labelDuration && elapsed < labelFadeEnd) {
-          labelAlpha = 1 - (elapsed - labelDuration) / (labelFadeEnd - labelDuration);
-        } else if (elapsed >= labelFadeEnd) {
-          labelAlpha = 0;
-        }
-        if (labelAlpha > 0) drawClipLabel(ctx, playLabel, labelAlpha, accent, dim);
       }
 
       if (isBestPlay && highlightBestPlay && realElapsed < flashDuration) {
@@ -1417,13 +1433,13 @@ async function buildReel(cfg: BuildConfig): Promise<Blob> {
       if (Object.keys(filteredStats).length > 0) {
         onProgress(10, "Drawing stats card...");
         console.log("[buildReel] Drawing stats card with", Object.keys(filteredStats).length, "fields");
-        await runCard(() => drawStatsFrame(ctx, filteredStats, info, accent, dim), STATS_MS, isAborted);
+        await runCard(() => drawStatsFrame(ctx, filteredStats, info, accent, dim), STATS_MS, isAborted, ctx, dim);
       }
     }
 
     if (!isAborted() && showMeasurablesCard && Object.values(info.measurablesData || {}).some(Boolean)) {
       onProgress(15, "Drawing measurables card...");
-      await runCard(() => drawMeasurablesFrame(ctx, info, accent, dim), MEAS_MS, isAborted);
+      await runCard(() => drawMeasurablesFrame(ctx, info, accent, dim), MEAS_MS, isAborted, ctx, dim);
     }
 
     const effTrans = transitionStyle;
@@ -1480,7 +1496,7 @@ async function buildReel(cfg: BuildConfig): Promise<Blob> {
     if (!isAborted()) {
       onProgress(82, "Drawing end card...");
       await runTransition(ctx, "Fade to Black", dim, isAborted);
-      await runCard(() => drawEndFrame(ctx, info, accent, dim), END_MS, isAborted);
+      await runCard(() => drawEndFrame(ctx, info, accent, dim), END_MS, isAborted, ctx, dim);
     }
 
     if (!isAborted() && gainNode && audioCtx) {
@@ -1607,7 +1623,15 @@ export default function ExportPage() {
   const accentIsWhite = isLightColor(accentHex);
 
   const [device, setDevice] = useState<DeviceType>("desktop");
-  useEffect(() => { setDevice(detectDevice()); }, []);
+  const [isSafari, setIsSafari] = useState(false);
+  const [isMobileChrome, setIsMobileChrome] = useState(false);
+  useEffect(() => {
+    const d = detectDeviceDetails();
+    setDevice(d.type);
+    setIsSafari(d.isSafari);
+    setIsMobileChrome(d.isMobileChrome);
+    try { localStorage.setItem("cliptDevice", d.type); } catch {}
+  }, []);
 
   // Quality selector
   const [quality, setQuality] = useState<ExportQuality>(reel.exportQuality || "coach");
@@ -1621,8 +1645,12 @@ export default function ExportPage() {
   const [blobMime, setBlobMime] = useState("");
   const [errMsg, setErrMsg] = useState("");
   const [clipsOnly, setClipsOnly] = useState(false);
-  const [musicFailed, setMusicFailed] = useState(false);
   const [storedClipCount, setStoredClipCount] = useState(0);
+  const [builtMusicTrackId, setBuiltMusicTrackId] = useState<string>("");
+  const [selectedMusicTrackId, setSelectedMusicTrackId] = useState<string>("");
+  const [showCapcutGuide, setShowCapcutGuide] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const successTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const abortRef  = useRef(false);
   const blobRef   = useRef<string | null>(null);
@@ -1692,13 +1720,20 @@ export default function ExportPage() {
         });
       }
     } catch {}
+    // Load selected music track for pre-export music card
+    try {
+      const s = JSON.parse(localStorage.getItem("cliptSettings") || "{}");
+      const tid = s.musicTrackId || reel.musicTrackId || "no-music";
+      setSelectedMusicTrackId(tid);
+    } catch {}
     return () => {
       abortRef.current = true;
       if (blobRef.current) URL.revokeObjectURL(blobRef.current);
       if (copyTimer.current) clearTimeout(copyTimer.current);
       if (shareTimer.current) clearTimeout(shareTimer.current);
+      if (successTimer.current) clearTimeout(successTimer.current);
     };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const buildInfo = (): TitleInfo => {
     // Read cliptSettings (saved by customize page) — primary source for new flow
@@ -1758,7 +1793,6 @@ export default function ExportPage() {
 
   const doBuild = async () => {
     setDurationModal(false);
-    setMusicFailed(false);
 
     // Try reel.files first; fall back to cliptSettings.clips blobUrls, then clipt_blob_urls
     let buildFiles: File[] = reel.files;
@@ -1801,6 +1835,7 @@ export default function ExportPage() {
 
     abortRef.current = false;
     setPhase("processing"); setPct(0); setStep("Starting...");
+    setBuiltMusicTrackId("");
 
     // Build trim/overlay arrays from settingsClips if available, else fall back to reel
     const trimStarts = settingsClips.length > 0 ? settingsClips.map(c => c.trimStart ?? 0) : reel.clipTrimStarts ?? [];
@@ -1861,13 +1896,20 @@ export default function ExportPage() {
         watermarkStyle: reel.watermarkStyle || "clipt",
         isAborted: () => abortRef.current,
         onProgress: (p, t) => { setPct(p); setStep(t); },
-        onMusicFailed: () => setMusicFailed(true),
+        onMusicFailed: () => { /* silent fallback — user downloads music track separately */ },
       });
 
       const url = URL.createObjectURL(blob);
       if (blobRef.current) URL.revokeObjectURL(blobRef.current);
       blobRef.current = url; setBlobUrl(url); setBlobMime(blob.type); setPct(100);
-      setTimeout(() => setPhase("done"), 400);
+      const builtTrack = sGet("musicTrackId", reel.musicTrackId || "no-music") as string;
+      setBuiltMusicTrackId(builtTrack);
+      setSelectedMusicTrackId(builtTrack);
+      setTimeout(() => {
+        setPhase("done");
+        setShowSuccess(true);
+        successTimer.current = setTimeout(() => setShowSuccess(false), 4000);
+      }, 400);
     } catch (err) {
       if (abortRef.current) { setPhase("idle"); return; }
       const msg = err instanceof Error ? err.message : "";
@@ -1875,6 +1917,17 @@ export default function ExportPage() {
       setErrMsg(msg.includes("Processing failed") ? msg : "Processing failed — try uploading smaller clips");
       setPhase("error");
     }
+  };
+
+  const handleDownloadMusicTrack = () => {
+    const url = builtMusicTrackId === "custom"
+      ? (() => { try { return localStorage.getItem("clipt_custom_music_url") || null; } catch { return null; } })()
+      : MUSIC_TRACK_URLS[builtMusicTrackId] || null;
+    if (!url) return;
+    const a = document.createElement("a");
+    a.href = url; a.download = `${baseName}-music-${builtMusicTrackId}.mp3`;
+    a.target = "_blank"; a.rel = "noopener";
+    document.body.appendChild(a); a.click(); setTimeout(() => document.body.removeChild(a), 200);
   };
 
   const handleDownloadClips = async () => {
@@ -2137,6 +2190,60 @@ export default function ExportPage() {
             <p className="text-xs text-slate-500">{reel.files.length || storedClipCount || "?"} clips · ~{reelMinutes} min</p>
           </div>
 
+          {/* ── PRE-EXPORT MUSIC INFO CARD (idle state only) ── */}
+          {phase === "idle" && selectedMusicTrackId && selectedMusicTrackId !== "no-music" && (
+            <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(0,163,255,0.25)", background: "rgba(0,163,255,0.05)" }}>
+              <div className="px-4 py-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <span style={{ fontSize: 15 }}>🎵</span>
+                  <span className="text-xs font-bold text-white">{MUSIC_TRACK_LABELS[selectedMusicTrackId] ?? "Music"}</span>
+                  <span className="text-[10px] text-slate-500 ml-auto">selected</span>
+                </div>
+                {device === "ios" ? (
+                  <p className="text-[11px] leading-snug" style={{ color: "#94a3b8" }}>
+                    You&apos;re on iPhone — your reel will download without music.<br />
+                    <strong className="text-white">Use CapCut (free)</strong> to add music in 30 seconds.
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-slate-400 leading-snug">Music will be included in your reel automatically.</p>
+                )}
+              </div>
+              {device === "ios" && (
+                <>
+                  <button type="button" onClick={() => setShowCapcutGuide(o => !o)}
+                    className="w-full px-4 py-2 text-xs font-bold text-left flex items-center justify-between transition-colors"
+                    style={{ background: "rgba(0,163,255,0.12)", color: "#00A3FF", borderTop: "1px solid rgba(0,163,255,0.2)" }}>
+                    <span>{showCapcutGuide ? "Hide Guide" : "See How →"}</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
+                      style={{ transform: showCapcutGuide ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </button>
+                  {showCapcutGuide && (
+                    <div className="px-4 py-3 flex flex-col gap-3" style={{ borderTop: "1px solid rgba(0,163,255,0.15)" }}>
+                      {[
+                        { n: "1", text: "Download your reel by clicking the button below." },
+                        { n: "2", text: "Download your music track by clicking the music button below." },
+                        { n: "3", text: <>Open <strong className="text-white">CapCut</strong> → tap <strong className="text-white">New Project</strong> → select your reel → tap the <strong className="text-white">Audio</strong> tab → tap <strong className="text-white">Music</strong> → tap <strong className="text-white">My Files</strong> → select the downloaded music track → trim to match reel length → tap <strong className="text-white">Export</strong>.</> },
+                      ].map(({ n, text }) => (
+                        <div key={n} className="flex items-start gap-3">
+                          <span className="text-xl font-black leading-none shrink-0" style={{ color: "#00A3FF", lineHeight: 1.1 }}>{n}</span>
+                          <p className="text-[11px] leading-snug" style={{ color: "#94a3b8" }}>{text}</p>
+                        </div>
+                      ))}
+                      <a href="https://apps.apple.com/app/capcut-video-editor/id1500855883" target="_blank" rel="noopener noreferrer"
+                        className="flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all"
+                        style={{ background: "rgba(0,163,255,0.15)", color: "#00A3FF", border: "1px solid rgba(0,163,255,0.3)" }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+                        Download CapCut — Free on App Store
+                      </a>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
           {phase === "idle" && (
             <button type="button" onClick={handleBuild}
               className="w-full py-4 rounded-xl font-bold text-base transition-all hover:opacity-90 active:scale-[0.99]"
@@ -2165,7 +2272,7 @@ export default function ExportPage() {
             <div className="flex flex-col gap-3">
               <div className="rounded-lg px-3 py-2.5" style={{ background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.2)" }}>
                 <p className="text-xs text-[#FBBF24] font-semibold mb-1">Video recording not supported on this browser</p>
-                <p className="text-[10px] text-slate-500">Download your clips to edit in iMovie, CapCut, or any video editor.</p>
+                <p className="text-[10px] text-slate-500">Download your clips to edit in CapCut or iMovie.</p>
               </div>
               <button type="button" onClick={handleDownloadClips}
                 className="w-full py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2"
@@ -2177,17 +2284,86 @@ export default function ExportPage() {
 
           {phase === "done" && !clipsOnly && blobUrl && compat && (
             <div className="flex flex-col gap-3">
-              <div className="rounded-lg px-3 py-2 flex items-center gap-3 text-[10px]" style={{ background: "rgba(255,255,255,0.04)" }}>
-                <span className="text-slate-500">Format:</span>
-                <span className="font-bold" style={{ color: accentHex }}>{compat.label}</span>
-                <span className={compat.ios ? "text-green-400" : "text-red-400"}>iPhone {compat.ios ? "✓" : "✗"}</span>
-                <span className="text-green-400">Android ✓</span><span className="text-green-400">PC ✓</span>
-              </div>
+
+              {/* ── Green success toast ── */}
+              {showSuccess && (
+                <div className="flex items-center gap-2 rounded-xl px-4 py-3"
+                  style={{ background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.3)" }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22C55E" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                  <p className="text-sm font-bold text-green-400">Your reel is ready!</p>
+                </div>
+              )}
+
+              {/* ── Button 1: Download Coach Reel ── */}
               <button type="button" onClick={handlePrimaryDownload}
-                className="w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all hover:opacity-90"
-                style={{ background: accentHex, color: accentIsWhite ? "#050A14" : "#ffffff" }}>
-                <DownloadIcon />{dIcon[device]} Download for {dLabel[device]}
+                className="w-full py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all hover:opacity-90 active:scale-[0.99]"
+                style={{ background: "#00A3FF", color: "#050A14" }}>
+                <DownloadIcon /> Download Coach Reel
               </button>
+
+              {/* WebM note for desktop non-Safari */}
+              {device === "desktop" && !isSafari && ext === "webm" && (
+                <p className="text-[10px] leading-snug" style={{ color: "#475569" }}>
+                  Downloaded as WebM · plays in Chrome &amp; Firefox.
+                  To convert to MP4: <a href="https://cloudconvert.com/webm-to-mp4" target="_blank" rel="noopener noreferrer" style={{ color: "#00A3FF" }}>cloudconvert.com</a> (free).
+                </p>
+              )}
+
+              {/* iOS save hint */}
+              {device === "ios" && (
+                <p className="text-[10px] text-slate-500 text-center">Opens in Safari → tap Share → Save to Files</p>
+              )}
+
+              {/* ── Button 2: Download Music Track ── */}
+              {builtMusicTrackId && builtMusicTrackId !== "no-music" && (MUSIC_TRACK_URLS[builtMusicTrackId] || builtMusicTrackId === "custom") && (
+                <button type="button" onClick={handleDownloadMusicTrack}
+                  className="w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all hover:opacity-90"
+                  style={{ background: "transparent", color: "#00A3FF", border: "1.5px solid #00A3FF40" }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+                  </svg>
+                  Download Music · {MUSIC_TRACK_LABELS[builtMusicTrackId] ?? "Track"}
+                </button>
+              )}
+
+              {/* ── iOS CapCut guide (post-download) ── */}
+              {device === "ios" && builtMusicTrackId && builtMusicTrackId !== "no-music" && (
+                <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(0,163,255,0.2)", background: "rgba(0,163,255,0.04)" }}>
+                  <button type="button" onClick={() => setShowCapcutGuide(o => !o)}
+                    className="w-full px-4 py-2.5 text-xs font-bold flex items-center justify-between"
+                    style={{ color: "#00A3FF" }}>
+                    <span>How to add music in CapCut</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
+                      style={{ transform: showCapcutGuide ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </button>
+                  {showCapcutGuide && (
+                    <div className="px-4 pb-4 flex flex-col gap-3">
+                      {[
+                        { n: "1", text: "Download your reel (button above) and the music track." },
+                        { n: "2", text: "Download your music track (button above)." },
+                        { n: "3", text: <>Open <strong className="text-white">CapCut</strong> → tap <strong className="text-white">New Project</strong> → select your reel → tap <strong className="text-white">Audio</strong> → <strong className="text-white">Music</strong> → <strong className="text-white">My Files</strong> → select the music file → trim to match reel length → <strong className="text-white">Export</strong>.</> },
+                      ].map(({ n, text }) => (
+                        <div key={n} className="flex items-start gap-3">
+                          <span className="text-lg font-black leading-none shrink-0" style={{ color: "#00A3FF" }}>{n}</span>
+                          <p className="text-[11px] leading-snug text-slate-400">{text}</p>
+                        </div>
+                      ))}
+                      <a href="https://apps.apple.com/app/capcut-video-editor/id1500855883" target="_blank" rel="noopener noreferrer"
+                        className="flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold mt-1"
+                        style={{ background: "rgba(0,163,255,0.15)", color: "#00A3FF", border: "1px solid rgba(0,163,255,0.3)" }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+                        Download CapCut — Free on App Store
+                      </a>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Other device buttons (small) */}
               <div className="flex gap-2">
                 {(["ios", "android", "desktop"] as DeviceType[]).filter((d) => d !== device).map((d) => (
                   <button key={d} type="button"
@@ -2198,16 +2374,9 @@ export default function ExportPage() {
                   </button>
                 ))}
               </div>
-              {device === "ios" && <p className="text-[10px] text-slate-600 text-center">Opens in Safari → tap Share → Save to Files</p>}
 
-              {musicFailed && (
-                <div className="rounded-lg px-3 py-2" style={{ background: "rgba(251,191,36,0.06)", border: "1px solid rgba(251,191,36,0.18)" }}>
-                  <p className="text-[10px] text-[#FBBF24]">Music couldn&apos;t be mixed into this download — the video is audio-free. Music plays back when coaches view your shared link.</p>
-                </div>
-              )}
-
-              {/* Rebuild with different quality */}
-              <button type="button" onClick={() => setPhase("idle")}
+              {/* Rebuild */}
+              <button type="button" onClick={() => { setPhase("idle"); setShowSuccess(false); }}
                 className="text-xs text-slate-500 hover:text-slate-300 transition-colors self-center mt-1">
                 ↺ Build Again (change quality)
               </button>

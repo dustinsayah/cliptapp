@@ -1748,7 +1748,7 @@ export default function CustomizePage() {
         <div className="lg:grid lg:grid-cols-[220px_1fr_280px] gap-6">
 
           {/* ── LEFT: Clips panel ── */}
-          <div className="hidden lg:block">
+          <div className="hidden lg:block" id="clips-panel-desktop">
             <div className="sticky top-28 rounded-2xl overflow-hidden" style={cardBase}>
               <div className="px-4 py-4">
                 {/* Clips header with quality score tooltip */}
@@ -1800,6 +1800,13 @@ export default function CustomizePage() {
                     Clips sorted by AI quality score — reorder manually if needed
                   </div>
                 )}
+                {/* AI accuracy disclaimer */}
+                {clips.some(c => c.playType || c.aiClip) && (
+                  <div className="mb-2 px-2 py-1.5 rounded-lg text-[9px] leading-snug"
+                    style={{ background: "rgba(100,116,139,0.08)", border: "1px solid rgba(100,116,139,0.18)", color: "#64748b" }}>
+                    <span className="font-bold text-slate-400">ℹ︎ AI Labels:</span> Play types are estimated and may not be 100% accurate. Use your own judgement.
+                  </div>
+                )}
                 {clips.length === 0 ? (
                   <p className="text-slate-600 text-xs">No clips uploaded</p>
                 ) : (
@@ -1815,12 +1822,12 @@ export default function CustomizePage() {
                         }}>
                         {/* Thumbnail */}
                         <div className="shrink-0 rounded overflow-hidden"
-                          style={{ width: 48, height: 27, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                          style={{ width: 56, aspectRatio: "16/9", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", flexShrink: 0 }}>
                           {clipThumbMap[clip.name] ? (
                             // eslint-disable-next-line @next/next/no-img-element
-                            <img src={clipThumbMap[clip.name]} alt="" style={{ width: 48, height: 27, objectFit: "cover", display: "block" }} />
+                            <img src={clipThumbMap[clip.name]} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
                           ) : (
-                            <div style={{ width: 48, height: 27, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
                               <PlayIconSm />
                             </div>
                           )}
@@ -2103,6 +2110,35 @@ export default function CustomizePage() {
                 <OnboardTooltip step={1} total={3} accent={accentHex}
                   message="🎨 Match your school colors here. Pick a preset or enter a custom hex code."
                   onDismiss={() => dismissOnboard(1)} />
+              )}
+
+              {/* Match My Jersey — special first swatch */}
+              {jerseyColor && jerseyColor !== "#FFFFFF" && jerseyColor !== "" && (
+                <div className="mb-4">
+                  <p className="text-xs text-slate-500 font-medium uppercase tracking-wider mb-2">Match Your Jersey</p>
+                  <button
+                    type="button"
+                    onClick={() => applyAccentHex(jerseyColor)}
+                    title={`Match My Jersey · ${jerseyColor}`}
+                    className="flex items-center gap-3 px-4 py-3 rounded-xl transition-all w-full text-left"
+                    style={{
+                      background: accentHex === jerseyColor ? `${jerseyColor}20` : "rgba(255,255,255,0.04)",
+                      border: accentHex === jerseyColor ? `2px solid #FBBF24` : `2px solid ${jerseyColor}55`,
+                    }}>
+                    <div className="shrink-0 rounded-lg" style={{
+                      width: 36, height: 36, background: jerseyColor,
+                      border: "2px solid rgba(255,255,255,0.15)",
+                      boxShadow: `0 0 10px ${jerseyColor}44`,
+                    }} />
+                    <div>
+                      <p className="text-sm font-bold text-white">Match My Jersey</p>
+                      <p className="text-[10px] font-mono" style={{ color: "#FBBF24" }}>{jerseyColor}</p>
+                    </div>
+                    {accentHex === jerseyColor && (
+                      <span className="ml-auto text-[10px] font-black px-2 py-0.5 rounded-full" style={{ background: "rgba(251,191,36,0.18)", color: "#FBBF24", border: "1px solid rgba(251,191,36,0.3)" }}>ACTIVE</span>
+                    )}
+                  </button>
+                </div>
               )}
 
               {/* 24 Presets */}
@@ -2635,6 +2671,86 @@ export default function CustomizePage() {
                 </CollapsibleSection>
               );
             })()}
+
+            {/* ── MOBILE: Clips list (lg:hidden) ── */}
+            <div className="block lg:hidden">
+              <CollapsibleSection title={`My Clips (${clips.length})`} subtitle="Drag to reorder · tap star to highlight" accent={accentHex} defaultOpen={false}>
+                {clips.length === 0 ? (
+                  <p className="text-slate-600 text-xs">No clips uploaded</p>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {clips.map((clip, i) => (
+                      <div key={`mob-${clip.name}-${i}`}
+                        draggable onDragStart={() => onDragStart(i)}
+                        onDragOver={(e) => onDragOver(e, i)} onDragEnd={onDragEnd}
+                        className="flex items-center gap-3 px-2 py-2 rounded-lg"
+                        style={{
+                          background: dragOver === i ? `${accentHex}12` : "rgba(255,255,255,0.03)",
+                          border: `1px solid ${dragOver === i ? accentHex + "40" : "rgba(255,255,255,0.06)"}`,
+                        }}>
+                        {/* Thumbnail */}
+                        <div className="shrink-0 rounded overflow-hidden"
+                          style={{ width: 72, aspectRatio: "16/9", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                          {clipThumbMap[clip.name] ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={clipThumbMap[clip.name]} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                          ) : (
+                            <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                              <PlayIconSm />
+                            </div>
+                          )}
+                        </div>
+                        {/* Info */}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs text-slate-300 truncate">{clip.name.length > 24 ? clip.name.slice(0, 21) + "…" : clip.name}</p>
+                          {clip.aiClip?.aiPicked && (
+                            <span className="text-[8px] font-black px-1.5 py-px rounded"
+                              style={{ background: "rgba(251,191,36,0.18)", color: "#FBBF24", border: "1px solid rgba(251,191,36,0.3)" }}>
+                              AI PICK
+                            </span>
+                          )}
+                          <p className="text-[10px] text-slate-600 mt-0.5">#{i + 1}</p>
+                        </div>
+                        {/* Actions */}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button type="button" onClick={() => toggleStar(i)}
+                            className="transition-colors" style={{ color: starredIndices.includes(i) ? "#FBBF24" : "#334155" }}>
+                            <StarIcon filled={starredIndices.includes(i)} />
+                          </button>
+                          <button type="button"
+                            onClick={() => {
+                              setClips((prev) => prev.filter((_, idx) => idx !== i));
+                              setCliptClips((prev) => prev.filter((_, idx) => idx !== i));
+                            }}
+                            className="text-slate-600 hover:text-red-400 transition-colors">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+                              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CollapsibleSection>
+            </div>
+
+            {/* ── MOBILE: Live preview (lg:hidden) ── */}
+            <div className="block lg:hidden rounded-2xl p-4" style={cardBase}>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Live Preview</p>
+              <LivePreviewPanel
+                firstName={firstName}
+                position={position}
+                school={school || reel.school}
+                jerseyNumber={reel.jerseyNumber}
+                fontStyle={fontStyle}
+                accentHex={accentHex}
+                includeStatsCard={includeStatsCard}
+                statsData={statsData}
+                showJerseyOverlay={showJerseyOverlay}
+                sport={sport}
+              />
+            </div>
 
             {/* Next button */}
             <button type="button" onClick={handleNext}
