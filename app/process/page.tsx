@@ -6,6 +6,7 @@ import { isValidYouTubeUrl, getYouTubeThumbnail, type YouTubeOEmbedData } from "
 import Footer from "@/components/Footer";
 import { supabase } from "@/lib/supabase";
 import { SPORTS_CONFIG } from "@/lib/sportsConfig";
+import JerseyColorInput from "@/components/JerseyColorInput";
 
 // ── Position options by sport — derived from SPORTS_CONFIG ────────────────
 
@@ -15,11 +16,6 @@ const POSITIONS: Record<string, string[]> = Object.fromEntries(
 
 const GRAD_YEARS = ["2025","2026","2027","2028","2029","2030"];
 
-// ── Accepted video formats ─────────────────────────────────────────────────
-
-const ACCEPTED_FORMATS = ["video/mp4","video/quicktime","video/x-msvideo","video/x-matroska","video/webm"];
-const ACCEPTED_EXTENSIONS = [".mp4",".mov",".avi",".mkv",".webm"];
-
 function getEstimatedTime(bytes: number): string {
   const mb = bytes / 1e6;
   if (mb < 500)  return "~2 minutes";
@@ -27,10 +23,32 @@ function getEstimatedTime(bytes: number): string {
   return "~10 minutes";
 }
 
-function isAcceptedFormat(file: File): boolean {
-  if (ACCEPTED_FORMATS.includes(file.type)) return true;
-  const name = file.name.toLowerCase();
-  return ACCEPTED_EXTENSIONS.some((ext) => name.endsWith(ext));
+function fmtFileSize(bytes: number): string {
+  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(2)} GB`;
+  if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(1)} MB`;
+  return `${(bytes / 1e3).toFixed(0)} KB`;
+}
+
+function makePlaceholderThumbnail(): string {
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = 320;
+    canvas.height = 180;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return "";
+    ctx.fillStyle = "#0A1628";
+    ctx.fillRect(0, 0, 320, 180);
+    ctx.fillStyle = "rgba(0,163,255,0.4)";
+    ctx.beginPath();
+    ctx.moveTo(125, 90);
+    ctx.lineTo(205, 135);
+    ctx.lineTo(205, 45);
+    ctx.closePath();
+    ctx.fill();
+    return canvas.toDataURL("image/jpeg", 0.8);
+  } catch {
+    return "";
+  }
 }
 
 // ── Quality score helper ───────────────────────────────────────────────────
@@ -271,11 +289,13 @@ export default function ProcessPage() {
   const [firstName,    setFirstName]    = useState("");
   const [lastName,     setLastName]     = useState("");
   const [jerseyNumber, setJerseyNumber] = useState("");
+  const [jerseyColor,  setJerseyColor]  = useState("#FFFFFF");
   const [position,     setPosition]     = useState("");
   const [sport,        setSport]        = useState("");
   const [school,       setSchool]       = useState("");
   const [gradYear,     setGradYear]     = useState("");
   const [email,        setEmail]        = useState("");
+  const [isMobile,     setIsMobile]     = useState(false);
 
   // Submit state
   const [submitting,  setSubmitting]  = useState(false);
@@ -293,54 +313,99 @@ export default function ProcessPage() {
   // Reset position when sport changes
   useEffect(() => { setPosition(""); }, [sport]);
 
-  // Generate canvas thumbnail for uploaded file
+  // Detect mobile
+  useEffect(() => {
+    setIsMobile(window.innerWidth < 768 || navigator.maxTouchPoints > 0);
+  }, []);
+
+  // Generate canvas thumbnail for uploaded file — handles all formats
   const generateVideoThumbnail = useCallback((file: File) => {
     setThumbnailGenerating(true);
     setUploadThumbnail(null);
+    let blobUrl = "";
     try {
-      const url    = URL.createObjectURL(file);
-      const video  = document.createElement("video");
-      video.preload = "metadata";
-      video.muted   = true;
-      video.src     = url;
-      video.onseeked = () => {
-        try {
-          const canvas  = document.createElement("canvas");
-          canvas.width  = 320;
-          canvas.height = 180;
-          const ctx = canvas.getContext("2d");
-          if (ctx) {
-            ctx.drawImage(video, 0, 0, 320, 180);
-            setUploadThumbnail(canvas.toDataURL("image/jpeg", 0.8));
-          }
-        } catch { /* canvas tainted from local file — skip */ }
-        URL.revokeObjectURL(url);
-        setThumbnailGenerating(false);
-      };
-      video.onerror = () => {
-        URL.revokeObjectURL(url);
-        setThumbnailGenerating(false);
-      };
-      video.onloadedmetadata = () => {
-        video.currentTime = Math.min(video.duration * 0.12, 5);
-      };
+      blobUrl = URL.createObjectURL(file);
     } catch {
+      setUploadThumbnail(makePlaceholderThumbnail());
       setThumbnailGenerating(false);
-    }
-  }, []);
-
-  // Handle file selection (with validation)
-  const handleFileSelect = useCallback((file: File) => {
-    setUploadFileError("");
-    setUploadFile(null);
-    setUploadThumbnail(null);
-
-    if (!isAcceptedFormat(file)) {
-      setUploadFileError(`Unsupported format "${file.name.split(".").pop()?.toUpperCase() ?? "unknown"}". Please upload MP4, MOV, AVI, MKV, or WEBM.`);
       return;
     }
 
+    const video = document.createElement("video");
+    video.muted = true;
+    video.playsInline = true;
+    video.crossOrigin = "anonymous";
+    video.preload = "metadata";
+
+    let resolved = false;
+    const cleanup = () => {
+      if (!resolved) { resolved = true; clearTimeout(timeout); }
+      try { URL.revokeObjectURL(blobUrl); } catch { /* ignore */ }
+      setThumbnailGenerating(false);
+    };
+
+    const timeout = setTimeout(() => {
+      setUploadThumbnail(makePlaceholderThumbnail());
+      cleanup();
+    }, 12000);
+
+    const doCapture = () => {
+      if (resolved) return;
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = 320;
+        canvas.height = 180;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.fillStyle = "#0A1628";
+          ctx.fillRect(0, 0, 320, 180);
+          ctx.drawImage(video, 0, 0, 320, 180);
+          setUploadThumbnail(canvas.toDataURL("image/jpeg", 0.8));
+        } else {
+          setUploadThumbnail(makePlaceholderThumbnail());
+        }
+      } catch {
+        setUploadThumbnail(makePlaceholderThumbnail());
+      }
+      cleanup();
+    };
+
+    let seekTriggered = false;
+    const triggerSeek = () => {
+      if (seekTriggered || resolved) return;
+      seekTriggered = true;
+      const dur = video.duration;
+      const safeDur = isFinite(dur) && !isNaN(dur) && dur > 0 ? dur : 0;
+      const seekTo = safeDur > 2 ? 2 : safeDur > 0.1 ? safeDur * 0.12 : 0;
+      video.onseeked = doCapture;
+      if (seekTo > 0) {
+        video.currentTime = seekTo;
+      } else {
+        doCapture();
+      }
+    };
+
+    video.onloadeddata = triggerSeek;
+    video.onloadedmetadata = triggerSeek;
+    video.oncanplay = triggerSeek;
+    video.ondurationchange = () => {
+      const dur = video.duration;
+      if (isFinite(dur) && !isNaN(dur) && dur > 0 && !seekTriggered) triggerSeek();
+    };
+    video.onerror = () => {
+      setUploadThumbnail(makePlaceholderThumbnail());
+      cleanup();
+    };
+
+    video.src = blobUrl;
+    try { video.load(); } catch { /* ignore */ }
+  }, []);
+
+  // Handle file selection — accept everything, no validation
+  const handleFileSelect = useCallback((file: File) => {
+    setUploadFileError("");
     setUploadFile(file);
+    setUploadThumbnail(null);
     generateVideoThumbnail(file);
   }, [generateVideoThumbnail]);
 
@@ -548,7 +613,7 @@ export default function ProcessPage() {
           first_name:     fname,
           last_name:      lastName.trim(),
           jersey_number:  jNum,
-          jersey_color:   "#FFFFFF",
+          jersey_color:   jerseyColor,
           position:       pos,
           sport:          spt,
           school:         school.trim(),
@@ -976,7 +1041,7 @@ export default function ProcessPage() {
                     <div className="flex flex-col text-left min-w-0 mr-3">
                       <span className="text-white text-sm font-semibold truncate">{uploadFile.name}</span>
                       <span className="text-slate-400 text-xs mt-0.5">
-                        {(uploadFile.size / 1e6).toFixed(0)} MB · Est. {getEstimatedTime(uploadFile.size)}
+                        {fmtFileSize(uploadFile.size)} · Est. {getEstimatedTime(uploadFile.size)}
                       </span>
                     </div>
                     <button onClick={(e) => { e.stopPropagation(); setUploadFile(null); setUploadThumbnail(null); setUploadFileError(""); }}
@@ -1003,20 +1068,23 @@ export default function ProcessPage() {
               ) : (
                 <>
                   <div className="mb-4"><UploadIcon /></div>
-                  <p className="text-white font-bold text-base mb-1">Drop your game film here</p>
-                  <p className="text-slate-400 text-sm mb-1">MP4, MOV, AVI, MKV, WEBM — up to 4GB</p>
-                  <p className="text-slate-500 text-xs mb-5">or click to browse</p>
+                  <p className="text-white font-bold text-base mb-1">
+                    {isMobile ? "Tap to select your game film" : "Drop your game film here"}
+                  </p>
+                  <p className="text-slate-400 text-sm mb-1">All video formats accepted — no size limits</p>
+                  <p className="text-slate-500 text-xs mb-5">{isMobile ? "Screen recordings, game film, all formats work" : "or click to browse"}</p>
                   <button type="button" onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
                     className="px-6 py-2.5 rounded-xl text-sm font-bold text-white transition-all hover:opacity-90"
                     style={{ background: "#00A3FF" }}>
-                    Browse File
+                    {isMobile ? "Select Video" : "Browse File"}
                   </button>
                 </>
               )}
               <input
                 ref={fileInputRef}
                 type="file"
-                accept={[...ACCEPTED_FORMATS, ...ACCEPTED_EXTENSIONS].join(",")}
+                accept="video/*,video/mp4,video/quicktime,video/x-msvideo,video/webm,video/mkv,video/x-matroska,video/3gpp,video/3gpp2,.mp4,.mov,.avi,.webm,.mkv,.3gp,.3g2,.m4v,.ts,.mts,.m2ts,.wmv,.flv,.f4v,.asf"
+                capture="environment"
                 className="hidden"
                 onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileSelect(f); e.target.value = ""; }}
               />
@@ -1083,6 +1151,14 @@ export default function ProcessPage() {
                 style={{ ...IS, maxWidth: "160px" }}
                 onFocus={(e) => (e.currentTarget.style.borderColor = "rgba(0,163,255,0.5)")}
                 onBlur={(e)  => (e.currentTarget.style.borderColor = "rgba(255,255,255,0.09)")} />
+            </div>
+
+            <div>
+              <JerseyColorInput
+                value={jerseyColor}
+                onChange={setJerseyColor}
+                label="Jersey Color"
+              />
             </div>
 
             <div>

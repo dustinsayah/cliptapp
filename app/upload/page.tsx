@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { SPORTS_CONFIG } from "../../lib/sportsConfig";
 import { estimateClipClassification, classifyClipViaApi, playTypeBadgeColor } from "../../lib/clipClassifier";
 import type { ClipClassification } from "../../lib/clipClassifier";
+import JerseyColorInput from "../../components/JerseyColorInput";
 
 // ── Icons ──────────────────────────────────────────────────────────────────────
 const ArrowLeftIcon = () => (
@@ -41,21 +42,6 @@ const CheckIcon = () => (
 const MAX_CLIPS = 50;
 const GRAD_YEARS = ["2025", "2026", "2027", "2028", "2029", "2030", "2031"];
 
-const JERSEY_COLORS = [
-  { name: "White",   hex: "#FFFFFF" },
-  { name: "Black",   hex: "#111827" },
-  { name: "Red",     hex: "#DC2626" },
-  { name: "Royal Blue", hex: "#1E40AF" },
-  { name: "Navy",    hex: "#1E3A5F" },
-  { name: "Gold",    hex: "#D97706" },
-  { name: "Green",   hex: "#166534" },
-  { name: "Purple",  hex: "#7C3AED" },
-  { name: "Orange",  hex: "#EA580C" },
-  { name: "Maroon",  hex: "#9B1C1C" },
-  { name: "Gray",    hex: "#6B7280" },
-  { name: "Pink",    hex: "#EC4899" },
-];
-
 const steps = [
   { label: "Upload Clips", number: 1 },
   { label: "Customize",    number: 2 },
@@ -67,13 +53,13 @@ const labelClass = "block text-sm font-semibold text-white mb-2";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 function fmtFileSize(bytes: number): string {
-  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`;
-  if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(0)} MB`;
+  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(2)} GB`;
+  if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(1)} MB`;
   return `${(bytes / 1e3).toFixed(0)} KB`;
 }
 
 function fmtDuration(sec: number): string {
-  if (!isFinite(sec) || sec <= 0) return "";
+  if (!isFinite(sec) || isNaN(sec) || sec <= 0) return "";
   const m = Math.floor(sec / 60);
   const s = Math.floor(sec % 60);
   return m > 0 ? `${m}:${s.toString().padStart(2, "0")}` : `0:${s.toString().padStart(2, "0")}`;
@@ -86,66 +72,115 @@ interface ClipMeta {
   blobUrl: string;
 }
 
+function makePlaceholderThumbnail(): string {
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = 320;
+    canvas.height = 180;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return "";
+    ctx.fillStyle = "#0A1628";
+    ctx.fillRect(0, 0, 320, 180);
+    // Draw a play triangle
+    ctx.fillStyle = "rgba(0,163,255,0.4)";
+    ctx.beginPath();
+    ctx.moveTo(125, 90);
+    ctx.lineTo(205, 135);
+    ctx.lineTo(205, 45);
+    ctx.closePath();
+    ctx.fill();
+    return canvas.toDataURL("image/jpeg", 0.8);
+  } catch {
+    return "";
+  }
+}
+
 async function generateClipMeta(file: File): Promise<ClipMeta> {
   return new Promise((resolve) => {
     let blobUrl = "";
     try {
       blobUrl = URL.createObjectURL(file);
     } catch {
-      resolve({ thumbnail: null, duration: 0, blobUrl: "" });
+      resolve({ thumbnail: makePlaceholderThumbnail(), duration: 0, blobUrl: "" });
       return;
     }
 
     const video = document.createElement("video");
     video.muted = true;
     video.playsInline = true;
+    video.crossOrigin = "anonymous";
     video.preload = "metadata";
 
+    let resolved = false;
+    const done = (result: ClipMeta) => {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timeout);
+      resolve(result);
+    };
+
     const timeout = setTimeout(() => {
-      resolve({ thumbnail: null, duration: 0, blobUrl });
-    }, 10000);
+      done({ thumbnail: makePlaceholderThumbnail(), duration: 0, blobUrl });
+    }, 12000);
 
-    video.onloadedmetadata = () => {
-      const duration = video.duration || 0;
-      const seekTo = Math.min(2, duration * 0.15);
+    const doCapture = (duration: number) => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = 320;
+        canvas.height = 180;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { done({ thumbnail: makePlaceholderThumbnail(), duration, blobUrl }); return; }
+        ctx.fillStyle = "#0A1628";
+        ctx.fillRect(0, 0, 320, 180);
+        ctx.drawImage(video, 0, 0, 320, 180);
+        const thumbnail = canvas.toDataURL("image/jpeg", 0.8);
+        done({ thumbnail, duration, blobUrl });
+      } catch {
+        done({ thumbnail: makePlaceholderThumbnail(), duration, blobUrl });
+      }
+    };
 
-      const doCapture = () => {
-        clearTimeout(timeout);
-        try {
-          const canvas = document.createElement("canvas");
-          canvas.width = 320;
-          canvas.height = 180;
-          const ctx = canvas.getContext("2d");
-          if (!ctx) { resolve({ thumbnail: null, duration, blobUrl }); return; }
-          ctx.fillStyle = "#0A1628";
-          ctx.fillRect(0, 0, 320, 180);
-          ctx.drawImage(video, 0, 0, 320, 180);
-          const thumbnail = canvas.toDataURL("image/jpeg", 0.8);
-          resolve({ thumbnail, duration, blobUrl });
-        } catch {
-          resolve({ thumbnail: null, duration, blobUrl });
-        }
-      };
-
-      video.onseeked = doCapture;
-      video.onerror = () => {
-        clearTimeout(timeout);
-        resolve({ thumbnail: null, duration, blobUrl });
-      };
-
-      if (seekTo <= 0) {
-        doCapture();
-      } else {
+    const attemptSeek = (duration: number) => {
+      const safeDuration = isFinite(duration) && !isNaN(duration) && duration > 0 ? duration : 0;
+      const seekTo = safeDuration > 2 ? 2 : safeDuration > 0 ? safeDuration * 0.15 : 0;
+      video.onseeked = () => doCapture(safeDuration);
+      if (seekTo > 0) {
         video.currentTime = seekTo;
+      } else {
+        doCapture(safeDuration);
+      }
+    };
+
+    // Multiple events — whichever fires first triggers the seek
+    let seekTriggered = false;
+    const triggerSeek = () => {
+      if (seekTriggered) return;
+      seekTriggered = true;
+      const dur = video.duration;
+      const safeDur = isFinite(dur) && !isNaN(dur) && dur > 0 ? dur : 0;
+      attemptSeek(safeDur);
+    };
+
+    video.onloadeddata = triggerSeek;
+    video.onloadedmetadata = triggerSeek;
+    video.oncanplay = triggerSeek;
+
+    // Duration may resolve later for some formats
+    video.ondurationchange = () => {
+      const dur = video.duration;
+      if (isFinite(dur) && !isNaN(dur) && dur > 0 && !seekTriggered) {
+        triggerSeek();
       }
     };
 
     video.onerror = () => {
-      clearTimeout(timeout);
-      resolve({ thumbnail: null, duration: 0, blobUrl });
+      // Format may not preview — still include with placeholder
+      done({ thumbnail: makePlaceholderThumbnail(), duration: 0, blobUrl });
     };
 
     video.src = blobUrl;
+    // Kick it for iOS Safari which sometimes needs load() called
+    try { video.load(); } catch { /* ignore */ }
   });
 }
 
@@ -160,6 +195,11 @@ export default function UploadPage() {
   const [clipClassifications, setClipClassifications] = useState<(ClipClassification | null)[]>([]);
   const [classifyingSet, setClassifyingSet] = useState<Set<number>>(new Set());
   const [dragging, setDragging]       = useState(false);
+  const [isMobile, setIsMobile]       = useState(false);
+
+  useEffect(() => {
+    setIsMobile(window.innerWidth < 768 || navigator.maxTouchPoints > 0);
+  }, []);
 
   // Form fields
   const [firstName, setFirstName]     = useState("");
@@ -171,7 +211,6 @@ export default function UploadPage() {
   const [school, setSchool]           = useState("");
   const [gradYear, setGradYear]       = useState("");
   const [email, setEmail]             = useState("");
-  const [showColorPicker, setShowColorPicker] = useState(false);
 
   // Load saved data on mount in case user navigates back
   useEffect(() => {
@@ -379,22 +418,30 @@ export default function UploadPage() {
           onClick={() => fileInputRef.current?.click()}
         >
           <div className="mb-5"><FilmIcon /></div>
-          <p className="text-white font-bold text-lg mb-2">Drag and drop your clips here</p>
+          <p className="text-white font-bold text-lg mb-2">
+            {isMobile ? "Tap to select videos" : "Drag and drop your clips here"}
+          </p>
           <p className="text-slate-400 text-sm mb-6">All video formats accepted · No size limit · No restrictions</p>
           <button type="button" onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
             className="px-6 py-2.5 rounded-xl text-sm font-bold text-white transition-all hover:opacity-90"
             style={{ background: "#00A3FF" }}>
-            Browse Files
+            {isMobile ? "Select Videos" : "Browse Files"}
           </button>
           <input
             ref={fileInputRef}
             type="file"
-            accept="video/*,video/mp4,video/mov,video/quicktime,video/avi,video/mkv,video/webm,video/x-msvideo,video/x-matroska,.mp4,.mov,.avi,.mkv,.webm,.m4v,.3gp,.ts,.mts"
+            accept="video/*,video/mp4,video/quicktime,video/x-msvideo,video/webm,video/mkv,video/x-matroska,video/3gpp,video/3gpp2,.mp4,.mov,.avi,.webm,.mkv,.3gp,.3g2,.m4v,.ts,.mts,.m2ts,.wmv,.flv,.f4v,.asf"
             multiple
+            capture="environment"
             className="hidden"
             onChange={(e) => { addFiles(e.target.files, sport, position); e.target.value = ""; }}
           />
         </div>
+        {isMobile && (
+          <p className="text-slate-500 text-xs text-center mb-4">
+            Works with screen recordings, game film, and all video formats. No size limits.
+          </p>
+        )}
 
         {/* ── CLIP LIST ── */}
         {files.length > 0 && (
@@ -462,10 +509,14 @@ export default function UploadPage() {
                     </span>
                     <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                       <span className="text-xs text-slate-500">{fmtFileSize(file.size)}</span>
-                      {clipMeta[i]?.duration > 0 && (
+                      {clipMeta[i] && (
                         <>
                           <span className="text-slate-700 text-xs">·</span>
-                          <span className="text-xs text-slate-400">{fmtDuration(clipMeta[i].duration)}</span>
+                          <span className="text-xs text-slate-400">
+                            {(!isFinite(clipMeta[i].duration) || isNaN(clipMeta[i].duration) || clipMeta[i].duration === 0)
+                              ? <span className="animate-pulse">Calculating…</span>
+                              : fmtDuration(clipMeta[i].duration)}
+                          </span>
                         </>
                       )}
                       {!clipMeta[i] && <span className="text-[10px] text-slate-500 animate-pulse">Loading…</span>}
@@ -546,38 +597,12 @@ export default function UploadPage() {
               <input type="number" min={0} max={99} className={inputClass} placeholder="0–99" value={jerseyNumber} onChange={e => setJerseyNumber(e.target.value)} />
             </div>
             <div>
-              <label className={labelClass}>Jersey Color <span className="text-red-400">*</span></label>
-              <div className="relative">
-                <button type="button"
-                  onClick={() => setShowColorPicker(p => !p)}
-                  className="w-full px-4 py-3 rounded-xl text-sm font-medium text-left flex items-center gap-3 transition-all hover:border-white/20"
-                  style={{ background: "#0A1628", border: "1px solid rgba(255,255,255,0.08)" }}>
-                  <div className="w-5 h-5 rounded-md shrink-0 border border-white/20" style={{ background: jerseyColor }} />
-                  <span className="text-white">{JERSEY_COLORS.find(c => c.hex === jerseyColor)?.name || "Custom"}</span>
-                  <span className="text-slate-500 text-xs ml-auto font-mono">{jerseyColor}</span>
-                </button>
-                {showColorPicker && (
-                  <div className="absolute top-full left-0 right-0 mt-2 p-3 rounded-xl z-10" style={{ background: "#0A1628", border: "1px solid rgba(255,255,255,0.12)", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}>
-                    <div className="grid grid-cols-6 gap-2 mb-3">
-                      {JERSEY_COLORS.map(c => (
-                        <button key={c.hex} type="button" title={c.name}
-                          onClick={() => { setJerseyColor(c.hex); setShowColorPicker(false); }}
-                          className="w-full aspect-square rounded-lg border-2 transition-all"
-                          style={{ background: c.hex, borderColor: jerseyColor === c.hex ? "#00A3FF" : "transparent", boxShadow: jerseyColor === c.hex ? "0 0 0 2px #050A14, 0 0 0 4px #00A3FF" : "none" }} />
-                      ))}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-slate-400 whitespace-nowrap">Custom:</span>
-                      <input type="color" value={jerseyColor} onChange={e => setJerseyColor(e.target.value)}
-                        className="w-8 h-8 rounded cursor-pointer border-0 bg-transparent" />
-                      <input type="text" value={jerseyColor} onChange={e => { if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value)) setJerseyColor(e.target.value); }}
-                        className="flex-1 px-3 py-1.5 rounded-lg text-xs font-mono text-white"
-                        style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
-                        placeholder="#FFFFFF" />
-                    </div>
-                  </div>
-                )}
-              </div>
+              <JerseyColorInput
+                value={jerseyColor}
+                onChange={setJerseyColor}
+                label="Jersey Color"
+                required
+              />
             </div>
           </div>
 
@@ -667,10 +692,6 @@ export default function UploadPage() {
         </p>
       </main>
 
-      {/* Close color picker on outside click */}
-      {showColorPicker && (
-        <div className="fixed inset-0 z-0" onClick={() => setShowColorPicker(false)} />
-      )}
     </div>
   );
 }
