@@ -430,9 +430,8 @@ export default function UploadPage() {
           <input
             ref={fileInputRef}
             type="file"
-            accept="video/*,video/mp4,video/quicktime,video/x-msvideo,video/webm,video/mkv,video/x-matroska,video/3gpp,video/3gpp2,.mp4,.mov,.avi,.webm,.mkv,.3gp,.3g2,.m4v,.ts,.mts,.m2ts,.wmv,.flv,.f4v,.asf"
+            accept="video/*,.mp4,.mov,.avi,.webm,.mkv,.3gp,.m4v,.wmv"
             multiple
-            capture="environment"
             className="hidden"
             onChange={(e) => { addFiles(e.target.files, sport, position); e.target.value = ""; }}
           />
