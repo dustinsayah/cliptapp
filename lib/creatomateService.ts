@@ -96,13 +96,6 @@ export async function getRenderStatus(renderId: string): Promise<RenderStatus> {
 
 // ── Composition Builder ───────────────────────────────────────────────────────
 
-function rgba(hex: string, alpha: number): string {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r},${g},${b},${alpha})`;
-}
-
 function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
   const {
     firstName = "ATHLETE",
@@ -134,13 +127,11 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
   // ── Title Card (4s) ────────────────────────────────────────────────────────
   const titleEls: unknown[] = [
     // Background
-    { type: "rectangle", x: "50%", y: "50%", x_anchor: "50%", y_anchor: "50%", width: "100%", height: "100%", fill_color: "#050A14" },
+    { type: "shape", shape: "rectangle", x: "50%", y: "50%", x_anchor: "50%", y_anchor: "50%", width: "100%", height: "100%", fill_color: "#050A14" },
     // Top accent stripe
-    { type: "rectangle", x: "0%", y: "0%", x_anchor: "0%", y_anchor: "0%", width: "100%", height: Math.round(8 * s), fill_color: accentHex },
+    { type: "shape", shape: "rectangle", x: "0%", y: "0%", x_anchor: "0%", y_anchor: "0%", width: "100%", height: Math.round(8 * s), fill_color: accentHex },
     // Bottom accent stripe
-    { type: "rectangle", x: "0%", y: "100%", x_anchor: "0%", y_anchor: "100%", width: "100%", height: Math.round(8 * s), fill_color: accentHex },
-    // Subtle radial glow
-    { type: "rectangle", x: "50%", y: "50%", x_anchor: "50%", y_anchor: "50%", width: "65%", height: "65%", fill_color: rgba(accentHex, 0.06) },
+    { type: "shape", shape: "rectangle", x: "0%", y: "100%", x_anchor: "0%", y_anchor: "100%", width: "100%", height: Math.round(8 * s), fill_color: accentHex },
     // Player name
     {
       type: "text", text: nameLine,
@@ -174,7 +165,7 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
     titleEls.push({
       type: "text", text: email,
       x: "50%", y: "83%", x_anchor: "50%", y_anchor: "50%",
-      font_size: Math.round(16 * s), fill_color: rgba(accentHex, 0.8), font_family: "Inter",
+      font_size: Math.round(16 * s), fill_color: accentHex, font_family: "Inter",
     });
   }
   titleEls.push({
@@ -188,8 +179,8 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
   // ── Stats Card (4s) — only when stats exist ────────────────────────────────
   if (statsEntries.length > 0) {
     const statCardEls: unknown[] = [
-      { type: "rectangle", x: "50%", y: "50%", x_anchor: "50%", y_anchor: "50%", width: "100%", height: "100%", fill_color: "#050A14" },
-      { type: "rectangle", x: "0%", y: "0%", x_anchor: "0%", y_anchor: "0%", width: "100%", height: Math.round(6 * s), fill_color: accentHex },
+      { type: "shape", shape: "rectangle", x: "50%", y: "50%", x_anchor: "50%", y_anchor: "50%", width: "100%", height: "100%", fill_color: "#050A14" },
+      { type: "shape", shape: "rectangle", x: "0%", y: "0%", x_anchor: "0%", y_anchor: "0%", width: "100%", height: Math.round(6 * s), fill_color: accentHex },
       {
         type: "text", text: "SEASON STATS",
         x: "50%", y: "13%", x_anchor: "50%", y_anchor: "50%",
@@ -216,7 +207,7 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
       const bx = startX + col * (cw + gx) + cw / 2;
       const by = startY + row * (ch + Math.round(20 * s)) + ch / 2;
       statCardEls.push(
-        { type: "rectangle", x: bx, y: by, x_anchor: "50%", y_anchor: "50%", width: cw, height: ch, fill_color: rgba(accentHex, 0.06) },
+        { type: "shape", shape: "rectangle", x: bx, y: by, x_anchor: "50%", y_anchor: "50%", width: cw, height: ch, fill_color: "#0A1628" },
         {
           type: "text", text: value,
           x: bx, y: by - ch * 0.1, x_anchor: "50%", y_anchor: "50%",
@@ -246,7 +237,7 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
       type: "video",
       track: 1,
       source: url,
-      volume: 0,
+      volume: "0%",
       fit: "cover",
     };
     if (useFade) {
@@ -258,16 +249,16 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
   // ── End Card (5s) ──────────────────────────────────────────────────────────
   const topStats = statsEntries.slice(0, 3);
   const endEls: unknown[] = [
-    { type: "rectangle", x: "50%", y: "50%", x_anchor: "50%", y_anchor: "50%", width: "100%", height: "100%", fill_color: "#050A14" },
-    { type: "rectangle", x: "0%", y: "0%", x_anchor: "0%", y_anchor: "0%", width: "100%", height: Math.round(8 * s), fill_color: accentHex },
-    { type: "rectangle", x: "0%", y: "100%", x_anchor: "0%", y_anchor: "100%", width: "100%", height: Math.round(8 * s), fill_color: accentHex },
+    { type: "shape", shape: "rectangle", x: "50%", y: "50%", x_anchor: "50%", y_anchor: "50%", width: "100%", height: "100%", fill_color: "#050A14" },
+    { type: "shape", shape: "rectangle", x: "0%", y: "0%", x_anchor: "0%", y_anchor: "0%", width: "100%", height: Math.round(8 * s), fill_color: accentHex },
+    { type: "shape", shape: "rectangle", x: "0%", y: "100%", x_anchor: "0%", y_anchor: "100%", width: "100%", height: Math.round(8 * s), fill_color: accentHex },
     {
       type: "text", text: "CONTACT ME",
       x: "50%", y: "13%", x_anchor: "50%", y_anchor: "50%",
       font_size: Math.round(20 * s), font_weight: "700", fill_color: accentHex, font_family: "Inter",
     },
     // Divider line under heading
-    { type: "rectangle", x: "50%", y: "17%", x_anchor: "50%", y_anchor: "50%", width: "32%", height: 2, fill_color: rgba(accentHex, 0.7) },
+    { type: "shape", shape: "rectangle", x: "50%", y: "17%", x_anchor: "50%", y_anchor: "50%", width: "32%", height: 2, fill_color: accentHex },
     // Athlete name — 72px bold
     {
       type: "text", text: nameLine,
@@ -299,7 +290,7 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
   }
 
   // Divider above stats
-  endEls.push({ type: "rectangle", x: "50%", y: "62%", x_anchor: "50%", y_anchor: "50%", width: "70%", height: 1, fill_color: rgba(accentHex, 0.3) });
+  endEls.push({ type: "shape", shape: "rectangle", x: "50%", y: "62%", x_anchor: "50%", y_anchor: "50%", width: "70%", height: 1, fill_color: "#334155" });
 
   // Top 3 stats in cards — 48px values
   if (topStats.length > 0) {
@@ -314,7 +305,7 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
       const bx = startX2 + i * (statW + statGx) + statW / 2;
       const by = sy + statH / 2;
       endEls.push(
-        { type: "rectangle", x: bx, y: by, x_anchor: "50%", y_anchor: "50%", width: statW, height: statH, fill_color: rgba(accentHex, 0.06) },
+        { type: "shape", shape: "rectangle", x: bx, y: by, x_anchor: "50%", y_anchor: "50%", width: statW, height: statH, fill_color: "#0A1628" },
         {
           type: "text", text: value,
           x: bx, y: by - statH * 0.1, x_anchor: "50%", y_anchor: "50%",
@@ -360,14 +351,13 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
 
   elements.push({ type: "composition", track: 1, duration: 5, elements: endEls });
 
-  // ── Music overlay (track 2, loops throughout) ──────────────────────────────
+  // ── Music overlay (track 2, spans full duration) ───────────────────────────
   if (musicUrl) {
     elements.push({
       type: "audio",
       track: 2,
       source: musicUrl,
-      volume: 0.4,
-      loop: true,
+      volume: "40%",
       audio_fade_in: 2,
       audio_fade_out: 3,
     });
