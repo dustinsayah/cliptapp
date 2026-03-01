@@ -1577,7 +1577,7 @@ function ProgressBar({ active, accent }: { active: number; accent: string }) {
 
 const cardBase: React.CSSProperties = { background: "#0A1628", border: "1px solid rgba(255,255,255,0.08)" };
 
-type Phase = "idle" | "processing" | "done" | "error";
+type Phase = "idle" | "uploading" | "processing" | "done" | "error";
 
 // ── Quality Preset Selector ────────────────────────────────────────────────────
 
@@ -1651,6 +1651,13 @@ export default function ExportPage() {
   const [showCapcutGuide, setShowCapcutGuide] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const successTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Creatomate server-side rendering state
+  const [creatomatAvailable, setCreatomatAvailable] = useState(false);
+  const [isCreatomateRender, setIsCreatomateRender] = useState(false);
+  const [renderUrl, setRenderUrl] = useState<string | null>(null);
+  const [lastReelUrl, setLastReelUrl] = useState<string | null>(null);
+  const creatomatePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const abortRef  = useRef(false);
   const blobRef   = useRef<string | null>(null);
@@ -1726,12 +1733,23 @@ export default function ExportPage() {
       const tid = s.musicTrackId || reel.musicTrackId || "no-music";
       setSelectedMusicTrackId(tid);
     } catch {}
+    // Load last Creatomate render URL for "Previous Reels" section
+    try {
+      const lastUrl = localStorage.getItem("lastReelUrl");
+      if (lastUrl?.startsWith("http")) setLastReelUrl(lastUrl);
+    } catch {}
+    // Check if Creatomate server rendering is configured
+    fetch("/api/render-reel")
+      .then((r) => r.json())
+      .then((d) => { if (d?.configured) setCreatomatAvailable(true); })
+      .catch(() => {});
     return () => {
       abortRef.current = true;
       if (blobRef.current) URL.revokeObjectURL(blobRef.current);
       if (copyTimer.current) clearTimeout(copyTimer.current);
       if (shareTimer.current) clearTimeout(shareTimer.current);
       if (successTimer.current) clearTimeout(successTimer.current);
+      if (creatomatePollRef.current) clearInterval(creatomatePollRef.current);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1788,7 +1806,159 @@ export default function ExportPage() {
 
   const handleBuild = async () => {
     if (isOverLimit) { setDurationModal(true); return; }
+    // Route to Creatomate when configured, canvas otherwise
+    if (creatomatAvailable) { await doCreatomateBuild(); return; }
     await doBuild();
+  };
+
+  // ── Creatomate server-side render flow ──────────────────────────────────────
+  const doCreatomateBuild = async () => {
+    setDurationModal(false);
+    abortRef.current = false;
+    setPhase("uploading");
+    setPct(0);
+    setStep("Preparing clips...");
+    setIsCreatomateRender(true);
+    setRenderUrl(null);
+    setBuiltMusicTrackId("");
+
+    // Gather clip sources
+    let sources: Array<File | string> = reel.files.length > 0 ? reel.files : [];
+    if (sources.length === 0) {
+      try {
+        const blobUrls = JSON.parse(localStorage.getItem("clipt_blob_urls") || "[]") as string[];
+        if (blobUrls.length > 0) sources = blobUrls;
+      } catch {}
+    }
+    if (sources.length === 0) {
+      setErrMsg("No clips found — go back and upload your clips first."); setPhase("error"); setIsCreatomateRender(false); return;
+    }
+
+    // Upload clips to Cloudinary so Creatomate can access them
+    let publicUrls: string[];
+    try {
+      const { uploadClipsToCloudinary } = await import("@/lib/cloudinaryUpload");
+      publicUrls = await uploadClipsToCloudinary(sources, (pct, label) => {
+        setPct(Math.round(pct * 0.35)); // 0-35% for upload phase
+        setStep(label);
+      });
+    } catch (uploadErr) {
+      setErrMsg(uploadErr instanceof Error ? uploadErr.message : "Clip upload failed — check Cloudinary config");
+      setPhase("error"); setIsCreatomateRender(false); return;
+    }
+
+    if (abortRef.current) { setPhase("idle"); setIsCreatomateRender(false); return; }
+
+    // Read settings
+    let settings: Record<string, unknown> = {};
+    try { settings = JSON.parse(localStorage.getItem("cliptSettings") || "{}"); } catch {}
+    const sGet = <T,>(key: string, fallback: T): T => {
+      const v = settings[key]; return (v !== undefined && v !== null) ? v as T : fallback;
+    };
+
+    const info = buildInfo();
+    const musicTrackId = sGet("musicTrackId", reel.musicTrackId || "no-music") as string;
+    const musicUrl = musicTrackId === "no-music" ? undefined : (musicTrackId === "custom"
+      ? (() => { try { return localStorage.getItem("clipt_custom_music_url") || undefined; } catch { return undefined; } })()
+      : MUSIC_TRACK_URLS[musicTrackId]);
+
+    const reelInput = {
+      firstName: info.firstName, jerseyNumber: info.jerseyNumber,
+      sport: info.sport, school: info.school, position: info.position,
+      gradYear: info.gradYear, email: info.email,
+      coachName: info.coachName, coachEmail: info.coachEmail,
+      statsData: info.statsData,
+      clipUrls: publicUrls,
+      musicUrl,
+      accentHex,
+      width: aspectRatio === "9:16" ? 1080 : 1920,
+      height: aspectRatio === "9:16" ? 1920 : 1080,
+      transitionStyle: sGet("transition", reel.transition || "Hard Cut") as string,
+    };
+
+    // Start Creatomate render
+    setPhase("processing");
+    setStep("Starting server render...");
+    setPct(36);
+
+    let renderId: string;
+    try {
+      const resp = await fetch("/api/render-reel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reelInput, social: aspectRatio === "9:16" }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data.renderId) {
+        throw new Error(data.error || "Render start failed");
+      }
+      renderId = data.renderId;
+    } catch (startErr) {
+      setErrMsg(startErr instanceof Error ? startErr.message : "Render failed — try again");
+      setPhase("error"); setIsCreatomateRender(false); return;
+    }
+
+    if (abortRef.current) { setPhase("idle"); setIsCreatomateRender(false); return; }
+
+    // Poll for render completion every 4 seconds
+    setStep("Rendering on Creatomate servers... (2–5 min)");
+    const renderStartTime = Date.now();
+
+    creatomatePollRef.current = setInterval(async () => {
+      if (abortRef.current) {
+        if (creatomatePollRef.current) clearInterval(creatomatePollRef.current);
+        setPhase("idle"); setIsCreatomateRender(false); return;
+      }
+      try {
+        const resp = await fetch(`/api/render-reel/status?renderId=${renderId}`);
+        const status = await resp.json();
+
+        const elapsedSec = Math.round((Date.now() - renderStartTime) / 1000);
+        const elapsedMin = Math.floor(elapsedSec / 60);
+        const elapsedS = elapsedSec % 60;
+        const elapsedStr = elapsedMin > 0 ? `${elapsedMin}m ${elapsedS}s` : `${elapsedSec}s`;
+
+        if (status.status === "rendering" || status.status === "waiting" || status.status === "planned") {
+          // Animate progress 36–90% while rendering
+          const animPct = Math.min(90, 36 + Math.round((elapsedSec / 300) * 54));
+          setPct(animPct);
+          setStep(`Rendering on server... ${elapsedStr} elapsed`);
+        } else if (status.status === "succeeded" && status.url) {
+          if (creatomatePollRef.current) clearInterval(creatomatePollRef.current);
+          setPct(100);
+          setRenderUrl(status.url);
+          // Save for "Previous Reels" section
+          try { localStorage.setItem("lastReelUrl", status.url); } catch {}
+          setLastReelUrl(status.url);
+          // Optional Supabase save — if there's an AI job in progress, update it
+          try {
+            const jobId = localStorage.getItem("currentJobId");
+            if (jobId) {
+              const { createClient } = await import("@supabase/supabase-js");
+              const sb = createClient(
+                process.env.NEXT_PUBLIC_SUPABASE_URL!,
+                process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+              );
+              sb.from("processing_jobs").update({ reel_url: status.url }).eq("id", jobId).then(() => {});
+            }
+          } catch { /* non-fatal */ }
+          const builtTrack = musicTrackId;
+          setBuiltMusicTrackId(builtTrack);
+          setSelectedMusicTrackId(builtTrack);
+          setTimeout(() => {
+            setPhase("done");
+            setShowSuccess(true);
+            successTimer.current = setTimeout(() => setShowSuccess(false), 4000);
+          }, 400);
+        } else if (status.status === "failed") {
+          if (creatomatePollRef.current) clearInterval(creatomatePollRef.current);
+          setErrMsg(status.error_message || "Server render failed — try again");
+          setPhase("error"); setIsCreatomateRender(false);
+        }
+      } catch (pollErr) {
+        console.warn("[Creatomate poll] error:", pollErr);
+      }
+    }, 4000);
   };
 
   const doBuild = async () => {
@@ -2074,6 +2244,11 @@ export default function ExportPage() {
   const dimInfo = getExportDim(aspectRatio, quality);
 
   const handlePrimaryDownload = () => {
+    if (renderUrl) {
+      // Creatomate MP4 — direct link, works on every device including iOS
+      triggerDownload(renderUrl, `${baseName}-reel.mp4`);
+      return;
+    }
     if (!blobUrl) return;
     device === "ios" ? iosOpen(blobUrl) : triggerDownload(blobUrl, `${baseName}-reel-${quality}.${ext}`);
   };
@@ -2244,17 +2419,51 @@ export default function ExportPage() {
             </div>
           )}
 
+          {/* Creatomate availability badge */}
+          {phase === "idle" && creatomatAvailable && (
+            <div className="flex items-center gap-2 text-[10px] font-bold rounded-lg px-3 py-2"
+              style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)", color: "#22C55E" }}>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+              Server Rendering — MP4 with music, works on every device including iPhone
+            </div>
+          )}
+
           {phase === "idle" && (
             <button type="button" onClick={handleBuild}
               className="w-full py-4 rounded-xl font-bold text-base transition-all hover:opacity-90 active:scale-[0.99]"
               style={{ background: accentHex, color: accentIsWhite ? "#050A14" : "#ffffff" }}>
               <DownloadIcon />
-              <span style={{ marginLeft: 8 }}>Build Reel →</span>
+              <span style={{ marginLeft: 8 }}>{creatomatAvailable ? "Build Reel (Server)" : "Build Reel"} →</span>
             </button>
+          )}
+
+          {phase === "uploading" && (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-2 mb-1">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={accentHex} strokeWidth="2.5" strokeLinecap="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+                <p className="text-xs font-bold text-white">Uploading clips to cloud</p>
+              </div>
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-slate-400 truncate pr-2">{stepText}</p>
+                <p className="text-xs font-bold tabular-nums shrink-0" style={{ color: accentHex }}>{Math.floor(pct)}%</p>
+              </div>
+              <div className="h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.08)" }}>
+                <div className="h-full rounded-full transition-all duration-300" style={{ width: `${pct}%`, background: accentHex }} />
+              </div>
+              <p className="text-slate-600 text-[10px] text-center">Uploading for server rendering — don&apos;t close this tab</p>
+              <button type="button" onClick={() => { abortRef.current = true; setPhase("idle"); setIsCreatomateRender(false); if (creatomatePollRef.current) clearInterval(creatomatePollRef.current); }}
+                className="text-xs text-slate-500 hover:text-slate-300 transition-colors self-center">Cancel</button>
+            </div>
           )}
 
           {phase === "processing" && (
             <div className="flex flex-col gap-3">
+              {isCreatomateRender && (
+                <div className="flex items-center gap-2 text-[10px] text-slate-400 px-3 py-2 rounded-lg" style={{ background: "rgba(0,163,255,0.06)", border: "1px solid rgba(0,163,255,0.15)" }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#00A3FF" strokeWidth="2.5" strokeLinecap="round" className="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
+                  <span>Rendering MP4 with music on Creatomate servers...</span>
+                </div>
+              )}
               <div className="flex items-center justify-between">
                 <p className="text-xs text-slate-400 truncate pr-2">{stepText}</p>
                 <p className="text-xs font-bold tabular-nums shrink-0" style={{ color: accentHex }}>{Math.floor(pct)}%</p>
@@ -2262,8 +2471,10 @@ export default function ExportPage() {
               <div className="h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.08)" }}>
                 <div className="h-full rounded-full transition-all duration-150" style={{ width: `${pct}%`, background: accentHex }} />
               </div>
-              <p className="text-slate-600 text-[10px] text-center">Don&apos;t close this tab · {Math.round(pct)}% complete</p>
-              <button type="button" onClick={() => { abortRef.current = true; setPhase("idle"); }}
+              <p className="text-slate-600 text-[10px] text-center">
+                {isCreatomateRender ? "Server rendering in progress — safe to minimize this tab" : `Don't close this tab · ${Math.round(pct)}% complete`}
+              </p>
+              <button type="button" onClick={() => { abortRef.current = true; setPhase("idle"); setIsCreatomateRender(false); if (creatomatePollRef.current) clearInterval(creatomatePollRef.current); }}
                 className="text-xs text-slate-500 hover:text-slate-300 transition-colors self-center">Cancel</button>
             </div>
           )}
@@ -2282,8 +2493,16 @@ export default function ExportPage() {
             </div>
           )}
 
-          {phase === "done" && !clipsOnly && blobUrl && compat && (
+          {phase === "done" && !clipsOnly && (blobUrl || renderUrl) && (compat || renderUrl) && (
             <div className="flex flex-col gap-3">
+              {/* Creatomate server render badge */}
+              {renderUrl && (
+                <div className="flex items-center gap-2 text-[10px] font-bold rounded-lg px-3 py-2"
+                  style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)", color: "#22C55E" }}>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+                  Server rendered MP4 — plays everywhere with music baked in
+                </div>
+              )}
 
               {/* ── Green success toast ── */}
               {showSuccess && (
@@ -2300,11 +2519,11 @@ export default function ExportPage() {
               <button type="button" onClick={handlePrimaryDownload}
                 className="w-full py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all hover:opacity-90 active:scale-[0.99]"
                 style={{ background: "#00A3FF", color: "#050A14" }}>
-                <DownloadIcon /> Download Coach Reel
+                <DownloadIcon /> {renderUrl ? "Download Coach Reel (MP4)" : "Download Coach Reel"}
               </button>
 
-              {/* WebM note for desktop non-Safari */}
-              {device === "desktop" && !isSafari && ext === "webm" && (
+              {/* WebM note for desktop non-Safari — only for canvas renders */}
+              {!renderUrl && device === "desktop" && !isSafari && ext === "webm" && (
                 <p className="text-[10px] leading-snug" style={{ color: "#475569" }}>
                   Downloaded as WebM · plays in Chrome &amp; Firefox.
                   To convert to MP4: <a href="https://cloudconvert.com/webm-to-mp4" target="_blank" rel="noopener noreferrer" style={{ color: "#00A3FF" }}>cloudconvert.com</a> (free).
@@ -2376,7 +2595,7 @@ export default function ExportPage() {
               </div>
 
               {/* Rebuild */}
-              <button type="button" onClick={() => { setPhase("idle"); setShowSuccess(false); }}
+              <button type="button" onClick={() => { setPhase("idle"); setShowSuccess(false); setRenderUrl(null); setIsCreatomateRender(false); }}
                 className="text-xs text-slate-500 hover:text-slate-300 transition-colors self-center mt-1">
                 ↺ Build Again (change quality)
               </button>
@@ -2386,12 +2605,42 @@ export default function ExportPage() {
           {phase === "error" && (
             <div className="flex flex-col gap-2">
               <div className="flex items-start gap-2 text-xs text-[#EF4444]"><span className="shrink-0 mt-0.5"><AlertIcon /></span><span>{errMsg || "Processing failed"}</span></div>
-              <button type="button" onClick={() => setPhase("idle")}
+              <button type="button" onClick={() => { setPhase("idle"); setIsCreatomateRender(false); }}
                 className="w-full py-2.5 rounded-xl font-semibold text-xs"
                 style={{ background: "rgba(239,68,68,0.12)", color: "#EF4444", border: "1px solid rgba(239,68,68,0.3)" }}>Try Again</button>
             </div>
           )}
         </div>
+
+        {/* ── YOUR PREVIOUS REELS ── */}
+        {lastReelUrl && lastReelUrl.startsWith("http") && (
+          <div className="rounded-2xl p-5" style={{ background: "#0A1628", border: "1px solid rgba(255,255,255,0.08)" }}>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-sm font-bold text-white">Your Previous Reel</p>
+                <p className="text-xs text-slate-500 mt-0.5">Last server-rendered MP4 — still available for download</p>
+              </div>
+              <span className="text-[9px] font-black tracking-widest px-2 py-1 rounded-full"
+                style={{ background: "rgba(0,163,255,0.1)", color: "#00A3FF", border: "1px solid rgba(0,163,255,0.2)" }}>
+                MP4
+              </span>
+            </div>
+            <div className="flex gap-2">
+              <button type="button"
+                onClick={() => triggerDownload(lastReelUrl, `${baseName}-reel-previous.mp4`)}
+                className="flex-1 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all hover:opacity-90"
+                style={{ background: `${accentHex}14`, color: accentHex, border: `1px solid ${accentHex}30` }}>
+                <DownloadIcon /> Download Previous Reel
+              </button>
+              <button type="button"
+                onClick={() => { try { localStorage.removeItem("lastReelUrl"); } catch {} setLastReelUrl(null); }}
+                className="px-3 py-2.5 rounded-xl text-xs transition-all"
+                style={{ background: "rgba(255,255,255,0.04)", color: "#475569", border: "1px solid rgba(255,255,255,0.06)" }}>
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* ── REEL ANALYSIS ── */}
         {qualityData && (() => {

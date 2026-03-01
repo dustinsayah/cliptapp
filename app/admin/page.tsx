@@ -168,6 +168,84 @@ export default function AdminPage() {
   const [apiTestResult,  setApiTestResult]  = useState<{ ok: boolean; message: string } | null>(null);
   const [apiTesting,     setApiTesting]     = useState(false);
 
+  // ── Creatomate test ───────────────────────────────────────────────────────
+  const [creatTestLoading, setCreatTestLoading] = useState(false);
+  const [creatTestRenderId, setCreatTestRenderId] = useState<string | null>(null);
+  const [creatTestStatus, setCreatTestStatus] = useState<string>("");
+  const [creatTestUrl, setCreatTestUrl] = useState<string | null>(null);
+  const [creatTestError, setCreatTestError] = useState<string | null>(null);
+  const [creatConfigured, setCreatConfigured] = useState<boolean | null>(null);
+  const creatPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    fetch("/api/render-reel").then(r => r.json()).then(d => setCreatConfigured(d.configured)).catch(() => setCreatConfigured(false));
+    return () => { if (creatPollRef.current) clearInterval(creatPollRef.current); };
+  }, []);
+
+  const handleTestCreatomate = async () => {
+    setCreatTestLoading(true);
+    setCreatTestRenderId(null);
+    setCreatTestStatus("starting...");
+    setCreatTestUrl(null);
+    setCreatTestError(null);
+    if (creatPollRef.current) clearInterval(creatPollRef.current);
+
+    try {
+      const resp = await fetch("/api/render-reel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reelInput: {
+            firstName: "Marcus",
+            jerseyNumber: "23",
+            sport: "Basketball",
+            school: "Lincoln High",
+            position: "Point Guard",
+            gradYear: "2026",
+            email: "marcus@example.com",
+            statsData: { "PPG": "24.5", "APG": "7.2", "RPG": "5.8" },
+            accentHex: "#00A3FF",
+            // Public sample clip for testing (15-second Google storage video)
+            clipUrls: ["https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"],
+            musicUrl: "https://assets.mixkit.co/music/370/370.mp3",
+            width: 1280,
+            height: 720,
+            transitionStyle: "Hard Cut",
+          },
+        }),
+      });
+
+      const data = await resp.json();
+      if (!resp.ok || !data.renderId) {
+        setCreatTestError(data.error || "Render start failed");
+        setCreatTestLoading(false); return;
+      }
+
+      setCreatTestRenderId(data.renderId);
+      setCreatTestStatus("rendering...");
+
+      creatPollRef.current = setInterval(async () => {
+        try {
+          const sResp = await fetch(`/api/render-reel/status?renderId=${data.renderId}`);
+          const status = await sResp.json();
+          setCreatTestStatus(status.status);
+          if (status.status === "succeeded") {
+            clearInterval(creatPollRef.current!);
+            setCreatTestUrl(status.url);
+            setCreatTestLoading(false);
+          } else if (status.status === "failed") {
+            clearInterval(creatPollRef.current!);
+            setCreatTestError(status.error_message || "Render failed");
+            setCreatTestLoading(false);
+          }
+        } catch { /* ignore poll errors */ }
+      }, 4000);
+    } catch (e) {
+      setCreatTestError(e instanceof Error ? e.message : "Network error");
+      setCreatTestLoading(false);
+    }
+  };
+
   const handleLoadMockReview = () => {
     const sportCfg = SPORTS_CONFIG[reviewSport];
     const playDefs = sportCfg
@@ -960,7 +1038,84 @@ export default function AdminPage() {
           </div>
         </section>
 
-        {/* ── Quick Links — add Review ── */}
+        {/* ── Creatomate Server Rendering Test ── */}
+        <section className="rounded-2xl overflow-hidden" style={{ background: "#0A1628", border: "1px solid rgba(0,163,255,0.15)" }}>
+          <div className="px-6 py-5 border-b border-white/[0.05] flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-black text-white">Test Creatomate Render</h2>
+              <p className="text-slate-500 text-xs mt-0.5">Submits a real render job to Creatomate servers — outputs a downloadable MP4 with music</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {creatConfigured === true && (
+                <span className="px-3 py-1 rounded-full text-xs font-bold" style={{ background: "rgba(34,197,94,0.1)", color: "#22C55E", border: "1px solid rgba(34,197,94,0.25)" }}>
+                  ✓ API Key Set
+                </span>
+              )}
+              {creatConfigured === false && (
+                <span className="px-3 py-1 rounded-full text-xs font-bold" style={{ background: "rgba(239,68,68,0.1)", color: "#EF4444", border: "1px solid rgba(239,68,68,0.25)" }}>
+                  ✗ CREATOMATE_API_KEY not set
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="p-6">
+            <p className="text-xs text-slate-500 mb-4">
+              Uses a public sample video clip with test player data (Marcus #23 · Basketball · Lincoln High). Renders at 1280×720 to minimize credits used. Set <code className="text-slate-400">CREATOMATE_API_KEY</code> in your <code className="text-slate-400">.env.local</code> to enable.
+            </p>
+
+            <div className="flex flex-wrap items-center gap-3 mb-4">
+              <button
+                onClick={handleTestCreatomate}
+                disabled={creatTestLoading || creatConfigured === false}
+                className="px-5 py-2.5 rounded-xl font-bold text-sm transition-all hover:scale-[1.02] disabled:opacity-40"
+                style={{ background: "linear-gradient(135deg, #0055EE, #00A3FF)", color: "#fff" }}>
+                {creatTestLoading ? (
+                  <span className="flex items-center gap-2">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
+                    Rendering...
+                  </span>
+                ) : "Test Creatomate Render"}
+              </button>
+
+              {creatTestRenderId && (
+                <span className="text-xs font-mono text-slate-500">
+                  Render ID: <span className="text-slate-400 select-all">{creatTestRenderId}</span>
+                </span>
+              )}
+            </div>
+
+            {(creatTestStatus || creatTestError || creatTestUrl) && (
+              <div className="flex flex-col gap-3">
+                {creatTestStatus && !creatTestError && !creatTestUrl && (
+                  <div className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm"
+                    style={{ background: "rgba(0,163,255,0.06)", border: "1px solid rgba(0,163,255,0.2)", color: "#60A5FA" }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="animate-spin shrink-0"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
+                    Status: <strong>{creatTestStatus}</strong> — polling every 4s...
+                  </div>
+                )}
+                {creatTestUrl && (
+                  <div className="flex flex-col gap-2 px-4 py-3 rounded-xl"
+                    style={{ background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.2)" }}>
+                    <p className="text-sm font-bold text-green-400">✓ Render succeeded!</p>
+                    <p className="text-xs text-slate-500 break-all">{creatTestUrl}</p>
+                    <a href={creatTestUrl} target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold self-start transition-all hover:opacity-80"
+                      style={{ background: "rgba(34,197,94,0.12)", color: "#22C55E", border: "1px solid rgba(34,197,94,0.3)" }}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                      Download Test Reel (MP4)
+                    </a>
+                  </div>
+                )}
+                {creatTestError && (
+                  <div className="px-4 py-3 rounded-xl text-sm"
+                    style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.2)", color: "#F87171" }}>
+                    ✗ {creatTestError}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </section>
 
         {/* ── Footer ── */}
         <div className="text-center text-slate-700 text-xs pb-4">
