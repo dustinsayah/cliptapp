@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useReel } from "../providers";
 import { SPORTS_CONFIG } from "../../lib/sportsConfig";
@@ -52,6 +52,9 @@ interface SavedSettings {
   spotlightStyle?: string;
   exportType?: string;
   musicId?: string;
+  music?: string;
+  musicUrl?: string | null;
+  musicName?: string | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -103,13 +106,14 @@ const COLOR_SWATCHES = [
   { hex: "#C0C0C0", name: "Silver"        },
 ];
 
-const SOCIAL_MUSIC = [
-  { id: "hype",      name: "Hype",      url: "https://assets.mixkit.co/music/370/370.mp3"  },
-  { id: "cinematic", name: "Cinematic", url: "https://assets.mixkit.co/music/614/614.mp3"  },
-  { id: "trap",      name: "Trap",      url: "https://assets.mixkit.co/music/267/267.mp3"  },
-  { id: "drill",     name: "Drill",     url: "https://assets.mixkit.co/music/400/400.mp3"  },
-  { id: "piano",     name: "Piano",     url: "https://assets.mixkit.co/music/738/738.mp3"  },
-  { id: "lofi",      name: "LoFi",      url: "https://assets.mixkit.co/music/282/282.mp3"  },
+const MUSIC_TRACKS = [
+  { id: "nba-warmup",    name: "NBA Warmup",        url: "https://cdn.pixabay.com/audio/2022/10/16/audio_127a8b04d5.mp3" },
+  { id: "epic-sport",    name: "Epic Sport",        url: "https://cdn.pixabay.com/audio/2022/08/02/audio_884fe92c21.mp3" },
+  { id: "motivational",  name: "Motivational",      url: "https://cdn.pixabay.com/audio/2022/11/22/audio_febc508520.mp3" },
+  { id: "trap",          name: "Trap Instrumental", url: "https://cdn.pixabay.com/audio/2023/01/10/audio_5b01f1f0be.mp3" },
+  { id: "championship",  name: "Championship",      url: "https://cdn.pixabay.com/audio/2022/09/14/audio_bf8d48e5bd.mp3" },
+  { id: "upload",        name: "Upload My Own",     url: null },
+  { id: "no-music",      name: "No Music",          url: null },
 ];
 
 const US_STATES = [
@@ -327,8 +331,25 @@ export default function CustomizePage() {
   const [spotlightStyle, setSpotlightStyle] = useState<"arrow" | "circle" | "none">("arrow");
 
   // ── Export ──────────────────────────────────────────────────────────────────
-  const [exportType,    setExportType]    = useState<"coach" | "social">("coach");
-  const [socialMusicId, setSocialMusicId] = useState("hype");
+  const [exportType,    setExportType]    = useState<"landscape" | "social">("landscape");
+
+  // ── Music ────────────────────────────────────────────────────────────────────
+  const [selectedMusic,     setSelectedMusic]     = useState<string>("no-music");
+  const [selectedMusicUrl,  setSelectedMusicUrl]  = useState<string | null>(null);
+  const [selectedMusicName, setSelectedMusicName] = useState<string | null>(null);
+  const [previewingTrack,   setPreviewingTrack]   = useState<string | null>(null);
+  const [uploadedMusicName, setUploadedMusicName] = useState<string | null>(null);
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  // ── Audio cleanup on unmount ─────────────────────────────────────────────────
+  useEffect(() => {
+    return () => {
+      if (previewAudioRef.current) {
+        previewAudioRef.current.pause();
+        previewAudioRef.current = null;
+      }
+    };
+  }, []);
 
   // ── Error ───────────────────────────────────────────────────────────────────
   const [error, setError] = useState<string | null>(null);
@@ -377,10 +398,24 @@ export default function CustomizePage() {
     if (prev.spotlightStyle === "arrow" || prev.spotlightStyle === "circle" || prev.spotlightStyle === "none") {
       setSpotlightStyle(prev.spotlightStyle);
     }
-    if (prev.exportType === "coach" || prev.exportType === "social") {
+    if (prev.exportType === "landscape" || prev.exportType === "social") {
       setExportType(prev.exportType);
+    } else if (prev.exportType === "coach") {
+      setExportType("landscape"); // migrate legacy value
     }
-    if (prev.musicId) setSocialMusicId(prev.musicId);
+    if (prev.music) {
+      setSelectedMusic(prev.music);
+      setSelectedMusicUrl(prev.musicUrl ?? null);
+      setSelectedMusicName(prev.musicName ?? null);
+    } else if (prev.musicId) {
+      // migrate legacy musicId
+      const legacyTrack = MUSIC_TRACKS.find(m => m.id === prev.musicId);
+      if (legacyTrack) {
+        setSelectedMusic(legacyTrack.id);
+        setSelectedMusicUrl(legacyTrack.url);
+        setSelectedMusicName(legacyTrack.name);
+      }
+    }
 
     // Build clip list
     const defaultCat   = getDefaultCategory(d.sport || "");
@@ -460,6 +495,48 @@ export default function CustomizePage() {
     setClips(prev => prev.filter(c => c.id !== id));
   }
 
+  // ── Music preview ────────────────────────────────────────────────────────────
+  const handlePreviewToggle = useCallback((trackId: string, trackUrl: string | null) => {
+    if (!trackUrl) return;
+    if (previewingTrack === trackId) {
+      previewAudioRef.current?.pause();
+      setPreviewingTrack(null);
+    } else {
+      if (previewAudioRef.current) {
+        previewAudioRef.current.pause();
+        previewAudioRef.current = null;
+      }
+      const audio = new Audio(trackUrl);
+      previewAudioRef.current = audio;
+      audio.play().catch(() => {});
+      audio.addEventListener("ended", () => setPreviewingTrack(null));
+      setPreviewingTrack(trackId);
+    }
+  }, [previewingTrack]);
+
+  function selectMusicTrack(track: typeof MUSIC_TRACKS[0]) {
+    if (track.id === "no-music") {
+      setSelectedMusic("no-music");
+      setSelectedMusicUrl(null);
+      setSelectedMusicName(null);
+    } else if (track.id === "upload") {
+      setSelectedMusic("upload");
+      // URL will be set when user picks a file
+    } else {
+      setSelectedMusic(track.id);
+      setSelectedMusicUrl(track.url);
+      setSelectedMusicName(track.name);
+    }
+  }
+
+  function handleMusicFileUpload(file: File) {
+    const blobUrl = URL.createObjectURL(file);
+    setSelectedMusic("custom");
+    setSelectedMusicUrl(blobUrl);
+    setSelectedMusicName(file.name);
+    setUploadedMusicName(file.name);
+  }
+
   // ── Submit ───────────────────────────────────────────────────────────────────
   function handleSubmit() {
     if (clips.length === 0) {
@@ -473,10 +550,15 @@ export default function CustomizePage() {
     }
     setError(null);
 
-    const musicEntry = SOCIAL_MUSIC.find(m => m.id === socialMusicId);
-    const musicUrl   = exportType === "social" ? (musicEntry?.url ?? null) : null;
-    const musicName  = exportType === "social" ? (musicEntry?.name ?? null) : null;
     const statsEnabled = filledStatCount > 0;
+
+    // Resolve final music values
+    const finalMusic     = selectedMusic;
+    const finalMusicUrl  = selectedMusicUrl;
+    const finalMusicName = selectedMusicName;
+
+    console.log("SAVING MUSIC:", finalMusic, finalMusicUrl, finalMusicName);
+    console.log("SAVING EXPORT TYPE:", exportType);
 
     const cliptSettings = {
       clips: clips.map(c => ({
@@ -504,10 +586,10 @@ export default function CustomizePage() {
         statsEnabled,
       },
       spotlightStyle,
-      exportType,
-      musicId:   exportType === "social" ? socialMusicId : null,
-      musicUrl,
-      musicName,
+      exportType,          // "landscape" or "social"
+      music:     finalMusic,     // track identifier
+      musicUrl:  finalMusicUrl,  // full URL or null
+      musicName: finalMusicName, // display name or null
     };
 
     try {
@@ -978,17 +1060,27 @@ export default function CustomizePage() {
         <SectionCard
           number={6}
           title="Export Version"
-          subtitle="Choose how coaches and fans will watch your reel"
+          subtitle="Choose format and background music for your reel"
           open={openSection === 6}
           onToggle={() => setOpenSection(openSection === 6 ? 0 : 6)}
           accentHex={accentHex}
         >
-          {/* Coach vs Social */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20 }}>
+          {/* Format selector */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 28 }}>
             {(
               [
-                { id: "coach",  label: "Coach Reel",  emoji: "🎥", desc: "16:9 landscape · No music · 1920×1080 HD\nBest for email, recruiting portals, DM to coaches" },
-                { id: "social", label: "Social Reel",  emoji: "📱", desc: "9:16 portrait · Background music · 1080×1920\nBest for Instagram, TikTok, and Twitter/X" },
+                {
+                  id: "landscape",
+                  label: "16:9 Landscape",
+                  emoji: "🎥",
+                  subtitle: "Standard widescreen — for emails and recruiting profiles.",
+                },
+                {
+                  id: "social",
+                  label: "9:16 Vertical",
+                  emoji: "📱",
+                  subtitle: "Vertical format — for Instagram and TikTok.",
+                },
               ] as const
             ).map(opt => (
               <button key={opt.id} type="button" onClick={() => setExportType(opt.id)}
@@ -1000,7 +1092,7 @@ export default function CustomizePage() {
                 }}>
                 <div style={{ fontSize: 28, marginBottom: 10 }}>{opt.emoji}</div>
                 <div style={{ fontSize: 14, fontWeight: 700, color: "#FFFFFF", marginBottom: 6 }}>{opt.label}</div>
-                <div style={{ fontSize: 12, color: "#64748b", lineHeight: 1.6, whiteSpace: "pre-line" }}>{opt.desc}</div>
+                <div style={{ fontSize: 12, color: "#64748b", lineHeight: 1.6 }}>{opt.subtitle}</div>
                 {exportType === opt.id && (
                   <div style={{ marginTop: 10, fontSize: 11, color: accentHex, fontWeight: 600 }}>✓ Selected</div>
                 )}
@@ -1008,28 +1100,113 @@ export default function CustomizePage() {
             ))}
           </div>
 
-          {/* Music selector — social only */}
-          {exportType === "social" && (
-            <div>
-              <label style={labelStyle}>Background Music</label>
-              <p style={{ fontSize: 12, color: "#475569", margin: "0 0 12px", lineHeight: 1.5 }}>
-                Music plays throughout your social reel. Coach reels are always silent — coaches prefer no music.
-              </p>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-                {SOCIAL_MUSIC.map(m => (
-                  <button key={m.id} type="button" onClick={() => setSocialMusicId(m.id)}
+          {/* Music selector — always visible */}
+          <div>
+            <label style={labelStyle}>Background Music</label>
+            <p style={{ fontSize: 12, color: "#475569", margin: "0 0 14px", lineHeight: 1.5 }}>
+              Music is available on both formats. Select a track or upload your own.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {MUSIC_TRACKS.map(track => {
+                const isSelected  = selectedMusic === track.id || (track.id === "upload" && selectedMusic === "custom");
+                const isPreviewing = previewingTrack === track.id;
+                return (
+                  <div key={track.id}
                     style={{
-                      padding: "14px 10px", borderRadius: 10, border: "2px solid",
-                      textAlign: "center", cursor: "pointer", transition: "all 0.15s",
-                      borderColor: socialMusicId === m.id ? accentHex : "rgba(255,255,255,0.08)",
-                      background:  socialMusicId === m.id ? `${accentHex}1A` : "#0D1F38",
+                      borderRadius: 10, border: "2px solid",
+                      borderColor: isSelected ? accentHex : "rgba(255,255,255,0.08)",
+                      background:  isSelected ? `${accentHex}18` : "#0D1F38",
+                      overflow: "hidden",
                     }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: socialMusicId === m.id ? accentHex : "#FFFFFF" }}>{m.name}</div>
-                  </button>
-                ))}
-              </div>
+                    <div style={{ display: "flex", alignItems: "center", padding: "12px 14px", gap: 12 }}>
+                      {/* Click card to select */}
+                      <button type="button" onClick={() => selectMusicTrack(track)}
+                        style={{ flex: 1, background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: 0 }}>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: "#FFFFFF" }}>{track.name}</div>
+                        {isSelected && track.id !== "no-music" && (
+                          <div style={{ fontSize: 11, color: accentHex, marginTop: 3, fontWeight: 600 }}>✓ Selected</div>
+                        )}
+                        {track.id === "no-music" && isSelected && (
+                          <div style={{ fontSize: 11, color: "#64748b", marginTop: 3 }}>No music in reel</div>
+                        )}
+                      </button>
+
+                      {/* Equalizer animation while previewing */}
+                      {isPreviewing && (
+                        <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 20, marginRight: 8 }}>
+                          {[0, 1, 2].map(i => (
+                            <div key={i} style={{
+                              width: 4, borderRadius: 2, background: accentHex,
+                              animation: `eq-bounce ${0.6 + i * 0.15}s ease-in-out infinite alternate`,
+                              height: `${10 + i * 4}px`,
+                            }} />
+                          ))}
+                          <style>{`@keyframes eq-bounce { from { transform: scaleY(0.4); } to { transform: scaleY(1); } }`}</style>
+                        </div>
+                      )}
+
+                      {/* Play/pause button — only for real tracks */}
+                      {track.url && (
+                        <button type="button"
+                          onClick={e => { e.stopPropagation(); handlePreviewToggle(track.id, track.url); }}
+                          style={{
+                            width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
+                            background: isPreviewing ? accentHex : `${accentHex}22`,
+                            border: `1.5px solid ${accentHex}55`,
+                            cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                          }}>
+                          {isPreviewing ? (
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill={isLightAccent ? "#050A14" : "#FFFFFF"}>
+                              <rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" />
+                            </svg>
+                          ) : (
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill={accentHex}>
+                              <polygon points="5,3 19,12 5,21" />
+                            </svg>
+                          )}
+                        </button>
+                      )}
+
+                      {/* "No music" icon */}
+                      {track.id === "no-music" && !track.url && (
+                        <div style={{ width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
+                          background: "#1E293B", border: "1.5px solid rgba(255,255,255,0.08)",
+                          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>
+                          🔇
+                        </div>
+                      )}
+                    </div>
+
+                    {/* File input for Upload My Own */}
+                    {track.id === "upload" && isSelected && (
+                      <div style={{ padding: "0 14px 14px" }}>
+                        <label style={{ ...labelStyle, cursor: "pointer" }}>
+                          <div style={{
+                            padding: "10px 14px", borderRadius: 8, background: "#0A1628",
+                            border: "1px dashed rgba(255,255,255,0.15)", textAlign: "center",
+                            fontSize: 13, color: "#64748b", cursor: "pointer",
+                          }}>
+                            {uploadedMusicName ?? "Choose MP3 / WAV / M4A — max 15 MB"}
+                          </div>
+                          <input type="file" accept=".mp3,.wav,.m4a,audio/mp3,audio/wav,audio/m4a,audio/mpeg"
+                            style={{ display: "none" }}
+                            onChange={e => {
+                              const f = e.target.files?.[0];
+                              if (!f) return;
+                              if (f.size > 15 * 1024 * 1024) { alert("File must be under 15 MB"); return; }
+                              handleMusicFileUpload(f);
+                            }} />
+                        </label>
+                        {selectedMusicName && selectedMusic === "custom" && (
+                          <div style={{ fontSize: 11, color: accentHex, marginTop: 6 }}>✓ {selectedMusicName}</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-          )}
+          </div>
         </SectionCard>
 
         {/* ── ERROR ── */}

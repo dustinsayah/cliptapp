@@ -33,7 +33,8 @@ export async function POST(req: NextRequest) {
   });
 
   let reelInput: ReelRenderInput;
-  const social: boolean = body.social === true;
+  const social: boolean = body.social === true || body.aspectRatio === "9:16";
+  console.log("[render-reel] social:", social, "| exportType:", body.exportType, "| aspectRatio:", body.aspectRatio);
 
   if (body.clips) {
     // ── New structured format ─────────────────────────────────────────────────

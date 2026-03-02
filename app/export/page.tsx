@@ -47,36 +47,45 @@ const PLAYER_MS = 800;
 
 // ── Music track display name map ──────────────────────────────────────────────
 const MUSIC_TRACK_LABELS: Record<string, string> = {
-  "nba-warmup":   "NBA Warmup",   "championship":  "Championship",  "playoff-mode": "Playoff Mode",
-  "game-time":    "Game Time",    "court-vision":  "Court Vision",  "espn-feature": "ESPN Feature",
-  "rise-up":      "Rise Up",      "legacy":        "Legacy",        "the-journey":  "The Journey",
-  "triumph":      "Triumph",      "trap-god":      "Trap God",      "drill-season": "Drill Season",
-  "ice-cold":     "Ice Cold",     "street-ball":   "Street Ball",   "pressure":     "Pressure",
-  "focus":        "Focus",        "late-night":    "Late Night",    "smooth":       "Smooth",
-  "crowd-noise":  "Crowd Noise",  "custom":        "Your Track",
+  // New Pixabay tracks (from customize page)
+  "nba-warmup":    "NBA Warmup",      "epic-sport":   "Epic Sport",     "motivational":  "Motivational",
+  "trap":          "Trap Instrumental","championship": "Championship",  "upload":        "Your Track",
+  "custom":        "Your Track",
+  // Legacy Mixkit tracks
+  "playoff-mode":  "Playoff Mode",    "game-time":    "Game Time",      "court-vision":  "Court Vision",
+  "espn-feature":  "ESPN Feature",    "rise-up":      "Rise Up",        "legacy":        "Legacy",
+  "the-journey":   "The Journey",     "triumph":      "Triumph",        "trap-god":      "Trap God",
+  "drill-season":  "Drill Season",    "ice-cold":     "Ice Cold",       "street-ball":   "Street Ball",
+  "pressure":      "Pressure",        "focus":        "Focus",          "late-night":    "Late Night",
+  "smooth":        "Smooth",          "crowd-noise":  "Crowd Noise",
 };
 
 // ── Music track URL map ────────────────────────────────────────────────────────
 const MUSIC_TRACK_URLS: Record<string, string | undefined> = {
-  "nba-warmup":   "https://assets.mixkit.co/music/370/370.mp3",
-  "championship": "https://assets.mixkit.co/music/591/591.mp3",
-  "playoff-mode": "https://assets.mixkit.co/music/601/601.mp3",
-  "game-time":    "https://assets.mixkit.co/music/490/490.mp3",
-  "court-vision": "https://assets.mixkit.co/music/421/421.mp3",
-  "espn-feature": "https://assets.mixkit.co/music/614/614.mp3",
-  "rise-up":      "https://assets.mixkit.co/music/738/738.mp3",
-  "legacy":       "https://assets.mixkit.co/music/652/652.mp3",
-  "the-journey":  "https://assets.mixkit.co/music/668/668.mp3",
-  "triumph":      "https://assets.mixkit.co/music/712/712.mp3",
-  "trap-god":     "https://assets.mixkit.co/music/267/267.mp3",
-  "drill-season": "https://assets.mixkit.co/music/400/400.mp3",
-  "ice-cold":     "https://assets.mixkit.co/music/346/346.mp3",
-  "street-ball":  "https://assets.mixkit.co/music/308/308.mp3",
-  "pressure":     "https://assets.mixkit.co/music/325/325.mp3",
-  "focus":        "https://assets.mixkit.co/music/282/282.mp3",
-  "late-night":   "https://assets.mixkit.co/music/297/297.mp3",
-  "smooth":       "https://assets.mixkit.co/music/315/315.mp3",
-  "crowd-noise":  "https://assets.mixkit.co/music/562/562.mp3",
+  // New Pixabay tracks (from customize page)
+  "nba-warmup":    "https://cdn.pixabay.com/audio/2022/10/16/audio_127a8b04d5.mp3",
+  "epic-sport":    "https://cdn.pixabay.com/audio/2022/08/02/audio_884fe92c21.mp3",
+  "motivational":  "https://cdn.pixabay.com/audio/2022/11/22/audio_febc508520.mp3",
+  "trap":          "https://cdn.pixabay.com/audio/2023/01/10/audio_5b01f1f0be.mp3",
+  "championship":  "https://cdn.pixabay.com/audio/2022/09/14/audio_bf8d48e5bd.mp3",
+  // Legacy Mixkit tracks (backward compat)
+  "playoff-mode":  "https://assets.mixkit.co/music/601/601.mp3",
+  "game-time":     "https://assets.mixkit.co/music/490/490.mp3",
+  "court-vision":  "https://assets.mixkit.co/music/421/421.mp3",
+  "espn-feature":  "https://assets.mixkit.co/music/614/614.mp3",
+  "rise-up":       "https://assets.mixkit.co/music/738/738.mp3",
+  "legacy":        "https://assets.mixkit.co/music/652/652.mp3",
+  "the-journey":   "https://assets.mixkit.co/music/668/668.mp3",
+  "triumph":       "https://assets.mixkit.co/music/712/712.mp3",
+  "trap-god":      "https://assets.mixkit.co/music/267/267.mp3",
+  "drill-season":  "https://assets.mixkit.co/music/400/400.mp3",
+  "ice-cold":      "https://assets.mixkit.co/music/346/346.mp3",
+  "street-ball":   "https://assets.mixkit.co/music/308/308.mp3",
+  "pressure":      "https://assets.mixkit.co/music/325/325.mp3",
+  "focus":         "https://assets.mixkit.co/music/282/282.mp3",
+  "late-night":    "https://assets.mixkit.co/music/297/297.mp3",
+  "smooth":        "https://assets.mixkit.co/music/315/315.mp3",
+  "crowd-noise":   "https://assets.mixkit.co/music/562/562.mp3",
 };
 
 // ── Canvas Font Map ────────────────────────────────────────────────────────────
@@ -1648,6 +1657,8 @@ export default function ExportPage() {
   const [storedClipCount, setStoredClipCount] = useState(0);
   const [builtMusicTrackId, setBuiltMusicTrackId] = useState<string>("");
   const [selectedMusicTrackId, setSelectedMusicTrackId] = useState<string>("");
+  const [selectedMusicName, setSelectedMusicName] = useState<string | null>(null);
+  const [exportTypeSetting, setExportTypeSetting] = useState<"landscape" | "social">("landscape");
   const [showCapcutGuide, setShowCapcutGuide] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const successTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1730,8 +1741,16 @@ export default function ExportPage() {
     // Load selected music track for pre-export music card
     try {
       const s = JSON.parse(localStorage.getItem("cliptSettings") || "{}");
-      const tid = s.musicTrackId || reel.musicTrackId || "no-music";
+      console.log("EXPORT READING MUSIC:", s.music, s.musicUrl, s.musicName);
+      console.log("EXPORT TYPE READ:", s.exportType);
+      // Read music — prefer new fields (music/musicName), fall back to legacy (musicTrackId)
+      const tid = s.music || s.musicId || s.musicTrackId || reel.musicTrackId || "no-music";
       setSelectedMusicTrackId(tid);
+      setSelectedMusicName(s.musicName ?? null);
+      // Read export type
+      const et = s.exportType as string | undefined;
+      if (et === "social") setExportTypeSetting("social");
+      else setExportTypeSetting("landscape");
     } catch {}
     // Load last Creatomate render URL for "Previous Reels" section
     try {
@@ -1804,15 +1823,15 @@ export default function ExportPage() {
     } catch { return (reel.firstName || "reel").toLowerCase().replace(/\s+/g, "-"); }
   })();
 
-  const handleBuild = async () => {
+  const handleBuild = async (forceSocial?: boolean) => {
     if (isOverLimit) { setDurationModal(true); return; }
     // Route to Creatomate when configured, canvas otherwise
-    if (creatomatAvailable) { await doCreatomateBuild(); return; }
-    await doBuild();
+    if (creatomatAvailable) { await doCreatomateBuild(forceSocial); return; }
+    await doBuild(forceSocial);
   };
 
   // ── Creatomate server-side render flow ──────────────────────────────────────
-  const doCreatomateBuild = async () => {
+  const doCreatomateBuild = async (forceSocial?: boolean) => {
     setDurationModal(false);
     abortRef.current = false;
     setPhase("uploading");
@@ -1878,10 +1897,8 @@ export default function ExportPage() {
     };
 
     const info = buildInfo();
+    // Read music ID from legacy field for backward compat
     const musicTrackId = sGet("musicTrackId", reel.musicTrackId || "no-music") as string;
-    const musicUrl = musicTrackId === "no-music" ? undefined : (musicTrackId === "custom"
-      ? (() => { try { return localStorage.getItem("clipt_custom_music_url") || undefined; } catch { return undefined; } })()
-      : MUSIC_TRACK_URLS[musicTrackId]);
 
     // Build clips array with trim + category data
     const clipsWithTrim = publicUrls.map((url, i) => ({
@@ -1895,16 +1912,21 @@ export default function ExportPage() {
     // Read new cliptSettings fields (titleCard object saved by new customize page)
     const tc = (settings.titleCard as Record<string, string> | undefined) ?? {};
 
-    // Determine music — prefer cliptSettings.musicUrl (set by new customize page), fall back to legacy
+    // Determine music — prefer new cliptSettings.musicUrl field, fall back to legacy musicTrackId
     const settingsMusicUrl = (settings.musicUrl as string | null) ?? null;
-    const legacyMusicUrl   = musicTrackId === "no-music" ? undefined : (musicTrackId === "custom"
-      ? (() => { try { return localStorage.getItem("clipt_custom_music_url") || undefined; } catch { return undefined; } })()
-      : MUSIC_TRACK_URLS[musicTrackId]);
+    const settingsMusicId  = (settings.music as string | null) ?? musicTrackId;
+    const legacyMusicUrl   = (settingsMusicId === "no-music" || settingsMusicId === "upload") ? undefined
+      : settingsMusicId === "custom"
+        ? (() => { try { return localStorage.getItem("clipt_custom_music_url") || undefined; } catch { return undefined; } })()
+        : MUSIC_TRACK_URLS[settingsMusicId];
     const resolvedMusicUrl = settingsMusicUrl || legacyMusicUrl || null;
+    const resolvedMusicName = (settings.musicName as string | null) ?? (MUSIC_TRACK_LABELS[settingsMusicId] ?? null);
 
-    // Social flag — prefer exportType from cliptSettings, fall back to aspect ratio
+    // Social flag — prefer forceSocial override, then cliptSettings.exportType, then aspect ratio
     const settingsExportType = (settings.exportType as string | undefined);
-    const isSocial = settingsExportType === "social" || aspectRatio === "9:16";
+    const isSocial = forceSocial !== undefined
+      ? forceSocial
+      : (settingsExportType === "social" || aspectRatio === "9:16");
 
     // Full structured payload — every field passed explicitly
     const renderPayload = {
@@ -1932,13 +1954,14 @@ export default function ExportPage() {
       settings: {
         colorAccent:     accentHex,
         transition:      sGet("transition",        reel.transition        || "Hard Cut") as string,
-        musicUrl:        isSocial ? resolvedMusicUrl : null,
-        musicName:       musicTrackId !== "no-music" ? (MUSIC_TRACK_LABELS[musicTrackId] ?? musicTrackId) : null,
+        musicUrl:        resolvedMusicUrl,  // always pass — both 16:9 and 9:16 support music
+        musicName:       resolvedMusicName,
         statsEnabled:    sGet("statsEnabled", sGet("includeStatsCard", reel.includeStatsCard ?? true)) as boolean,
         jerseyOverlay:   sGet("jerseyOverlay", sGet("showJerseyOverlay", reel.showJerseyOverlay ?? true)) as boolean,
         spotlightStyle:  sGet("spotlightStyle", "none") as string,
       },
       social: isSocial,
+      aspectRatio: isSocial ? "9:16" : "16:9",
     };
 
     // Start Creatomate render
@@ -2026,7 +2049,7 @@ export default function ExportPage() {
     }, 4000);
   };
 
-  const doBuild = async () => {
+  const doBuild = async (forceSocial?: boolean) => {
     setDurationModal(false);
 
     // Try reel.files first; fall back to cliptSettings.clips blobUrls, then clipt_blob_urls
@@ -2101,13 +2124,20 @@ export default function ExportPage() {
     } catch {}
 
     try {
-      const dim = getExportDim(aspectRatio, quality);
+      // Determine format — prefer forceSocial override, then cliptSettings.exportType
+      const canvasSocial = forceSocial !== undefined
+        ? forceSocial
+        : ((settings.exportType as string | undefined) === "social" || aspectRatio === "9:16");
+      const canvasRatio: ExportAspectRatio = canvasSocial ? "9:16" : "16:9";
+      const dim = getExportDim(canvasRatio, quality);
       const fps = getExportFps(quality);
       const bitrate = getExportBitrate(quality);
+      // Resolve music for canvas build — prefer new musicUrl/music fields
+      const canvasMusicId = (settings.music as string | undefined) || sGet("musicTrackId", reel.musicTrackId || "no-music") as string;
       const blob = await buildReel({
         files: buildFiles, clipUrls: buildUrls, info: buildInfo(), accent: accentHex,
         dim, fps, bitrate,
-        musicTrackId: sGet("musicTrackId", reel.musicTrackId || "no-music"),
+        musicTrackId: canvasMusicId,
         transitionStyle: sGet("transition", reel.transition || "Hard Cut"),
         includeStatsCard: sGet("statsEnabled", reel.includeStatsCard) as boolean,
         statsData: (sGet("statsData", reel.statsData) as Record<string,string>) ?? {},
@@ -2137,7 +2167,7 @@ export default function ExportPage() {
       const url = URL.createObjectURL(blob);
       if (blobRef.current) URL.revokeObjectURL(blobRef.current);
       blobRef.current = url; setBlobUrl(url); setBlobMime(blob.type); setPct(100);
-      const builtTrack = sGet("musicTrackId", reel.musicTrackId || "no-music") as string;
+      const builtTrack = canvasMusicId;
       setBuiltMusicTrackId(builtTrack);
       setSelectedMusicTrackId(builtTrack);
       setTimeout(() => {
@@ -2375,8 +2405,10 @@ export default function ExportPage() {
         <div className="rounded-2xl px-5 py-4 flex items-center gap-4" style={cardBase}>
           <div className="flex-1">
             <p className="text-xs text-slate-500 uppercase tracking-widest font-bold mb-0.5">Output Format</p>
-            <p className="text-white font-bold">{aspectRatio} · {quality === "coach" ? "1080p" : "720p"}</p>
-            <p className="text-xs text-slate-500 mt-0.5">{dimInfo.w}×{dimInfo.h} · {getExportFps(quality)}fps</p>
+            <p className="text-white font-bold">
+              {exportTypeSetting === "social" ? "9:16 Vertical — Instagram and TikTok" : "16:9 Landscape — Coach and Email"}
+            </p>
+            <p className="text-xs text-slate-500 mt-0.5">{exportTypeSetting === "social" ? "1080×1920" : "1920×1080"} · {getExportFps(quality)}fps</p>
           </div>
           <button type="button" onClick={() => router.push("/customize")}
             className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
@@ -2436,7 +2468,9 @@ export default function ExportPage() {
               <div className="px-4 py-3">
                 <div className="flex items-center gap-2 mb-1">
                   <span style={{ fontSize: 15 }}>🎵</span>
-                  <span className="text-xs font-bold text-white">{MUSIC_TRACK_LABELS[selectedMusicTrackId] ?? "Music"}</span>
+                  <span className="text-xs font-bold text-white">
+                    {selectedMusicName || MUSIC_TRACK_LABELS[selectedMusicTrackId] || selectedMusicTrackId}
+                  </span>
                   <span className="text-[10px] text-slate-500 ml-auto">selected</span>
                 </div>
                 {device === "ios" ? (
@@ -2494,12 +2528,20 @@ export default function ExportPage() {
           )}
 
           {phase === "idle" && (
-            <button type="button" onClick={handleBuild}
-              className="w-full py-4 rounded-xl font-bold text-base transition-all hover:opacity-90 active:scale-[0.99]"
-              style={{ background: accentHex, color: accentIsWhite ? "#050A14" : "#ffffff" }}>
-              <DownloadIcon />
-              <span style={{ marginLeft: 8 }}>{creatomatAvailable ? "Build Reel (Server)" : "Build Reel"} →</span>
-            </button>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <button type="button" onClick={() => handleBuild(false)}
+                className="w-full py-4 rounded-xl font-bold text-base transition-all hover:opacity-90 active:scale-[0.99] flex items-center justify-center gap-2"
+                style={{ background: accentHex, color: accentIsWhite ? "#050A14" : "#ffffff" }}>
+                <DownloadIcon />
+                Build Coach Reel (16:9)
+              </button>
+              <button type="button" onClick={() => handleBuild(true)}
+                className="w-full py-3.5 rounded-xl font-bold text-sm transition-all hover:opacity-90 active:scale-[0.99] flex items-center justify-center gap-2"
+                style={{ background: "rgba(255,255,255,0.06)", color: "#FFFFFF", border: "1.5px solid rgba(255,255,255,0.12)" }}>
+                <DownloadIcon />
+                Build Social Reel (9:16)
+              </button>
+            </div>
           )}
 
           {phase === "uploading" && (

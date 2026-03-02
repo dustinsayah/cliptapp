@@ -161,6 +161,8 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
   } = input;
 
   const s = height / 1080; // scale factor — all pixel sizes are 1080p references
+  const isVertical = width === 1080 && height === 1920;
+  console.log("CREATOMATE DIMENSIONS:", width, "x", height, "| vertical:", isVertical);
 
   // Normalize clip list — prefer clips[] (has trim + category data), fall back to clipUrls[]
   const clips: ClipInput[] =
@@ -205,9 +207,9 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
     // Background
     { type: "shape", shape: "rectangle", x: "50%", y: "50%", x_anchor: "50%", y_anchor: "50%", width: "100%", height: "100%", fill_color: "#050A14" },
     // Top accent stripe (8px at 1080p)
-    { type: "shape", shape: "rectangle", x: "50%", y: "0%", x_anchor: "50%", y_anchor: "0%", width: "100%", height: Math.round(8 * s), fill_color: accentHex },
+    { type: "shape", shape: "rectangle", x: "50%", y: "0%", x_anchor: "50%", y_anchor: "0%", width: "100%", height: `${Math.round(8 * s)}px`, fill_color: accentHex },
     // Left accent stripe
-    { type: "shape", shape: "rectangle", x: "0%", y: "50%", x_anchor: "0%", y_anchor: "50%", width: Math.round(6 * s), height: "100%", fill_color: accentHex, opacity: 0.4 },
+    { type: "shape", shape: "rectangle", x: "0%", y: "50%", x_anchor: "0%", y_anchor: "50%", width: `${Math.round(6 * s)}px`, height: "100%", fill_color: accentHex, opacity: 0.4 },
     // Athlete full name — large
     {
       type: "text", text: fullName,
@@ -253,7 +255,7 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
   titleEls.push({
     type: "shape", shape: "rectangle",
     x: "6%", y: "64%", x_anchor: "0%", y_anchor: "50%",
-    width: "50%", height: Math.round(1 * s), fill_color: "#1E293B",
+    width: "50%", height: `${Math.max(1, Math.round(1 * s))}px`, fill_color: "#1E293B",
   });
 
   // Email + height on same row
@@ -307,7 +309,7 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
 
     const statCardEls: unknown[] = [
       { type: "shape", shape: "rectangle", x: "50%", y: "50%", x_anchor: "50%", y_anchor: "50%", width: "100%", height: "100%", fill_color: "#050A14" },
-      { type: "shape", shape: "rectangle", x: "50%", y: "0%", x_anchor: "50%", y_anchor: "0%", width: "100%", height: Math.round(6 * s), fill_color: accentHex },
+      { type: "shape", shape: "rectangle", x: "50%", y: "0%", x_anchor: "50%", y_anchor: "0%", width: "100%", height: `${Math.round(6 * s)}px`, fill_color: accentHex },
       {
         type: "text", text: "SEASON STATS",
         x: "50%", y: "11%", x_anchor: "50%", y_anchor: "50%",
@@ -371,7 +373,7 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
         {
           type: "shape", shape: "rectangle",
           x: "0%", y: "50%", x_anchor: "0%", y_anchor: "50%",
-          width: Math.round(6 * s), height: "100%", fill_color: accentHex,
+          width: `${Math.round(6 * s)}px`, height: "100%", fill_color: accentHex,
         },
         {
           type: "text", text: category.toUpperCase(),
@@ -420,13 +422,13 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
           {
             type: "shape", shape: "circle",
             x: "50%", y: "50%", x_anchor: "50%", y_anchor: "50%",
-            width: Math.round(380 * s), height: Math.round(380 * s),
+            width: `${Math.round(380 * s)}px`, height: `${Math.round(380 * s)}px`,
             fill_color: accentHex, opacity: 0.15,
           },
           {
             type: "shape", shape: "circle",
             x: "50%", y: "50%", x_anchor: "50%", y_anchor: "50%",
-            width: Math.round(360 * s), height: Math.round(360 * s),
+            width: `${Math.round(360 * s)}px`, height: `${Math.round(360 * s)}px`,
             fill_color: "#050A14",
           }
         );
@@ -464,8 +466,8 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
             font_weight:        "700",
             fill_color:         accentHex,
             background_color:   "rgba(0,0,0,0.6)",
-            background_x_padding: "10px",
-            background_y_padding: "6px",
+            background_x_padding: "16px",
+            background_y_padding: "8px",
             x:        "5%",
             y:        "90%",
             x_anchor: "0%",
@@ -504,9 +506,9 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
   const endEls: unknown[] = [
     { type: "shape", shape: "rectangle", x: "50%", y: "50%", x_anchor: "50%", y_anchor: "50%", width: "100%", height: "100%", fill_color: "#050A14" },
     // Top accent stripe
-    { type: "shape", shape: "rectangle", x: "50%", y: "0%",   x_anchor: "50%", y_anchor: "0%",   width: "100%", height: Math.round(10 * s), fill_color: accentHex },
+    { type: "shape", shape: "rectangle", x: "50%", y: "0%",   x_anchor: "50%", y_anchor: "0%",   width: "100%", height: `${Math.round(10 * s)}px`, fill_color: accentHex },
     // Bottom accent stripe
-    { type: "shape", shape: "rectangle", x: "50%", y: "100%", x_anchor: "50%", y_anchor: "100%", width: "100%", height: Math.round(10 * s), fill_color: accentHex },
+    { type: "shape", shape: "rectangle", x: "50%", y: "100%", x_anchor: "50%", y_anchor: "100%", width: "100%", height: `${Math.round(10 * s)}px`, fill_color: accentHex },
     // "CONTACT ME"
     {
       type: "text", text: "CONTACT ME",
@@ -534,7 +536,7 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
   endEls.push({
     type: "shape", shape: "rectangle",
     x: "50%", y: "37%", x_anchor: "50%", y_anchor: "50%",
-    width: "60%", height: Math.round(2 * s), fill_color: "#1E293B",
+    width: "60%", height: `${Math.max(1, Math.round(2 * s))}px`, fill_color: "#1E293B",
   });
 
   // Position · Sport
