@@ -51,13 +51,16 @@ const MUSIC_TRACK_LABELS: Record<string, string> = {
   "nba-warmup":    "NBA Warmup",      "epic-sport":   "Epic Sport",     "motivational":  "Motivational",
   "trap":          "Trap Instrumental","championship": "Championship",  "upload":        "Your Track",
   "custom":        "Your Track",
+  // New tracks from customize page
+  "hype-1": "Hype Mode", "hype-2": "Game Time", "hype-3": "Champion",
+  "hype-4": "Grind Season", "hype-5": "Beast Mode",
   // Legacy Mixkit tracks
   "playoff-mode":  "Playoff Mode",    "game-time":    "Game Time",      "court-vision":  "Court Vision",
   "espn-feature":  "ESPN Feature",    "rise-up":      "Rise Up",        "legacy":        "Legacy",
   "the-journey":   "The Journey",     "triumph":      "Triumph",        "trap-god":      "Trap God",
   "drill-season":  "Drill Season",    "ice-cold":     "Ice Cold",       "street-ball":   "Street Ball",
   "pressure":      "Pressure",        "focus":        "Focus",          "late-night":    "Late Night",
-  "smooth":        "Smooth",          "crowd-noise":  "Crowd Noise",
+  "smooth":        "Smooth",
 };
 
 // ── Music track URL map ────────────────────────────────────────────────────────
@@ -85,7 +88,12 @@ const MUSIC_TRACK_URLS: Record<string, string | undefined> = {
   "focus":         "https://assets.mixkit.co/music/282/282.mp3",
   "late-night":    "https://assets.mixkit.co/music/297/297.mp3",
   "smooth":        "https://assets.mixkit.co/music/315/315.mp3",
-  "crowd-noise":   "https://assets.mixkit.co/music/562/562.mp3",
+  // New Pixabay hype tracks
+  "hype-1": "https://cdn.pixabay.com/audio/2023/06/19/audio_d1718ab8c5.mp3",
+  "hype-2": "https://cdn.pixabay.com/audio/2022/10/25/audio_73b75c0925.mp3",
+  "hype-3": "https://cdn.pixabay.com/audio/2023/04/07/audio_c8f6e4aced.mp3",
+  "hype-4": "https://cdn.pixabay.com/audio/2022/11/09/audio_3d5b4c73d9.mp3",
+  "hype-5": "https://cdn.pixabay.com/audio/2023/02/28/audio_99a0a8b8e8.mp3",
 };
 
 // ── Canvas Font Map ────────────────────────────────────────────────────────────
@@ -166,55 +174,6 @@ function isLightColor(hex: string): boolean {
   return (0.299*r + 0.587*g + 0.114*b) > 0.6;
 }
 
-// ── Coach Ready Score ─────────────────────────────────────────────────────────
-
-interface ScoreItem {
-  label: string;
-  delta: number; // negative = deduction, positive = bonus
-  applies: boolean;
-  fix?: string;
-}
-
-interface CoachScore {
-  score: number;
-  grade: string;
-  gradeLabel: string;
-  bonuses: ScoreItem[];
-  deductions: ScoreItem[];
-}
-
-function calcCoachReadyScore(reel: {
-  reelLength: number; sport: string; musicTrackId: string; includeStatsCard: boolean;
-  gradYear: string; heightFt: string; weight: string; email: string; gpa: string;
-  fontStyle: string; transition: string; firstName: string; school: string;
-  position: string; jerseyNumber: string;
-}): CoachScore {
-  const sportCfg = (() => { try { const { SPORTS_CONFIG } = require("@/lib/sportsConfig"); return SPORTS_CONFIG[reel.sport]; } catch { return null; } })();
-  const sportMax = sportCfg?.recommendedLength?.max ?? (reel.sport === "Basketball" ? 4 : 5);
-
-  const deductions: ScoreItem[] = [
-    { label: "Reel over recommended length", delta: -20, applies: reel.reelLength > sportMax, fix: `Reduce to ${sportMax} min or less in Reel Duration settings` },
-    { label: "Missing graduation year", delta: -15, applies: !reel.gradYear, fix: "Add your Class of year in Reel Info" },
-    { label: "Missing height or weight", delta: -10, applies: !reel.heightFt || !reel.weight, fix: "Add your measurables in Reel Info" },
-    { label: "Missing email address", delta: -10, applies: !reel.email, fix: "Add your email in Reel Info — coaches need a way to contact you" },
-    { label: "No stats card included", delta: -10, applies: !reel.includeStatsCard, fix: "Enable Stats Card in the Stats System section" },
-    { label: "Missing GPA", delta: -10, applies: !reel.gpa, fix: "Add your GPA in Reel Info — coaches factor academics heavily" },
-    { label: "Non-Hard Cut transitions slow down viewing", delta: -5, applies: reel.transition !== "Hard Cut", fix: "Switch to Hard Cut in Color & Style" },
-    { label: "Font not coach-standard (Modern or Clean)", delta: -5, applies: !["Modern","Clean"].includes(reel.fontStyle), fix: "Switch to Modern or Clean font in Color & Style" },
-  ];
-
-  const bonuses: ScoreItem[] = [];
-
-  let score = 100;
-  deductions.forEach((d) => { if (d.applies) score += d.delta; });
-  score = Math.max(0, Math.min(100, score));
-
-  const grade = score >= 90 ? "A" : score >= 80 ? "B" : score >= 70 ? "C" : "D";
-  const gradeLabel = score >= 90 ? "Coach Ready" : score >= 80 ? "Strong Reel" : score >= 70 ? "Needs Work" : "Missing Key Info";
-
-  return { score, grade, gradeLabel, bonuses, deductions };
-}
-
 // ── Reel Comparison Benchmarks ─────────────────────────────────────────────────
 
 interface PosBenchmark { avgReelMin: number; idealClips: [number, number]; avgGpa: number; topClips: string }
@@ -249,7 +208,7 @@ function getBenchmark(sport: string, position: string): PosBenchmark | null {
 
 // ── Recruiting Card Canvas ─────────────────────────────────────────────────────
 
-async function drawRecruitingCard(info: TitleInfo, accentHex: string): Promise<string> {
+async function drawRecruitingCard(info: TitleInfo, accentHex: string, renderUrl?: string | null): Promise<string> {
   const W = 1200, H = 630;
   const canvas = document.createElement("canvas");
   canvas.width = W; canvas.height = H;
@@ -326,9 +285,10 @@ async function drawRecruitingCard(info: TitleInfo, accentHex: string): Promise<s
     ctx.restore();
   });
 
-  // Real QR code pointing to cliptapp.com
+  // QR code — points to renderUrl (Creatomate MP4) if available, else cliptapp.com
+  const qrTarget = renderUrl || "https://cliptapp.com";
   try {
-    const qrDataUrl = await QRCode.toDataURL("https://cliptapp.com", {
+    const qrDataUrl = await QRCode.toDataURL(qrTarget, {
       width: 128,
       margin: 1,
       color: { dark: "#FFFFFF", light: "#00000000" },
@@ -1387,7 +1347,6 @@ async function buildReel(cfg: BuildConfig): Promise<Blob> {
   const musicUrl = musicTrackId === "custom"
     ? (() => { try { return localStorage.getItem("clipt_custom_music_url") || undefined; } catch { return undefined; } })()
     : MUSIC_TRACK_URLS[musicTrackId];
-  const isCrowdNoise = musicTrackId === "crowd-noise";
   if (musicUrl) {
     try {
       audioCtx = new AudioContext();
@@ -1399,7 +1358,7 @@ async function buildReel(cfg: BuildConfig): Promise<Blob> {
       const src  = audioCtx.createBufferSource();
       src.buffer = buf; src.loop = true;
       gainNode   = audioCtx.createGain();
-      const targetVol = isCrowdNoise ? 0.15 : 0.4;
+      const targetVol = 0.4;
       gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
       gainNode.gain.linearRampToValueAtTime(targetVol, audioCtx.currentTime + 2);
       audioDest = audioCtx.createMediaStreamDestination();
@@ -1674,7 +1633,6 @@ export default function ExportPage() {
   const blobRef   = useRef<string | null>(null);
 
   // Proprietary feature state
-  const [showCoachScore, setShowCoachScore] = useState(false);
   const [showComparison, setShowComparison] = useState(false);
   const [recruitingCardUrl, setRecruitingCardUrl] = useState<string | null>(null);
   const [generatingCard, setGeneratingCard] = useState(false);
@@ -2209,7 +2167,7 @@ export default function ExportPage() {
   const handleGenerateRecruitingCard = async () => {
     setGeneratingCard(true);
     try {
-      const dataUrl = await drawRecruitingCard(buildInfo(), accentHex);
+      const dataUrl = await drawRecruitingCard(buildInfo(), accentHex, renderUrl);
       setRecruitingCardUrl(dataUrl);
       const a = document.createElement("a");
       a.href = dataUrl; a.download = `${baseName}-recruiting-card.png`; a.style.display = "none";
@@ -2427,12 +2385,18 @@ export default function ExportPage() {
             ✓ Auto-Optimized For Coaches
           </p>
           <div className="grid grid-cols-2 gap-2">
-            {[
-              { label: "Transitions",  value: "Hard Cuts",        reason: "Coaches prefer no distractions" },
-              { label: "Music",        value: "Off by default",   reason: "98% of coaches watch on mute" },
-              { label: "Format",       value: "1920×1080 16:9",   reason: "Coach email & Hudl compatible" },
-              { label: "Quality",      value: "Maximum",          reason: "H.264 High · 60fps · 100 quality" },
-            ].map((row) => (
+            {(() => {
+              const musicLabel = selectedMusicTrackId && selectedMusicTrackId !== "no-music"
+                ? (selectedMusicName || MUSIC_TRACK_LABELS[selectedMusicTrackId] || selectedMusicTrackId)
+                : null;
+              return [
+                { label: "Transitions",       value: "Hard Cuts",  reason: "Coaches prefer no distractions" },
+                { label: "Player Spotlight",   value: "ON",         reason: "Circle identifies you in every clip", green: true },
+                { label: "Format",             value: exportTypeSetting === "social" ? "9:16 Vertical" : "1920×1080 16:9", reason: "Coach email & Hudl compatible" },
+                { label: "Quality",            value: "Maximum",    reason: "H.264 High · 60fps · 100 quality" },
+                ...(musicLabel ? [{ label: "Music", value: musicLabel, reason: "Selected track will be mixed in", green: true }] : []),
+              ];
+            })().map((row) => (
               <div key={row.label} className="flex items-start gap-2">
                 <span className="text-xs font-bold mt-0.5" style={{ color: "#22C55E" }}>✓</span>
                 <div>
@@ -2556,20 +2520,12 @@ export default function ExportPage() {
           )}
 
           {phase === "idle" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <button type="button" onClick={() => handleBuild(false)}
-                className="w-full py-4 rounded-xl font-bold text-base transition-all hover:opacity-90 active:scale-[0.99] flex items-center justify-center gap-2"
-                style={{ background: accentHex, color: accentIsWhite ? "#050A14" : "#ffffff" }}>
-                <DownloadIcon />
-                Build Coach Reel (16:9)
-              </button>
-              <button type="button" onClick={() => handleBuild(true)}
-                className="w-full py-3.5 rounded-xl font-bold text-sm transition-all hover:opacity-90 active:scale-[0.99] flex items-center justify-center gap-2"
-                style={{ background: "rgba(255,255,255,0.06)", color: "#FFFFFF", border: "1.5px solid rgba(255,255,255,0.12)" }}>
-                <DownloadIcon />
-                Build Social Reel (9:16)
-              </button>
-            </div>
+            <button type="button" onClick={() => handleBuild()}
+              className="w-full py-4 rounded-xl font-bold text-base transition-all hover:opacity-90 active:scale-[0.99] flex items-center justify-center gap-2"
+              style={{ background: accentHex, color: accentIsWhite ? "#050A14" : "#ffffff" }}>
+              <DownloadIcon />
+              Build My Reel →
+            </button>
           )}
 
           {phase === "uploading" && (
@@ -2860,106 +2816,6 @@ export default function ExportPage() {
           );
         })()}
 
-        {/* ── COACH READY SCORE ── */}
-        {(() => {
-          const _info = buildInfo();
-          let _settings: Record<string, unknown> = {};
-          try { _settings = JSON.parse(localStorage.getItem("cliptSettings") || "{}"); } catch {}
-          const scoreData = calcCoachReadyScore({
-            reelLength: reel.reelLength || 3,
-            sport: _info.sport || reel.sport || "",
-            musicTrackId: (typeof _settings.musicTrackId === "string" ? _settings.musicTrackId : null) || reel.musicTrackId || "no-music",
-            includeStatsCard: (typeof _settings.statsEnabled === "boolean" ? _settings.statsEnabled : null) ?? reel.includeStatsCard,
-            gradYear: _info.gradYear || reel.gradYear || "",
-            heightFt: _info.heightFt || reel.heightFt || "",
-            weight: _info.weight || reel.weight || "",
-            email: _info.email || reel.email || "",
-            gpa: _info.gpa || reel.gpa || "",
-            fontStyle: (typeof _settings.fontStyle === "string" ? _settings.fontStyle : null) || reel.fontStyle || "Modern",
-            transition: (typeof _settings.transition === "string" ? _settings.transition : null) || reel.transition || "Hard Cut",
-            firstName: _info.firstName || reel.firstName || "",
-            school: _info.school || reel.school || "",
-            position: _info.position || reel.position || "",
-            jerseyNumber: _info.jerseyNumber || reel.jerseyNumber || "",
-          });
-          const gradeColor = scoreData.score >= 90 ? "#22C55E" : scoreData.score >= 80 ? "#00A3FF" : scoreData.score >= 70 ? "#F59E0B" : "#EF4444";
-          const circumference = 2 * Math.PI * 44;
-          const dash = (scoreData.score / 110) * circumference;
-          return (
-            <div className="rounded-2xl p-5" style={cardBase}>
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <p className="text-sm font-bold text-white mb-0.5">Coach Ready Score</p>
-                  <p className="text-xs text-slate-500">How professional does your reel look to coaches?</p>
-                </div>
-                <button type="button" onClick={() => setShowCoachScore((o) => !o)}
-                  className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
-                  style={{ background: `${accentHex}14`, color: accentHex, border: `1px solid ${accentHex}30` }}>
-                  {showCoachScore ? "Hide" : "Show Details"}
-                </button>
-              </div>
-
-              {/* Score circle + grade */}
-              <div className="flex items-center gap-6 mb-4">
-                <div className="relative shrink-0" style={{ width: 100, height: 100 }}>
-                  <svg width="100" height="100" viewBox="0 0 100 100">
-                    <circle cx="50" cy="50" r="44" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="8" />
-                    <circle cx="50" cy="50" r="44" fill="none" stroke={gradeColor} strokeWidth="8"
-                      strokeDasharray={`${dash} ${circumference}`} strokeDashoffset={circumference * 0.25}
-                      strokeLinecap="round" style={{ transition: "stroke-dasharray 0.5s ease", filter: `drop-shadow(0 0 6px ${gradeColor}60)` }} />
-                  </svg>
-                  <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-                    <span style={{ fontSize: 28, fontWeight: 900, color: gradeColor, lineHeight: 1 }}>{scoreData.grade}</span>
-                    <span style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{scoreData.score}/100</span>
-                  </div>
-                </div>
-                <div>
-                  <p className="text-lg font-black text-white mb-1">{scoreData.gradeLabel}</p>
-                  <div className="flex flex-col gap-1">
-                    {scoreData.bonuses.filter((b) => b.applies).map((b, i) => (
-                      <div key={i} className="flex items-center gap-2 text-xs text-green-400">
-                        <span style={{ fontSize: 10 }}>✓</span> {b.label}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {showCoachScore && (
-                <div className="flex flex-col gap-3">
-                  {scoreData.deductions.filter((d) => d.applies).length > 0 && (
-                    <div>
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">What&apos;s Hurting Your Score</p>
-                      <div className="flex flex-col gap-2">
-                        {scoreData.deductions.filter((d) => d.applies).map((d, i) => (
-                          <div key={i} className="rounded-lg px-3 py-2.5" style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.2)" }}>
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="text-xs font-semibold text-red-400">{d.label}</span>
-                              <span className="text-xs font-bold text-red-400">{d.delta}</span>
-                            </div>
-                            {d.fix && <p className="text-[10px] text-slate-500 leading-snug">→ {d.fix}</p>}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {scoreData.deductions.filter((d) => !d.applies).length > 0 && (
-                    <div>
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">What&apos;s Looking Good</p>
-                      <div className="flex flex-col gap-1.5">
-                        {scoreData.deductions.filter((d) => !d.applies).map((d, i) => (
-                          <div key={i} className="flex items-center gap-2 text-xs text-green-400 pl-1">
-                            <span style={{ fontSize: 10 }}>✓</span> {d.label.replace("Missing ", "Has ")}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })()}
 
         {/* ── 9:16 SMART CROP (social vertical export) ── */}
         {aspectRatio === "9:16" && (
