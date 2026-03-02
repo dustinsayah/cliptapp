@@ -205,7 +205,6 @@ function isValidHex(str: string): boolean {
 // Returns a hex string — FALLBACK_HEX for empty input, null for no match
 function textToHex(text: string | null | undefined): string | null {
   try {
-    // Guard: empty or nullish input → return fallback so swatch stays visible
     const clean = (text ?? "").trim().toLowerCase();
     if (!clean) return FALLBACK_HEX;
 
@@ -220,7 +219,7 @@ function textToHex(text: string | null | undefined): string | null {
     if (COLOR_MAP[resolved]) return COLOR_MAP[resolved];
     if (COLOR_MAP[clean]) return COLOR_MAP[clean];
 
-    // Partial/fuzzy match — find best match
+    // Partial/fuzzy match
     const matches = fuzzyMatches(clean);
     if (matches.length > 0) return COLOR_MAP[matches[0].name];
 
@@ -288,7 +287,6 @@ interface JerseyColorInputProps {
 }
 
 export default function JerseyColorInput({ value, onChange, label = "Jersey Color", required = false }: JerseyColorInputProps) {
-  // Text the user typed (display name)
   const [text, setText] = useState<string>(() => {
     try {
       if (!value || !value.trim()) return "";
@@ -301,8 +299,6 @@ export default function JerseyColorInput({ value, onChange, label = "Jersey Colo
 
   const [suggestions, setSuggestions]   = useState<ColorMatch[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
-  // detectedHex = null means "nothing typed" (shows "Type a color name above")
-  // detectedHex = FALLBACK_HEX means field is empty (swatch shows gray)
   const [detectedHex, setDetectedHex]   = useState<string | null>(() => {
     try {
       return (value && isValidHex(value)) ? value : null;
@@ -311,6 +307,7 @@ export default function JerseyColorInput({ value, onChange, label = "Jersey Colo
     }
   });
 
+  // Stable outer container ref — never changes
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef     = useRef<HTMLInputElement>(null);
 
@@ -318,22 +315,25 @@ export default function JerseyColorInput({ value, onChange, label = "Jersey Colo
     return (s || "").replace(/\b\w/g, (c) => c.toUpperCase());
   }
 
-  const handleTextChange = useCallback((raw: string) => {
-    setText(raw);
+  // Whether the dropdown should actually be visible
+  const dropdownVisible = showDropdown && text.trim().length > 0 && suggestions.length > 0;
 
+  const handleTextChange = useCallback((raw: string) => {
+    // Entire handler wrapped in try/catch — never throws
     try {
+      setText(raw);
+
       const clean = (raw ?? "").trim().toLowerCase();
 
-      // ── Empty field: reset to gray, never pass "" to parent ──────────────
       if (!clean) {
         setSuggestions([]);
-        setDetectedHex(null);   // null = show "Type a color name above" in UI
+        setDetectedHex(null);
         setShowDropdown(false);
-        onChange(FALLBACK_HEX); // always emit a valid color, never empty string
+        onChange(FALLBACK_HEX);
         return;
       }
 
-      // ── Direct hex input ─────────────────────────────────────────────────
+      // Direct hex input
       if (isValidHex(raw.trim()) || /^[0-9a-f]{6}$/i.test(raw.trim())) {
         const hex = isValidHex(raw.trim()) ? raw.trim().toUpperCase() : `#${raw.trim().toUpperCase()}`;
         setDetectedHex(hex);
@@ -343,18 +343,16 @@ export default function JerseyColorInput({ value, onChange, label = "Jersey Colo
         return;
       }
 
-      // ── Name/alias lookup ────────────────────────────────────────────────
+      // Name/alias lookup
       const hex = textToHex(clean);
       setDetectedHex(hex);
       if (hex) onChange(hex);
 
-      // Show dropdown only when input is non-empty and has matches
       const matches = fuzzyMatches(clean);
       setSuggestions(matches);
       setShowDropdown(matches.length > 0);
 
     } catch {
-      // If anything throws, fall back silently
       setSuggestions([]);
       setDetectedHex(null);
       setShowDropdown(false);
@@ -374,7 +372,7 @@ export default function JerseyColorInput({ value, onChange, label = "Jersey Colo
     }
   }, [onChange]);
 
-  // Close dropdown on outside click
+  // Close dropdown on outside click — no direct DOM manipulation, just state
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
@@ -385,28 +383,15 @@ export default function JerseyColorInput({ value, onChange, label = "Jersey Colo
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // ── Safe swatch color: never empty string, never undefined ───────────────
+  // ── Safe derived values ───────────────────────────────────────────────────
   const swatchColor = (() => {
     try {
-      // detectedHex is null when field is empty → show gray
-      if (!detectedHex || !detectedHex.trim()) return FALLBACK_HEX;
-      return detectedHex;
+      return (!detectedHex || !detectedHex.trim()) ? FALLBACK_HEX : detectedHex;
     } catch {
       return FALLBACK_HEX;
     }
   })();
 
-  const swatchIsLight = (() => {
-    try {
-      const rgb = hexToRgb(swatchColor);
-      if (!rgb) return false;
-      return (rgb.r * 0.299 + rgb.g * 0.587 + rgb.b * 0.114) > 186;
-    } catch {
-      return false;
-    }
-  })();
-
-  // Safe box-shadow: only build the CSS string when we have a valid color
   const boxShadow = (() => {
     try {
       return detectedHex ? `0 0 12px ${swatchColor}55` : "none";
@@ -415,6 +400,7 @@ export default function JerseyColorInput({ value, onChange, label = "Jersey Colo
     }
   })();
 
+  // ── Single stable outer div — never unmounts ─────────────────────────────
   return (
     <div ref={containerRef} className="relative">
       {label && (
@@ -448,7 +434,6 @@ export default function JerseyColorInput({ value, onChange, label = "Jersey Colo
             value={text}
             onChange={(e) => handleTextChange(e.target.value)}
             onFocus={() => {
-              // Only show dropdown if field is non-empty and has suggestions
               if (text.trim() && suggestions.length > 0) setShowDropdown(true);
             }}
             placeholder="Type your jersey color (e.g. royal blue, red, black)"
@@ -467,46 +452,49 @@ export default function JerseyColorInput({ value, onChange, label = "Jersey Colo
         </div>
       </div>
 
-      {/* Hex display — shows "Type a color name above" when field is empty */}
+      {/* Hex display */}
       <p className="text-xs mt-1.5 ml-1" style={{ color: "#64748b" }}>
         {detectedHex
-          ? <>Detected: <span className="font-mono" style={{ color: "#94a3b8" }}>{detectedHex}</span></>
+          ? <><span>Detected: </span><span className="font-mono" style={{ color: "#94a3b8" }}>{detectedHex}</span></>
           : "Type a color name above"
         }
       </p>
 
-      {/* Suggestion dropdown — only shown when text is non-empty AND has suggestions */}
-      {showDropdown && text.trim().length > 0 && suggestions.length > 0 && (
-        <div
-          className="absolute left-0 right-0 rounded-xl z-50 overflow-hidden"
-          style={{
-            top: "calc(100% - 12px)",
-            background: "#0A1628",
-            border: "1px solid rgba(255,255,255,0.12)",
-            boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
-          }}
-        >
-          {suggestions.map((match) => (
-            <button
-              key={match.name}
-              type="button"
-              onMouseDown={(e) => { e.preventDefault(); selectSuggestion(match); }}
-              className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-left hover:bg-white/5 transition-colors"
-            >
-              <div
-                className="shrink-0 rounded-md border border-white/15"
-                style={{
-                  width: 28, height: 28,
-                  background: match.hex || FALLBACK_HEX,
-                  flexShrink: 0,
-                }}
-              />
-              <span className="text-white">{capitalize(match.name)}</span>
-              <span className="ml-auto font-mono text-xs text-slate-500">{match.hex}</span>
-            </button>
-          ))}
-        </div>
-      )}
+      {/*
+        Dropdown — ALWAYS rendered in the DOM, visibility controlled by CSS only.
+        Never conditionally mount/unmount — that causes removeChild reconciliation crashes.
+      */}
+      <div
+        className="absolute left-0 right-0 rounded-xl z-50 overflow-hidden"
+        style={{
+          display: dropdownVisible ? "block" : "none",
+          top: "calc(100% - 12px)",
+          background: "#0A1628",
+          border: "1px solid rgba(255,255,255,0.12)",
+          boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+        }}
+      >
+        {suggestions.map((match) => (
+          <button
+            key={match.name}
+            type="button"
+            onMouseDown={(e) => { e.preventDefault(); selectSuggestion(match); }}
+            className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-left hover:bg-white/5 transition-colors"
+          >
+            <div
+              className="shrink-0 rounded-md border border-white/15"
+              style={{
+                width: 28,
+                height: 28,
+                background: match.hex || FALLBACK_HEX,
+                flexShrink: 0,
+              }}
+            />
+            <span className="text-white">{capitalize(match.name)}</span>
+            <span className="ml-auto font-mono text-xs text-slate-500">{match.hex}</span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
