@@ -49,6 +49,10 @@ export async function uploadToCloudinary(
   formData.append("file", blob);
   formData.append("upload_preset", UPLOAD_PRESET);
   formData.append("resource_type", "video");
+  // Preserve original quality — disable Cloudinary's lossy compression
+  formData.append("quality", "100");
+  formData.append("video_codec", "auto");
+  formData.append("audio_codec", "aac");
 
   const uploadUrl = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/video/upload`;
 

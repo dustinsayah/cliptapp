@@ -1822,13 +1822,34 @@ export default function ExportPage() {
     setRenderUrl(null);
     setBuiltMusicTrackId("");
 
-    // Gather clip sources
+    // Read per-clip data (trim, duration, blob URLs) from cliptSettings
+    let settingsClips: Array<{
+      blobUrl?: string; trimStart?: number; trimEnd?: number;
+      duration?: number; textOverlay?: string; starred?: boolean;
+    }> = [];
+    try {
+      const raw = localStorage.getItem("cliptSettings");
+      if (raw) {
+        const s = JSON.parse(raw);
+        if (Array.isArray(s.clips)) settingsClips = s.clips;
+      }
+    } catch {}
+
+    // Gather clip sources — prefer reel.files, then settingsClips blobUrls, then stored blob URLs
     let sources: Array<File | string> = reel.files.length > 0 ? reel.files : [];
     if (sources.length === 0) {
-      try {
-        const blobUrls = JSON.parse(localStorage.getItem("clipt_blob_urls") || "[]") as string[];
-        if (blobUrls.length > 0) sources = blobUrls;
-      } catch {}
+      const clipBlobUrls = settingsClips.map(c => c.blobUrl).filter(Boolean) as string[];
+      if (clipBlobUrls.length > 0) {
+        sources = clipBlobUrls;
+      } else {
+        try {
+          const stored = localStorage.getItem("clipt_blob_urls");
+          if (stored) {
+            const parsed: string[] = JSON.parse(stored);
+            if (parsed.length > 0) sources = parsed;
+          }
+        } catch {}
+      }
     }
     if (sources.length === 0) {
       setErrMsg("No clips found — go back and upload your clips first."); setPhase("error"); setIsCreatomateRender(false); return;
@@ -1839,7 +1860,7 @@ export default function ExportPage() {
     try {
       const { uploadClipsToCloudinary } = await import("@/lib/cloudinaryUpload");
       publicUrls = await uploadClipsToCloudinary(sources, (pct, label) => {
-        setPct(Math.round(pct * 0.35)); // 0-35% for upload phase
+        setPct(Math.round(pct * 0.35)); // 0–35% for upload phase
         setStep(label);
       });
     } catch (uploadErr) {
@@ -1849,7 +1870,7 @@ export default function ExportPage() {
 
     if (abortRef.current) { setPhase("idle"); setIsCreatomateRender(false); return; }
 
-    // Read settings
+    // Read all settings from cliptSettings
     let settings: Record<string, unknown> = {};
     try { settings = JSON.parse(localStorage.getItem("cliptSettings") || "{}"); } catch {}
     const sGet = <T,>(key: string, fallback: T): T => {
@@ -1862,18 +1883,62 @@ export default function ExportPage() {
       ? (() => { try { return localStorage.getItem("clipt_custom_music_url") || undefined; } catch { return undefined; } })()
       : MUSIC_TRACK_URLS[musicTrackId]);
 
-    const reelInput = {
-      firstName: info.firstName, jerseyNumber: info.jerseyNumber,
-      sport: info.sport, school: info.school, position: info.position,
-      gradYear: info.gradYear, email: info.email,
-      coachName: info.coachName, coachEmail: info.coachEmail,
-      statsData: info.statsData,
-      clipUrls: publicUrls,
-      musicUrl,
-      accentHex,
-      width: aspectRatio === "9:16" ? 1080 : 1920,
-      height: aspectRatio === "9:16" ? 1920 : 1080,
-      transitionStyle: sGet("transition", reel.transition || "Hard Cut") as string,
+    // Build clips array with trim + category data
+    const clipsWithTrim = publicUrls.map((url, i) => ({
+      url,
+      duration:      settingsClips[i]?.duration      ?? undefined,
+      trimStart:     settingsClips[i]?.trimStart      ?? 0,
+      trimEnd:       settingsClips[i]?.trimEnd        ?? undefined,
+      skillCategory: (settingsClips[i] as { skillCategory?: string })?.skillCategory ?? undefined,
+    }));
+
+    // Read new cliptSettings fields (titleCard object saved by new customize page)
+    const tc = (settings.titleCard as Record<string, string> | undefined) ?? {};
+
+    // Determine music — prefer cliptSettings.musicUrl (set by new customize page), fall back to legacy
+    const settingsMusicUrl = (settings.musicUrl as string | null) ?? null;
+    const legacyMusicUrl   = musicTrackId === "no-music" ? undefined : (musicTrackId === "custom"
+      ? (() => { try { return localStorage.getItem("clipt_custom_music_url") || undefined; } catch { return undefined; } })()
+      : MUSIC_TRACK_URLS[musicTrackId]);
+    const resolvedMusicUrl = settingsMusicUrl || legacyMusicUrl || null;
+
+    // Social flag — prefer exportType from cliptSettings, fall back to aspect ratio
+    const settingsExportType = (settings.exportType as string | undefined);
+    const isSocial = settingsExportType === "social" || aspectRatio === "9:16";
+
+    // Full structured payload — every field passed explicitly
+    const renderPayload = {
+      clips: clipsWithTrim,
+      titleCard: {
+        firstName:    tc.firstName    || info.firstName,
+        lastName:     tc.lastName     || "",
+        jerseyNumber: tc.jerseyNumber || info.jerseyNumber,
+        position:     tc.position     || info.position,
+        sport:        tc.sport        || info.sport,
+        school:       tc.school       || info.school,
+        gradYear:     tc.gradYear     || info.gradYear,
+        email:        tc.email        || info.email,
+        coachName:    tc.coachName    || info.coachName,
+        coachEmail:   tc.coachEmail   || info.coachEmail,
+        // New fields from customize page
+        phone:        tc.phone        || "",
+        heightFt:     tc.heightFt     || "",
+        heightIn:     tc.heightIn     || "",
+        clubTeam:     tc.clubTeam     || "",
+        city:         tc.city         || "",
+        state:        tc.state        || "",
+      },
+      stats:    info.statsData || (settings.stats as Record<string, string>) || {},
+      settings: {
+        colorAccent:     accentHex,
+        transition:      sGet("transition",        reel.transition        || "Hard Cut") as string,
+        musicUrl:        isSocial ? resolvedMusicUrl : null,
+        musicName:       musicTrackId !== "no-music" ? (MUSIC_TRACK_LABELS[musicTrackId] ?? musicTrackId) : null,
+        statsEnabled:    sGet("statsEnabled", sGet("includeStatsCard", reel.includeStatsCard ?? true)) as boolean,
+        jerseyOverlay:   sGet("jerseyOverlay", sGet("showJerseyOverlay", reel.showJerseyOverlay ?? true)) as boolean,
+        spotlightStyle:  sGet("spotlightStyle", "none") as string,
+      },
+      social: isSocial,
     };
 
     // Start Creatomate render
@@ -1886,7 +1951,7 @@ export default function ExportPage() {
       const resp = await fetch("/api/render-reel", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reelInput, social: aspectRatio === "9:16" }),
+        body: JSON.stringify(renderPayload),
       });
       const data = await resp.json();
       if (!resp.ok || !data.renderId) {
