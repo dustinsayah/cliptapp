@@ -581,48 +581,80 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
 
     const clipStartTime = currentTime;
 
-    // Video element — cover fill, crop biased to upper 35% to keep faces in frame
+    // Landscape: fit "contain" so vertical source clips letterbox with black bars.
+    // Vertical social 9:16: fit "cover" so vertical clips fill the frame perfectly.
+    const videoFit    = isVertical ? "cover"  : "contain";
+    const videoYAnch  = isVertical ? "35%"    : "50%";
+
     const videoBase: Record<string, unknown> = {
       type:       "video",
       source:     clip.url,
       trim_start: trimStart,
       volume:     "0%",
-      fit:        "cover",
+      fit:        videoFit,
       x_anchor:   "50%",
-      y_anchor:   "35%",
+      y_anchor:   videoYAnch,
+    };
+
+    // Black letterbox bars — always fill the composition background for landscape.
+    // For vertical social the video already fills the frame so no bars are needed.
+    const blackBg: Record<string, unknown> = {
+      type:      "shape",
+      shape:     "rectangle",
+      fill_color: "#000000",
+      width:     "100%",
+      height:    "100%",
+      x:         "50%",
+      y:         "50%",
+      x_anchor:  "50%",
+      y_anchor:  "50%",
     };
 
     let clipEl: Record<string, unknown>;
 
     if (jerseyOverlay && jerseyNumber) {
-      // Wrap in composition so jersey text overlays the video
+      // Composition: [black bg if landscape] + video + jersey number text overlay
+      const innerEls: unknown[] = [];
+      if (!isVertical) innerEls.push(blackBg);
+      innerEls.push({ ...videoBase, width: "100%", height: "100%" });
+      innerEls.push({
+        type:                 "text",
+        text:                 `#${jerseyNumber}`,
+        font_family:          "Oswald",
+        font_size:            Math.round(48 * s),
+        font_weight:          "700",
+        fill_color:           accentHex,
+        background_color:     "rgba(0,0,0,0.6)",
+        background_x_padding: "3%",
+        background_y_padding: "2%",
+        x:            "5%",
+        y:            "90%",
+        x_anchor:     "0%",
+        y_anchor:     "50%",
+        shadow_color: "rgba(0,0,0,0)",
+        shadow_blur:  0,
+      });
+      clipEl = {
+        type:     "composition",
+        track:    1,
+        time:     clipStartTime,
+        duration: trimDuration,
+        elements: innerEls,
+      };
+    } else if (!isVertical) {
+      // Landscape with no jersey overlay: wrap in composition so black bars show
       clipEl = {
         type:     "composition",
         track:    1,
         time:     clipStartTime,
         duration: trimDuration,
         elements: [
+          blackBg,
           { ...videoBase, width: "100%", height: "100%" },
-          {
-            type:                 "text",
-            text:                 `#${jerseyNumber}`,
-            font_family:          "Oswald",
-            font_size:            Math.round(48 * s),
-            font_weight:          "700",
-            fill_color:           accentHex,
-            background_color:     "rgba(0,0,0,0.6)",
-            background_x_padding: "3%",
-            background_y_padding: "2%",
-            x:            "5%",
-            y:            "90%",
-            x_anchor:     "0%",
-            y_anchor:     "50%",
-            shadow_color: "rgba(0,0,0,0)",
-            shadow_blur:  0,
-          },
         ],
       };
     } else {
+      // Vertical social: plain video fills frame — no composition needed
       clipEl = {
         ...videoBase,
         track:    1,
@@ -883,9 +915,12 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
     codec:         "h264",
     audio_codec:   "aac",
     quality:       100,
+    h264_profile:  "high",
+    h264_level:    "4.2",
+    pixel_format:  "yuv420p",
     width,
     height,
-    frame_rate:    30,
+    frame_rate:    60,
     elements,
   };
 }

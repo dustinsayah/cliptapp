@@ -259,20 +259,30 @@ interface SectionCardProps {
   number: number; title: string; subtitle: string;
   open: boolean; onToggle: () => void;
   accentHex: string; children: React.ReactNode;
+  tipBadge?: { text: string; color: string };
 }
 
-function SectionCard({ number, title, subtitle, open, onToggle, accentHex, children }: SectionCardProps) {
+function SectionCard({ number, title, subtitle, open, onToggle, accentHex, children, tipBadge }: SectionCardProps) {
   return (
     <div style={{ background: "#0A1628", borderRadius: 16, overflow: "hidden", borderLeft: `3px solid ${open ? accentHex : "rgba(255,255,255,0.06)"}`, transition: "border-color 0.2s ease" }}>
       <button type="button" onClick={onToggle} style={{ width: "100%", display: "flex", alignItems: "center", gap: 16, padding: "20px 24px", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}>
         <div style={{ width: 32, height: 32, borderRadius: "50%", background: open ? accentHex : "#1E293B", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, flexShrink: 0, transition: "background 0.2s ease" }}>
           {number}
         </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: "#FFFFFF" }}>{title}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 16, fontWeight: 700, color: "#FFFFFF" }}>{title}</span>
+            {tipBadge && (
+              <span style={{
+                fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20,
+                background: `${tipBadge.color}18`, color: tipBadge.color,
+                border: `1px solid ${tipBadge.color}35`, whiteSpace: "nowrap", flexShrink: 0,
+              }}>{tipBadge.text}</span>
+            )}
+          </div>
           <div style={{ fontSize: 13, color: "#64748b", marginTop: 2 }}>{subtitle}</div>
         </div>
-        <div style={{ color: "#475569" }}>
+        <div style={{ color: "#475569", flexShrink: 0 }}>
           <ChevronIcon open={open} />
         </div>
       </button>
@@ -654,6 +664,52 @@ export default function CustomizePage() {
         </p>
       </div>
 
+      {/* ── COACH OPTIMIZATION BANNER ── */}
+      <div style={{ maxWidth: 780, margin: "0 auto", padding: "0 24px 20px" }}>
+        <div style={{
+          background: "#0A1628", borderRadius: 16,
+          borderLeft: "3px solid #00A3FF", padding: "20px 24px",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+            <span style={{ fontSize: 18 }}>🏆</span>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: "#FFFFFF" }}>Coach-Optimized Defaults</div>
+              <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>Clipt automatically handles what coaches care about most</div>
+            </div>
+          </div>
+          {/* 3-column badge grid */}
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+            gap: 8, marginBottom: 14,
+          }}>
+            {[
+              { label: "Hard Cuts Between Clips",     reason: "Coaches prefer no transitions",           check: "#22C55E" },
+              { label: "No Music (Coach Version)",    reason: "98% of coaches watch on mute",            check: "#22C55E" },
+              { label: "Best Plays First",            reason: "AI sorted by quality score",              check: "#22C55E" },
+              { label: "1080p HD Export",             reason: "Professional broadcast quality",          check: "#22C55E" },
+              { label: "Sport-Specific Stats",        reason: "Position-matched automatically",          check: "#22C55E" },
+              { label: "6-Second Title Card",         reason: "Industry standard display time",          check: "#22C55E" },
+              { label: "Contact Info on End Card",    reason: "Coach can reach you immediately",         check: "#22C55E" },
+            ].map((item) => (
+              <div key={item.label} style={{
+                background: "rgba(34,197,94,0.05)", border: "1px solid rgba(34,197,94,0.15)",
+                borderRadius: 10, padding: "10px 12px", display: "flex", gap: 10, alignItems: "flex-start",
+              }}>
+                <span style={{ color: item.check, fontWeight: 700, fontSize: 13, lineHeight: 1.3, flexShrink: 0 }}>✓</span>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "#FFFFFF", lineHeight: 1.3 }}>{item.label}</div>
+                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{item.reason}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p style={{ fontSize: 11, color: "#475569", fontStyle: "italic", margin: 0, lineHeight: 1.5 }}>
+            These settings match what college coaches at D1 programs told us they want to see. You focus on picking your best clips — we handle the rest.
+          </p>
+        </div>
+      </div>
+
       {/* ── SECTIONS ── */}
       <div style={{ maxWidth: 780, margin: "0 auto", padding: "0 24px 120px", display: "flex", flexDirection: "column", gap: 14 }}>
 
@@ -665,6 +721,7 @@ export default function CustomizePage() {
           open={openSection === 1}
           onToggle={() => setOpenSection(openSection === 1 ? 0 : 1)}
           accentHex={accentHex}
+          tipBadge={{ text: "Best plays first — coaches decide in 30 seconds", color: "#F97316" }}
         >
           {/* Reel health bar */}
           <div style={{ marginBottom: 20, padding: "14px 16px", background: "#0D1F38", borderRadius: 10 }}>
@@ -804,6 +861,7 @@ export default function CustomizePage() {
           open={openSection === 2}
           onToggle={() => setOpenSection(openSection === 2 ? 0 : 2)}
           accentHex={accentHex}
+          tipBadge={{ text: "Coaches stop watching if they can't find you", color: "#00A3FF" }}
         >
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
             {(
@@ -837,6 +895,7 @@ export default function CustomizePage() {
           open={openSection === 3}
           onToggle={() => setOpenSection(openSection === 3 ? 0 : 3)}
           accentHex={accentHex}
+          tipBadge={{ text: "The one element every coach reads", color: "#22C55E" }}
         >
           {/* Live preview */}
           <div style={{ marginBottom: 24 }}>
@@ -941,6 +1000,7 @@ export default function CustomizePage() {
           open={openSection === 4}
           onToggle={() => setOpenSection(openSection === 4 ? 0 : 4)}
           accentHex={accentHex}
+          tipBadge={{ text: "D1 coaches rated stats 4/5 in importance", color: "#00A3FF" }}
         >
           {!sport ? (
             <div style={{ padding: "20px 0", textAlign: "center", color: "#475569", fontSize: 14 }}>
@@ -999,6 +1059,7 @@ export default function CustomizePage() {
           open={openSection === 5}
           onToggle={() => setOpenSection(openSection === 5 ? 0 : 5)}
           accentHex={accentHex}
+          tipBadge={{ text: "Used on cards only — not on your footage", color: "#94a3b8" }}
         >
           {/* Jersey color from upload */}
           {jerseyColor && (

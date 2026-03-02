@@ -11,6 +11,23 @@
 //
 // Cloudinary free plan supports 25GB storage and 25GB bandwidth/month.
 // Large video files (>100MB) require a paid plan.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// IMPORTANT: Fix video quality in the Cloudinary dashboard
+// ─────────────────────────────────────────────────────────────────────────────
+// Go to cloudinary.com → Settings → Upload → Upload Presets → clipt_uploads
+// Set these options:
+//   - Mode: Unsigned
+//   - Unique filename: ON
+//   - Delivery type: Upload
+//   - Access mode: Public
+//   - Transformations: LEAVE EMPTY (no transformations at all)
+//   - Format: Keep original format (do NOT convert to mp4 or any other format)
+//   - Quality: 100  (NOT "auto" — "auto" applies lossy compression)
+//   - Video codec: Copy  (preserves original encoding, no re-encoding)
+//   - Audio codec: Copy  (preserves original audio, no re-encoding)
+// Save the preset. This stops Cloudinary from compressing or re-encoding uploads.
+// ─────────────────────────────────────────────────────────────────────────────
 
 const CLOUD_NAME = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME ?? "";
 const UPLOAD_PRESET = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET ?? "clipt_unsigned";
@@ -49,9 +66,9 @@ export async function uploadToCloudinary(
   formData.append("file", blob);
   formData.append("upload_preset", UPLOAD_PRESET);
   formData.append("resource_type", "video");
-  // Preserve original quality — disable Cloudinary's lossy compression
+  // quality: 100 tells Cloudinary not to apply lossy compression.
+  // No transformation params — let the clean preset handle encoding.
   formData.append("quality", "100");
-  formData.append("video_codec", "auto");
   formData.append("audio_codec", "aac");
 
   const uploadUrl = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/video/upload`;

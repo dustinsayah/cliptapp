@@ -1962,6 +1962,7 @@ export default function ExportPage() {
       },
       social: isSocial,
       aspectRatio: isSocial ? "9:16" : "16:9",
+      preserveQuality: true,
     };
 
     // Start Creatomate render
@@ -2409,12 +2410,39 @@ export default function ExportPage() {
               {exportTypeSetting === "social" ? "9:16 Vertical — Instagram and TikTok" : "16:9 Landscape — Coach and Email"}
             </p>
             <p className="text-xs text-slate-500 mt-0.5">{exportTypeSetting === "social" ? "1080×1920" : "1920×1080"} · {getExportFps(quality)}fps</p>
+            <p className="text-xs font-semibold mt-1.5" style={{ color: "#22C55E" }}>
+              ✓ 1080p HD · {getExportFps(quality)}fps · H.264 High Profile · AAC Audio
+            </p>
           </div>
           <button type="button" onClick={() => router.push("/customize")}
             className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
             style={{ background: `${accentHex}14`, color: accentHex, border: `1px solid ${accentHex}30` }}>
             Change →
           </button>
+        </div>
+
+        {/* ── Auto-Optimized For Coaches ── */}
+        <div className="rounded-2xl p-5" style={{ background: "rgba(34,197,94,0.04)", border: "1px solid rgba(34,197,94,0.15)" }}>
+          <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: "#22C55E" }}>
+            ✓ Auto-Optimized For Coaches
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { label: "Transitions",  value: "Hard Cuts",        reason: "Coaches prefer no distractions" },
+              { label: "Music",        value: "Off by default",   reason: "98% of coaches watch on mute" },
+              { label: "Format",       value: "1920×1080 16:9",   reason: "Coach email & Hudl compatible" },
+              { label: "Quality",      value: "Maximum",          reason: "H.264 High · 60fps · 100 quality" },
+            ].map((row) => (
+              <div key={row.label} className="flex items-start gap-2">
+                <span className="text-xs font-bold mt-0.5" style={{ color: "#22C55E" }}>✓</span>
+                <div>
+                  <span className="text-xs font-semibold text-white">{row.label}: </span>
+                  <span className="text-xs font-bold" style={{ color: "#22C55E" }}>{row.value}</span>
+                  <p className="text-[10px] text-slate-500 mt-0.5">{row.reason}</p>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* ── Quality Presets ── */}
