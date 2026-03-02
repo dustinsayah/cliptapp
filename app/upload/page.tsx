@@ -205,7 +205,9 @@ export default function UploadPage() {
   const [firstName, setFirstName]     = useState("");
   const [lastName, setLastName]       = useState("");
   const [jerseyNumber, setJerseyNumber] = useState("");
+  // Always keep a valid hex — never allow empty string (crashes color rendering)
   const [jerseyColor, setJerseyColor] = useState("#FFFFFF");
+  const safeSetJerseyColor = (c: string) => setJerseyColor(c && /^#[0-9A-Fa-f]{6}$/.test(c) ? c : "#6B7280");
   const [sport, setSport]             = useState("");
   const [position, setPosition]       = useState("");
   const [school, setSchool]           = useState("");
@@ -221,7 +223,7 @@ export default function UploadPage() {
         if (d.firstName) setFirstName(d.firstName);
         if (d.lastName) setLastName(d.lastName);
         if (d.jerseyNumber) setJerseyNumber(d.jerseyNumber);
-        if (d.jerseyColor) setJerseyColor(d.jerseyColor);
+        if (d.jerseyColor) safeSetJerseyColor(d.jerseyColor);
         if (d.sport) setSport(d.sport);
         if (d.position) setPosition(d.position);
         if (d.school) setSchool(d.school);
@@ -342,7 +344,7 @@ export default function UploadPage() {
       firstName: firstName.trim(),
       lastName: lastName.trim(),
       jerseyNumber: jerseyNumber.trim(),
-      jerseyColor,
+      jerseyColor: jerseyColor || "#6B7280",
       sport,
       position,
       school: school.trim(),
@@ -598,7 +600,7 @@ export default function UploadPage() {
             <div>
               <JerseyColorInput
                 value={jerseyColor}
-                onChange={setJerseyColor}
+                onChange={safeSetJerseyColor}
                 label="Jersey Color"
                 required
               />

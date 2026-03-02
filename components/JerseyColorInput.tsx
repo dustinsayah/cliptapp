@@ -2,6 +2,9 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 
+// Fallback color when field is empty or value cannot be parsed
+const FALLBACK_HEX = "#6B7280";
+
 // ── Comprehensive color map ───────────────────────────────────────────────
 const COLOR_MAP: Record<string, string> = {
   // Reds
@@ -184,36 +187,47 @@ function resolveAlias(input: string): string {
 }
 
 function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
-  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  return result
-    ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) }
-    : null;
+  try {
+    if (!hex || typeof hex !== "string") return null;
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result
+      ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) }
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 function isValidHex(str: string): boolean {
   return /^#[0-9A-Fa-f]{6}$/.test(str);
 }
 
-function textToHex(text: string): string | null {
-  const clean = text.trim().toLowerCase();
-  if (!clean) return null;
+// Returns a hex string — FALLBACK_HEX for empty input, null for no match
+function textToHex(text: string | null | undefined): string | null {
+  try {
+    // Guard: empty or nullish input → return fallback so swatch stays visible
+    const clean = (text ?? "").trim().toLowerCase();
+    if (!clean) return FALLBACK_HEX;
 
-  // Direct hex input
-  if (/^#[0-9a-f]{6}$/i.test(clean)) return clean.toUpperCase();
-  if (/^[0-9a-f]{6}$/i.test(clean)) return `#${clean.toUpperCase()}`;
+    // Direct hex input
+    if (/^#[0-9a-f]{6}$/i.test(clean)) return clean.toUpperCase();
+    if (/^[0-9a-f]{6}$/i.test(clean)) return `#${clean.toUpperCase()}`;
 
-  // Alias resolution
-  const resolved = resolveAlias(clean);
+    // Alias resolution
+    const resolved = resolveAlias(clean);
 
-  // Exact match
-  if (COLOR_MAP[resolved]) return COLOR_MAP[resolved];
-  if (COLOR_MAP[clean]) return COLOR_MAP[clean];
+    // Exact match
+    if (COLOR_MAP[resolved]) return COLOR_MAP[resolved];
+    if (COLOR_MAP[clean]) return COLOR_MAP[clean];
 
-  // Partial/fuzzy match — find best match
-  const matches = fuzzyMatches(clean);
-  if (matches.length > 0) return COLOR_MAP[matches[0].name];
+    // Partial/fuzzy match — find best match
+    const matches = fuzzyMatches(clean);
+    if (matches.length > 0) return COLOR_MAP[matches[0].name];
 
-  return null;
+    return null;
+  } catch {
+    return FALLBACK_HEX;
+  }
 }
 
 interface ColorMatch {
@@ -223,47 +237,46 @@ interface ColorMatch {
 }
 
 function fuzzyMatches(input: string): ColorMatch[] {
-  const clean = resolveAlias(input.trim().toLowerCase());
-  if (!clean) return [];
+  try {
+    const clean = resolveAlias((input ?? "").trim().toLowerCase());
+    if (!clean) return [];
 
-  const results: ColorMatch[] = [];
+    const results: ColorMatch[] = [];
 
-  for (const [name, hex] of Object.entries(COLOR_MAP)) {
-    // Exact match → highest score
-    if (name === clean) {
-      results.push({ name, hex, score: 100 });
-      continue;
-    }
-    // Starts with input
-    if (name.startsWith(clean)) {
-      results.push({ name, hex, score: 90 - (name.length - clean.length) });
-      continue;
-    }
-    // Contains input
-    if (name.includes(clean)) {
-      results.push({ name, hex, score: 70 - (name.length - clean.length) });
-      continue;
-    }
-    // Input is a word in the name (e.g. "blue" matches "royal blue")
-    const words = name.split(" ");
-    for (const word of words) {
-      if (word.startsWith(clean)) {
-        results.push({ name, hex, score: 60 - Math.abs(word.length - clean.length) });
-        break;
+    for (const [name, hex] of Object.entries(COLOR_MAP)) {
+      if (name === clean) {
+        results.push({ name, hex, score: 100 });
+        continue;
+      }
+      if (name.startsWith(clean)) {
+        results.push({ name, hex, score: 90 - (name.length - clean.length) });
+        continue;
+      }
+      if (name.includes(clean)) {
+        results.push({ name, hex, score: 70 - (name.length - clean.length) });
+        continue;
+      }
+      const words = name.split(" ");
+      for (const word of words) {
+        if (word.startsWith(clean)) {
+          results.push({ name, hex, score: 60 - Math.abs(word.length - clean.length) });
+          break;
+        }
       }
     }
-  }
 
-  // Deduplicate by name and sort by score descending
-  const seen = new Set<string>();
-  const unique: ColorMatch[] = [];
-  for (const m of results.sort((a, b) => b.score - a.score)) {
-    if (!seen.has(m.name)) {
-      seen.add(m.name);
-      unique.push(m);
+    const seen = new Set<string>();
+    const unique: ColorMatch[] = [];
+    for (const m of results.sort((a, b) => b.score - a.score)) {
+      if (!seen.has(m.name)) {
+        seen.add(m.name);
+        unique.push(m);
+      }
     }
+    return unique.slice(0, 4);
+  } catch {
+    return [];
   }
-  return unique.slice(0, 4);
 }
 
 // ── Component Props ───────────────────────────────────────────────────────
@@ -277,59 +290,88 @@ interface JerseyColorInputProps {
 export default function JerseyColorInput({ value, onChange, label = "Jersey Color", required = false }: JerseyColorInputProps) {
   // Text the user typed (display name)
   const [text, setText] = useState<string>(() => {
-    // Try to find the name for the initial hex
-    if (!value) return "";
-    const entry = Object.entries(COLOR_MAP).find(([, h]) => h.toLowerCase() === value.toLowerCase());
-    return entry ? capitalize(entry[0]) : value;
+    try {
+      if (!value || !value.trim()) return "";
+      const entry = Object.entries(COLOR_MAP).find(([, h]) => h.toLowerCase() === value.toLowerCase());
+      return entry ? capitalize(entry[0]) : value;
+    } catch {
+      return "";
+    }
   });
 
-  const [suggestions, setSuggestions] = useState<ColorMatch[]>([]);
+  const [suggestions, setSuggestions]   = useState<ColorMatch[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
-  const [detectedHex, setDetectedHex] = useState<string | null>(value || null);
+  // detectedHex = null means "nothing typed" (shows "Type a color name above")
+  // detectedHex = FALLBACK_HEX means field is empty (swatch shows gray)
+  const [detectedHex, setDetectedHex]   = useState<string | null>(() => {
+    try {
+      return (value && isValidHex(value)) ? value : null;
+    } catch {
+      return null;
+    }
+  });
+
   const containerRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef     = useRef<HTMLInputElement>(null);
 
   function capitalize(s: string): string {
-    return s.replace(/\b\w/g, (c) => c.toUpperCase());
+    return (s || "").replace(/\b\w/g, (c) => c.toUpperCase());
   }
 
   const handleTextChange = useCallback((raw: string) => {
     setText(raw);
-    const clean = raw.trim().toLowerCase();
 
-    if (!clean) {
+    try {
+      const clean = (raw ?? "").trim().toLowerCase();
+
+      // ── Empty field: reset to gray, never pass "" to parent ──────────────
+      if (!clean) {
+        setSuggestions([]);
+        setDetectedHex(null);   // null = show "Type a color name above" in UI
+        setShowDropdown(false);
+        onChange(FALLBACK_HEX); // always emit a valid color, never empty string
+        return;
+      }
+
+      // ── Direct hex input ─────────────────────────────────────────────────
+      if (isValidHex(raw.trim()) || /^[0-9a-f]{6}$/i.test(raw.trim())) {
+        const hex = isValidHex(raw.trim()) ? raw.trim().toUpperCase() : `#${raw.trim().toUpperCase()}`;
+        setDetectedHex(hex);
+        setSuggestions([]);
+        setShowDropdown(false);
+        onChange(hex);
+        return;
+      }
+
+      // ── Name/alias lookup ────────────────────────────────────────────────
+      const hex = textToHex(clean);
+      setDetectedHex(hex);
+      if (hex) onChange(hex);
+
+      // Show dropdown only when input is non-empty and has matches
+      const matches = fuzzyMatches(clean);
+      setSuggestions(matches);
+      setShowDropdown(matches.length > 0);
+
+    } catch {
+      // If anything throws, fall back silently
       setSuggestions([]);
       setDetectedHex(null);
       setShowDropdown(false);
-      onChange("");
-      return;
+      onChange(FALLBACK_HEX);
     }
-
-    // Check direct hex
-    if (isValidHex(raw.trim()) || /^[0-9a-f]{6}$/i.test(raw.trim())) {
-      const hex = isValidHex(raw.trim()) ? raw.trim() : `#${raw.trim()}`;
-      setDetectedHex(hex);
-      setSuggestions([]);
-      setShowDropdown(false);
-      onChange(hex);
-      return;
-    }
-
-    const hex = textToHex(clean);
-    setDetectedHex(hex);
-    if (hex) onChange(hex);
-
-    const matches = fuzzyMatches(clean);
-    setSuggestions(matches);
-    setShowDropdown(matches.length > 0);
   }, [onChange]);
 
   const selectSuggestion = useCallback((match: ColorMatch) => {
-    setText(capitalize(match.name));
-    setDetectedHex(match.hex);
-    setSuggestions([]);
-    setShowDropdown(false);
-    onChange(match.hex);
+    try {
+      setText(capitalize(match.name));
+      setDetectedHex(match.hex);
+      setSuggestions([]);
+      setShowDropdown(false);
+      onChange(match.hex);
+    } catch {
+      onChange(FALLBACK_HEX);
+    }
   }, [onChange]);
 
   // Close dropdown on outside click
@@ -343,12 +385,34 @@ export default function JerseyColorInput({ value, onChange, label = "Jersey Colo
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // Swatch color
-  const swatchColor = detectedHex ?? "#374151";
+  // ── Safe swatch color: never empty string, never undefined ───────────────
+  const swatchColor = (() => {
+    try {
+      // detectedHex is null when field is empty → show gray
+      if (!detectedHex || !detectedHex.trim()) return FALLBACK_HEX;
+      return detectedHex;
+    } catch {
+      return FALLBACK_HEX;
+    }
+  })();
+
   const swatchIsLight = (() => {
-    const rgb = hexToRgb(swatchColor);
-    if (!rgb) return false;
-    return (rgb.r * 0.299 + rgb.g * 0.587 + rgb.b * 0.114) > 186;
+    try {
+      const rgb = hexToRgb(swatchColor);
+      if (!rgb) return false;
+      return (rgb.r * 0.299 + rgb.g * 0.587 + rgb.b * 0.114) > 186;
+    } catch {
+      return false;
+    }
+  })();
+
+  // Safe box-shadow: only build the CSS string when we have a valid color
+  const boxShadow = (() => {
+    try {
+      return detectedHex ? `0 0 12px ${swatchColor}55` : "none";
+    } catch {
+      return "none";
+    }
   })();
 
   return (
@@ -361,17 +425,19 @@ export default function JerseyColorInput({ value, onChange, label = "Jersey Colo
 
       {/* Input + swatch row */}
       <div className="flex items-center gap-2">
-        {/* Color swatch */}
+        {/* Color swatch — always renders with a valid background color */}
         <div
-          className="shrink-0 rounded-xl border transition-all"
+          className="shrink-0 rounded-xl transition-all"
           style={{
             width: 44,
             height: 44,
             background: swatchColor,
-            border: detectedHex ? "2px solid rgba(255,255,255,0.25)" : "2px solid rgba(255,255,255,0.08)",
-            boxShadow: detectedHex ? `0 0 12px ${swatchColor}55` : "none",
+            border: detectedHex
+              ? "2px solid rgba(255,255,255,0.25)"
+              : "2px solid rgba(255,255,255,0.08)",
+            boxShadow,
           }}
-          aria-label={`Color preview: ${detectedHex ?? "none"}`}
+          aria-label={`Color preview: ${detectedHex ?? "none selected"}`}
         />
 
         {/* Text input */}
@@ -381,7 +447,10 @@ export default function JerseyColorInput({ value, onChange, label = "Jersey Colo
             type="text"
             value={text}
             onChange={(e) => handleTextChange(e.target.value)}
-            onFocus={() => { if (suggestions.length > 0) setShowDropdown(true); }}
+            onFocus={() => {
+              // Only show dropdown if field is non-empty and has suggestions
+              if (text.trim() && suggestions.length > 0) setShowDropdown(true);
+            }}
             placeholder="Type your jersey color (e.g. royal blue, red, black)"
             className="w-full px-4 rounded-xl text-white placeholder-slate-500 text-sm focus:outline-none transition-all"
             style={{
@@ -398,15 +467,16 @@ export default function JerseyColorInput({ value, onChange, label = "Jersey Colo
         </div>
       </div>
 
-      {/* Hex display */}
+      {/* Hex display — shows "Type a color name above" when field is empty */}
       <p className="text-xs mt-1.5 ml-1" style={{ color: "#64748b" }}>
         {detectedHex
           ? <>Detected: <span className="font-mono" style={{ color: "#94a3b8" }}>{detectedHex}</span></>
-          : "Type a color name above"}
+          : "Type a color name above"
+        }
       </p>
 
-      {/* Suggestion dropdown */}
-      {showDropdown && suggestions.length > 0 && (
+      {/* Suggestion dropdown — only shown when text is non-empty AND has suggestions */}
+      {showDropdown && text.trim().length > 0 && suggestions.length > 0 && (
         <div
           className="absolute left-0 right-0 rounded-xl z-50 overflow-hidden"
           style={{
@@ -425,7 +495,11 @@ export default function JerseyColorInput({ value, onChange, label = "Jersey Colo
             >
               <div
                 className="shrink-0 rounded-md border border-white/15"
-                style={{ width: 28, height: 28, background: match.hex, flexShrink: 0 }}
+                style={{
+                  width: 28, height: 28,
+                  background: match.hex || FALLBACK_HEX,
+                  flexShrink: 0,
+                }}
               />
               <span className="text-white">{capitalize(match.name)}</span>
               <span className="ml-auto font-mono text-xs text-slate-500">{match.hex}</span>
