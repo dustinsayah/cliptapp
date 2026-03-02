@@ -76,6 +76,8 @@ export async function POST(req: NextRequest) {
       phone:        titleCard.phone        || "",
       heightFt:     titleCard.heightFt     || "",
       heightIn:     titleCard.heightIn     || "",
+      weight:       titleCard.weight       || "",
+      gpa:          titleCard.gpa          || "",
       clubTeam:     titleCard.clubTeam     || "",
       city:         titleCard.city         || "",
       state:        titleCard.state        || "",
