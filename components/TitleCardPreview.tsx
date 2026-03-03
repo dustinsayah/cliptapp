@@ -63,20 +63,22 @@ export function TitleCardPreview({
       fontFamily: "Inter, sans-serif",
       border: `1px solid ${accentColor}25`,
     }}>
-      {/* Top accent stripe */}
-      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "1.3%", background: accentColor }} />
+      {/* Top accent stripe — 1.5% */}
+      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "1.5%", background: accentColor }} />
+      {/* Bottom accent stripe — 1.5% */}
+      <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: "1.5%", background: accentColor }} />
 
-      {/* Faint sport watermark */}
-      {sport && (
+      {/* Jersey # watermark — faint large background (falls back to sport text) */}
+      {(jerseyNumber || sport) && (
         <div style={{
           position: "absolute", inset: 0,
           display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: "clamp(30px,12vw,100px)", fontWeight: 900,
+          fontSize: jerseyNumber ? "clamp(40px,18vw,160px)" : "clamp(30px,12vw,100px)", fontWeight: 900,
           color: "#FFFFFF", opacity: 0.03,
           pointerEvents: "none", userSelect: "none" as const,
-          fontFamily: "Oswald, sans-serif", textTransform: "uppercase" as const,
+          fontFamily: "Oswald, sans-serif",
         }}>
-          {sport}
+          {jerseyNumber ? `#${jerseyNumber}` : sport.toUpperCase()}
         </div>
       )}
 
@@ -93,7 +95,7 @@ export function TitleCardPreview({
           </div>
         )}
 
-        <div style={{ fontSize: "clamp(10px, 2.5vw, 24px)", fontWeight: 900, color: "#FFFFFF", letterSpacing: "0.04em", textTransform: "uppercase" as const, fontFamily: "Oswald, sans-serif", textAlign: "center" as const }}>
+        <div style={{ fontSize: "clamp(12px, 3vw, 28px)", fontWeight: 900, color: "#FFFFFF", letterSpacing: "0.02em", textTransform: "uppercase" as const, fontFamily: "Oswald, sans-serif", textAlign: "center" as const }}>
           {name}
         </div>
 
@@ -105,7 +107,7 @@ export function TitleCardPreview({
 
         <div style={{ width: "50%", height: 1, background: accentColor, opacity: 0.3 }} />
 
-        <div style={{ fontSize: "clamp(5px, 1.1vw, 10px)", color: "#94a3b8", textTransform: "uppercase" as const, letterSpacing: "0.1em", textAlign: "center" as const }}>
+        <div style={{ fontSize: "clamp(5px, 1.2vw, 11px)", color: "#94a3b8", textTransform: "uppercase" as const, letterSpacing: "0.08em", textAlign: "center" as const }}>
           {subLine}
         </div>
 

@@ -281,16 +281,30 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
       x: "50%", y: "50%", x_anchor: "50%", y_anchor: "50%",
       width: "100%", height: "100%", fill_color: "#050A14",
     },
-    // Top accent stripe — 14px
+    // Top accent stripe — 16px
     {
       type: "shape", shape: "rectangle",
       x: "0%", y: "0%", x_anchor: "0%", y_anchor: "0%",
-      width: "100%", height: `${Math.round(14 * s)}px`, fill_color: accentHex,
+      width: "100%", height: `${Math.round(16 * s)}px`, fill_color: accentHex,
+    },
+    // Bottom accent stripe — 16px
+    {
+      type: "shape", shape: "rectangle",
+      x: "0%", y: "100%", x_anchor: "0%", y_anchor: "100%",
+      width: "100%", height: `${Math.round(16 * s)}px`, fill_color: accentHex,
     },
   ];
 
-  // Watermark texture — sport emoji in huge faint text as background pattern
-  if (sport) {
+  // Watermark texture — jersey number as huge faint background; fall back to sport text
+  if (jerseyNumber) {
+    titleEls.push({
+      type: "text", text: `#${jerseyNumber}`,
+      x: "50%", y: "50%", x_anchor: "50%", y_anchor: "50%",
+      font_size: Math.round(600 * s), font_weight: "900",
+      fill_color: "#FFFFFF", font_family: "Oswald", opacity: 0.03,
+      shadow_color: "rgba(0,0,0,0)", shadow_blur: 0,
+    });
+  } else if (sport) {
     titleEls.push({
       type: "text", text: sport.toUpperCase(),
       x: "50%", y: "50%", x_anchor: "50%", y_anchor: "50%",
@@ -320,11 +334,12 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
     });
   }
 
-  // Athlete full name — 115px at y 18.5% (+20% from 96px)
+  // Athlete full name — 90px at y 18.5%
   titleEls.push({
     type: "text", text: fullName,
     x: "50%", y: "18.5%", x_anchor: "50%", y_anchor: "50%", width: "90%",
-    font_size: Math.round(115 * s), font_weight: "900", fill_color: "#FFFFFF", font_family: "Oswald",
+    font_size: Math.round(90 * s), font_weight: "900", fill_color: "#FFFFFF", font_family: "Oswald",
+    letter_spacing: "2%",
     shadow_color: "rgba(0,0,0,0)", shadow_blur: 0,
   });
 
@@ -346,22 +361,23 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
     fill_color: accentHex, opacity: 0.3,
   });
 
-  // Position · sport — 50px at y 42.6% (+20% from 42px)
+  // Position · sport — 52px at y 42.6%
   if (subLine) {
     titleEls.push({
       type: "text", text: subLine,
       x: "50%", y: "42.6%", x_anchor: "50%", y_anchor: "50%", width: "85%",
-      font_size: Math.round(50 * s), fill_color: "#94a3b8", font_family: "Inter",
+      font_size: Math.round(52 * s), fill_color: "#94a3b8", font_family: "Inter",
+      letter_spacing: "8%",
       shadow_color: "rgba(0,0,0,0)", shadow_blur: 0,
     });
   }
 
-  // School name — 43px at y 48.1% (+20% from 36px)
+  // School name — 44px at y 48.1%
   if (school) {
     titleEls.push({
       type: "text", text: school,
       x: "50%", y: "48.1%", x_anchor: "50%", y_anchor: "50%", width: "85%",
-      font_size: Math.round(43 * s), fill_color: "#FFFFFF", font_family: "Inter",
+      font_size: Math.round(44 * s), fill_color: "#FFFFFF", font_family: "Inter",
       shadow_color: "rgba(0,0,0,0)", shadow_blur: 0,
     });
   }
@@ -535,19 +551,13 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
   //
   // Video fit "contain" for landscape (letterbox), "cover" for vertical social.
 
-  // ── Freeze-frame duration for spotlight ──────────────────────────────────
-  // When spotlightStyle !== "none", each clip starts with a 1-second still
-  // frame (holding the first frame of the video) with the circle/arrow overlay
-  // on top, then the video plays normally. This makes the spotlight visible.
-  const FREEZE_DUR = spotlightStyle !== "none" ? 1.0 : 0;
-
   clips.forEach((clip, idx) => {
     const trimStart    = clip.trimStart != null && clip.trimStart > 0 ? clip.trimStart : 0;
     const clipDur      = clip.duration || 10;
     const rawEnd       = clip.trimEnd  != null && clip.trimEnd  > 0 ? clip.trimEnd  : clipDur;
     const trimDuration = Math.max(rawEnd - trimStart, 1);
 
-    const sectionStart = currentTime; // start of freeze (or clip if no freeze)
+    const sectionStart = currentTime;
 
     // Landscape: fit "contain" so vertical source clips letterbox with black bars.
     // Vertical social 9:16: fit "cover" so vertical clips fill the frame perfectly.
@@ -578,8 +588,8 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
     };
 
     // ── Helper: build clip composition elements ──────────────────────────────
-    function buildClipInnerEls(videoOverrides?: Record<string, unknown>): unknown[] {
-      const vid = { ...videoBase, width: "100%", height: "100%", ...videoOverrides };
+    function buildClipInnerEls(): unknown[] {
+      const vid = { ...videoBase, width: "100%", height: "100%" };
       const innerEls: unknown[] = [];
       if (!isVertical) innerEls.push(blackBg);
       innerEls.push(vid);
@@ -605,70 +615,41 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
       return innerEls;
     }
 
-    // ── 1. FREEZE FRAME (spotlight only) ─────────────────────────────────────
-    // Show first frame of the clip for FREEZE_DUR seconds with circle overlay.
-    // Creatomate holds the last frame when the video source is shorter than duration.
-    if (FREEZE_DUR > 0) {
-      // Freeze: same trimStart, trim_end just past first frame → holds that frame
-      const freezeEl: Record<string, unknown> = {
-        type:     "composition",
-        track:    1,
-        time:     sectionStart,
-        duration: FREEZE_DUR,
-        elements: buildClipInnerEls({ trim_end: trimStart + 0.034 }), // one frame @ 30fps
-      };
-      if (idx > 0) freezeEl.transition = clipTransition;
-      elements.push(freezeEl);
-    }
-
-    // ── 2. ACTUAL CLIP ────────────────────────────────────────────────────────
-    const clipStartTime = sectionStart + FREEZE_DUR;
-
+    // ── CLIP ──────────────────────────────────────────────────────────────────
     let clipEl: Record<string, unknown>;
     if (isVertical && !(jerseyOverlay && jerseyNumber)) {
-      // Vertical social with no jersey overlay: plain video (no composition wrapper)
       clipEl = {
         ...videoBase,
         track:    1,
-        time:     clipStartTime,
+        time:     sectionStart,
         duration: trimDuration,
       };
     } else {
       clipEl = {
         type:     "composition",
         track:    1,
-        time:     clipStartTime,
+        time:     sectionStart,
         duration: trimDuration,
         elements: buildClipInnerEls(),
       };
     }
 
-    // Apply transition: freeze frame gets it when present; otherwise the clip itself
-    if (FREEZE_DUR === 0 && idx > 0) {
-      clipEl.transition = clipTransition;
-    }
-
+    if (idx > 0) clipEl.transition = clipTransition;
     elements.push(clipEl);
 
-    // ── 3. SPOTLIGHT OVERLAY (track 3) ────────────────────────────────────────
-    // Circle + name tag visible during freeze frame (first FREEZE_DUR seconds).
-    // If no freeze, show for first 1.5s of the clip itself.
+    // ── SPOTLIGHT OVERLAY (track 3) ────────────────────────────────────────
+    // Animated circle: scale 150%→100% on entry, fade out at 0.9s.
     if (spotlightStyle !== "none") {
-      const markXPct  = clip.markX ?? 50;
-      const markYPct  = clip.markY ?? 40;
-      const spotName  = (lastName || firstName).toUpperCase();
-      const spotText  = spotlightStyle === "arrow" ? `▼  ${spotName}` : `● ${spotName}`;
-      const overlayT  = sectionStart;                        // starts at freeze (or clip)
-      const overlayD  = FREEZE_DUR > 0 ? FREEZE_DUR : 1.5;  // holds for freeze or 1.5s
-      const circleSize = Math.round(140 * s);
+      const markXPct   = clip.markX ?? 50;
+      const markYPct   = clip.markY ?? 38;
+      const circleSize = Math.round(130 * s);
 
-      // Circle highlight
       elements.push({
         type:         "shape",
-        shape:        "circle",
+        shape:        "ellipse",
         track:        3,
-        time:         overlayT,
-        duration:     overlayD,
+        time:         sectionStart,
+        duration:     1.2,
         x:            `${markXPct}%`,
         y:            `${markYPct}%`,
         x_anchor:     "50%",
@@ -676,36 +657,18 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
         width:        `${circleSize}px`,
         height:       `${circleSize}px`,
         fill_color:   "rgba(0,0,0,0)",
-        stroke_color: accentHex,
-        stroke_width: `${Math.round(5 * s)}px`,
+        stroke_color: "#FFFFFF",
+        stroke_width: Math.round(4 * s),
         shadow_color: "rgba(0,0,0,0.8)",
-        shadow_blur:  12,
-      });
-
-      // Name tag below circle
-      elements.push({
-        type:                 "text",
-        track:                3,
-        time:                 overlayT,
-        duration:             overlayD,
-        text:                 spotText,
-        font_family:          "Oswald",
-        font_size:            Math.round(44 * s),
-        font_weight:          "700",
-        fill_color:           accentHex,
-        background_color:     "rgba(0,0,0,0.70)",
-        background_x_padding: "3%",
-        background_y_padding: "1.5%",
-        x:                    `${markXPct}%`,
-        y:                    `${Math.min(markYPct + 10, 95)}%`,
-        x_anchor:             "50%",
-        y_anchor:             "0%",
-        shadow_color:         "rgba(0,0,0,0)",
-        shadow_blur:          0,
+        shadow_blur:  16,
+        animations: [
+          { time: 0,   duration: 0.35, easing: "ease-out", type: "scale",   start_scale: "150%", end_scale: "100%" },
+          { time: 0.9, duration: 0.30, easing: "ease-in",  type: "opacity", start_opacity: "100%", end_opacity: "0%" },
+        ],
       });
     }
 
-    currentTime = sectionStart + FREEZE_DUR + trimDuration;
+    currentTime = sectionStart + trimDuration;
   });
 
   // ── 4. END CARD (5s) — rebuilt layout ────────────────────────────────────
@@ -740,37 +703,37 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
   const endEls: unknown[] = [
     // Full background
     { type: "shape", shape: "rectangle", x: "50%", y: "50%", x_anchor: "50%", y_anchor: "50%", width: "100%", height: "100%", fill_color: "#050A14" },
-    // Top accent stripe — 12px
-    { type: "shape", shape: "rectangle", x: "0%", y: "0%", x_anchor: "0%", y_anchor: "0%", width: "100%", height: `${Math.round(12 * s)}px`, fill_color: accentHex },
-    // Bottom accent stripe — 12px
-    { type: "shape", shape: "rectangle", x: "0%", y: "100%", x_anchor: "0%", y_anchor: "100%", width: "100%", height: `${Math.round(12 * s)}px`, fill_color: accentHex },
-    // "CONTACT ME" — 32px at 11%
-    { type: "text", text: "CONTACT ME", x: "50%", y: "11%", x_anchor: "50%", y_anchor: "50%", font_size: Math.round(32 * s), font_weight: "700", fill_color: "#64748b", font_family: "Inter", shadow_color: "rgba(0,0,0,0)", shadow_blur: 0 },
-    // Athlete full name — 96px at 22%
-    { type: "text", text: fullName, x: "50%", y: "22%", x_anchor: "50%", y_anchor: "50%", width: "90%", font_size: Math.round(96 * s), font_weight: "900", fill_color: "#FFFFFF", font_family: "Oswald", shadow_color: "rgba(0,0,0,0)", shadow_blur: 0 },
+    // Top accent stripe — 16px
+    { type: "shape", shape: "rectangle", x: "0%", y: "0%", x_anchor: "0%", y_anchor: "0%", width: "100%", height: `${Math.round(16 * s)}px`, fill_color: accentHex },
+    // Bottom accent stripe — 16px
+    { type: "shape", shape: "rectangle", x: "0%", y: "100%", x_anchor: "0%", y_anchor: "100%", width: "100%", height: `${Math.round(16 * s)}px`, fill_color: accentHex },
+    // "CONTACT ME" — 36px at 11%
+    { type: "text", text: "CONTACT ME", x: "50%", y: "11%", x_anchor: "50%", y_anchor: "50%", font_size: Math.round(36 * s), font_weight: "700", fill_color: accentHex, font_family: "Inter", letter_spacing: "12%", shadow_color: "rgba(0,0,0,0)", shadow_blur: 0 },
+    // Athlete full name — 88px at 20%
+    { type: "text", text: fullName, x: "50%", y: "20%", x_anchor: "50%", y_anchor: "50%", width: "90%", font_size: Math.round(88 * s), font_weight: "900", fill_color: "#FFFFFF", font_family: "Oswald", shadow_color: "rgba(0,0,0,0)", shadow_blur: 0 },
   ];
 
-  // Jersey + position combined at 33%
+  // Jersey + position combined at 31%
   if (jerseyPosLine) {
-    endEls.push({ type: "text", text: jerseyPosLine, x: "50%", y: "33%", x_anchor: "50%", y_anchor: "50%", width: "90%", font_size: Math.round(40 * s), fill_color: accentHex, font_family: "Oswald", font_weight: "700", shadow_color: "rgba(0,0,0,0)", shadow_blur: 0 });
+    endEls.push({ type: "text", text: jerseyPosLine, x: "50%", y: "31%", x_anchor: "50%", y_anchor: "50%", width: "90%", font_size: Math.round(40 * s), fill_color: accentHex, font_family: "Oswald", font_weight: "700", shadow_color: "rgba(0,0,0,0)", shadow_blur: 0 });
   }
 
-  // School — 38px at 42%
+  // School — 40px at 40%
   if (school) {
-    endEls.push({ type: "text", text: school, x: "50%", y: "42%", x_anchor: "50%", y_anchor: "50%", width: "85%", font_size: Math.round(38 * s), fill_color: "#FFFFFF", font_family: "Inter", shadow_color: "rgba(0,0,0,0)", shadow_blur: 0 });
+    endEls.push({ type: "text", text: school, x: "50%", y: "40%", x_anchor: "50%", y_anchor: "50%", width: "85%", font_size: Math.round(40 * s), fill_color: "#FFFFFF", font_family: "Inter", shadow_color: "rgba(0,0,0,0)", shadow_blur: 0 });
   }
 
-  // Divider — 51%
-  endEls.push({ type: "shape", shape: "rectangle", x: "50%", y: "51%", x_anchor: "50%", y_anchor: "50%", width: "90%", height: `${Math.max(1, Math.round(2 * s))}px`, fill_color: accentHex, opacity: 0.4 });
+  // Divider — 50%
+  endEls.push({ type: "shape", shape: "rectangle", x: "50%", y: "50%", x_anchor: "50%", y_anchor: "50%", width: "90%", height: `${Math.max(1, Math.round(2 * s))}px`, fill_color: accentHex, opacity: 0.4 });
 
-  // Email — 34px at 60%
+  // Email — 48px at 60%
   if (email) {
-    endEls.push({ type: "text", text: `\u2709  ${email}`, x: "50%", y: "60%", x_anchor: "50%", y_anchor: "50%", width: "85%", font_size: Math.round(34 * s), fill_color: accentHex, font_family: "Inter", shadow_color: "rgba(0,0,0,0)", shadow_blur: 0 });
+    endEls.push({ type: "text", text: `\u2709  ${email}`, x: "50%", y: "60%", x_anchor: "50%", y_anchor: "50%", width: "85%", font_size: Math.round(48 * s), fill_color: accentHex, font_family: "Inter", shadow_color: "rgba(0,0,0,0)", shadow_blur: 0 });
   }
 
-  // Phone — 30px at 68%
+  // Phone — 44px at 69%
   if (phone) {
-    endEls.push({ type: "text", text: phone, x: "50%", y: "68%", x_anchor: "50%", y_anchor: "50%", font_size: Math.round(30 * s), fill_color: "#94a3b8", font_family: "Inter", shadow_color: "rgba(0,0,0,0)", shadow_blur: 0 });
+    endEls.push({ type: "text", text: phone, x: "50%", y: "69%", x_anchor: "50%", y_anchor: "50%", font_size: Math.round(44 * s), fill_color: "#FFFFFF", font_family: "Inter", shadow_color: "rgba(0,0,0,0)", shadow_blur: 0 });
   }
 
   // Coach contact — 28px at 76%
@@ -784,7 +747,7 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
     topStats.forEach(([label, value], i) => {
       const xPos = endColX[endStatCols][i];
       endEls.push(
-        { type: "text", text: value, x: xPos, y: "83%", x_anchor: "50%", y_anchor: "50%", font_size: Math.round(80 * s), font_weight: "900", fill_color: accentHex, font_family: "Oswald", shadow_color: "rgba(0,0,0,0)", shadow_blur: 0 },
+        { type: "text", text: value, x: xPos, y: "83%", x_anchor: "50%", y_anchor: "50%", font_size: Math.round(54 * s), font_weight: "900", fill_color: accentHex, font_family: "Oswald", shadow_color: "rgba(0,0,0,0)", shadow_blur: 0 },
         { type: "text", text: label.toUpperCase(), x: xPos, y: "90%", x_anchor: "50%", y_anchor: "50%", font_size: Math.round(26 * s), fill_color: "#64748b", font_family: "Inter", shadow_color: "rgba(0,0,0,0)", shadow_blur: 0 }
       );
     });

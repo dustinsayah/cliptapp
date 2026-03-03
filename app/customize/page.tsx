@@ -282,6 +282,11 @@ export default function CustomizePage() {
 
   // ── Spotlight ───────────────────────────────────────────────────────────────
   const [spotlightStyle, setSpotlightStyle] = useState<"arrow" | "circle" | "none">("arrow");
+  const [spotlightStep,     setSpotlightStep]     = useState(0);
+  const [spotlightFrameUrl, setSpotlightFrameUrl] = useState<string | null>(null);
+  const [frameLoading,      setFrameLoading]      = useState(false);
+  const [spotlightDone,     setSpotlightDone]     = useState(false);
+  const frameCache = useRef<Record<string, string>>({});
 
   // ── Export ──────────────────────────────────────────────────────────────────
   const [exportType,    setExportType]    = useState<"landscape" | "social">("landscape");
@@ -392,8 +397,14 @@ export default function CustomizePage() {
           skillCategory: saved?.skillCategory ?? defaultCat,
           playType:      c.playType,
           qualityScore:  c.qualityScore,
+          markX:         saved?.markX,
+          markY:         saved?.markY,
         };
       }));
+      // Restore spotlight done state if all clips were previously marked
+      if (prev.clips && prev.clips.length > 0 && prev.clips.every((c: ClipItem) => c.markX !== undefined)) {
+        setSpotlightDone(true);
+      }
     }
   }, []);
 
@@ -449,6 +460,53 @@ export default function CustomizePage() {
   function setClipMark(id: string, x: number, y: number) {
     setClips(prev => prev.map(c => c.id === id ? { ...c, markX: x, markY: y } : c));
   }
+
+  // ── Frame extractor for spotlight slideshow ──────────────────────────────────
+  const extractFrame = useCallback(async (clipUrl: string): Promise<string> => {
+    if (frameCache.current[clipUrl]) return frameCache.current[clipUrl];
+    return new Promise((resolve, reject) => {
+      const video = document.createElement("video");
+      video.muted = true; video.playsInline = true; video.src = clipUrl;
+      video.addEventListener("seeked", () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = video.videoWidth || 1920; canvas.height = video.videoHeight || 1080;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { reject(new Error("no ctx")); return; }
+        ctx.drawImage(video, 0, 0);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+        frameCache.current[clipUrl] = dataUrl;
+        resolve(dataUrl);
+      }, { once: true });
+      video.addEventListener("loadedmetadata", () => { video.currentTime = 0.1; }, { once: true });
+      video.addEventListener("error", () => reject(new Error("video error")), { once: true });
+      video.load();
+    });
+  }, []);
+
+  // ── Spotlight frame loader ────────────────────────────────────────────────────
+  const spotlightClipUrl = clips[spotlightStep]?.blobUrl ?? null;
+  useEffect(() => {
+    if (openSection !== 2 || spotlightDone || !spotlightClipUrl || spotlightStyle === "none") return;
+    let cancelled = false;
+    setFrameLoading(true);
+    setSpotlightFrameUrl(null);
+    extractFrame(spotlightClipUrl).then(url => {
+      if (!cancelled) { setSpotlightFrameUrl(url); setFrameLoading(false); }
+    }).catch(() => {
+      if (!cancelled) setFrameLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [openSection, spotlightStep, spotlightClipUrl, extractFrame, spotlightDone, spotlightStyle]);
+
+  function handleSpotlightTap(e: React.MouseEvent<HTMLDivElement>) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = Math.round(((e.clientX - rect.left) / rect.width) * 100);
+    const y = Math.round(((e.clientY - rect.top) / rect.height) * 100);
+    const clip = clips[spotlightStep];
+    if (!clip) return;
+    setClipMark(clip.id, x, y);
+  }
+
   function removeClip(id: string) {
     setClips(prev => {
       const idx = prev.findIndex(c => c.id === id);
@@ -878,28 +936,130 @@ export default function CustomizePage() {
           accentHex={accentHex}
           tipBadge={{ text: "Coaches stop watching if they can't find you", color: "#00A3FF" }}
         >
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
-            {(
-              [
-                { id: "arrow",  label: "Arrow + Name",     desc: "Bold arrow points to you with your jersey #",     emoji: "⬇️" },
-                { id: "circle", label: "Circle Highlight", desc: "Pulsing circle highlights your jersey number",    emoji: "⭕" },
-                { id: "none",   label: "No Spotlight",     desc: "Clean cuts — no overlay between clips",           emoji: "✂️" },
-              ] as const
-            ).map(opt => (
-              <button key={opt.id} type="button" onClick={() => setSpotlightStyle(opt.id)}
+          {/* Style selector */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+            {(["arrow", "circle", "none"] as const).map(s => (
+              <button key={s} type="button" onClick={() => setSpotlightStyle(s)}
                 style={{
-                  padding: "18px 12px", borderRadius: 12, border: "2px solid",
-                  textAlign: "center", cursor: "pointer", transition: "all 0.15s",
-                  borderColor: spotlightStyle === opt.id ? accentHex : "rgba(255,255,255,0.08)",
-                  background:  spotlightStyle === opt.id ? `${accentHex}20` : "#0D1F38",
+                  flex: 1, padding: "10px 8px", borderRadius: 10, border: "2px solid",
+                  cursor: "pointer", fontSize: 12, fontWeight: spotlightStyle === s ? 700 : 500,
+                  textAlign: "center" as const, transition: "all 0.15s",
+                  borderColor: spotlightStyle === s ? accentHex : "rgba(255,255,255,0.08)",
+                  background:  spotlightStyle === s ? `${accentHex}20` : "#0D1F38",
+                  color: spotlightStyle === s ? "#FFFFFF" : "#64748b",
                 }}>
-                <div style={{ fontSize: 28, marginBottom: 10 }}>{opt.emoji}</div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "#FFFFFF", marginBottom: 6 }}>{opt.label}</div>
-                <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.5 }}>{opt.desc}</div>
-                {spotlightStyle === opt.id && <div style={{ marginTop: 8, fontSize: 11, color: accentHex, fontWeight: 600 }}>✓ Selected</div>}
+                {s === "arrow" ? "⬇ Arrow" : s === "circle" ? "○ Circle" : "✂ None"}
               </button>
             ))}
           </div>
+
+          {/* Tap-to-mark slideshow (only when spotlight is on) */}
+          {spotlightStyle !== "none" && (
+            clips.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "24px 0", color: "#475569", fontSize: 13 }}>
+                Upload clips first to mark your position.
+              </div>
+            ) : spotlightDone ? (
+              <div style={{ textAlign: "center", padding: "20px 0" }}>
+                <div style={{ width: 48, height: 48, borderRadius: "50%", background: "rgba(34,197,94,0.12)", border: "2px solid rgba(34,197,94,0.4)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px", fontSize: 22, color: "#22C55E" }}>✓</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: "#22C55E", marginBottom: 4 }}>All {clips.length} clips marked</div>
+                <div style={{ fontSize: 12, color: "#64748b", marginBottom: 16 }}>Clipt will circle you at each position in the export.</div>
+                <button type="button" onClick={() => { setSpotlightDone(false); setSpotlightStep(0); }}
+                  style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: "8px 16px", color: "#94a3b8", fontSize: 12, cursor: "pointer" }}>
+                  Edit Marks
+                </button>
+              </div>
+            ) : (
+              <div>
+                {/* Header */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#FFFFFF" }}>Tap where you are in the frame</div>
+                    <div style={{ fontSize: 11, color: "#64748b" }}>Clip {spotlightStep + 1} of {clips.length}</div>
+                  </div>
+                  <div style={{ fontSize: 11, color: "#475569" }}>
+                    {clips.filter(c => c.markX !== undefined).length}/{clips.length} marked
+                  </div>
+                </div>
+
+                {/* Frame + tap area */}
+                <div
+                  onClick={handleSpotlightTap}
+                  style={{
+                    position: "relative", width: "100%", aspectRatio: "16/9",
+                    background: "#000", borderRadius: 10, overflow: "hidden",
+                    cursor: "crosshair", marginBottom: 14,
+                    border: `2px solid ${accentHex}40`,
+                  }}>
+                  {frameLoading && (
+                    <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#475569", fontSize: 12 }}>
+                      Loading frame...
+                    </div>
+                  )}
+                  {spotlightFrameUrl && (
+                    <img src={spotlightFrameUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block", pointerEvents: "none" }} />
+                  )}
+                  {/* Circle at tapped position */}
+                  {clips[spotlightStep]?.markX !== undefined && (
+                    <div style={{
+                      position: "absolute",
+                      left: `${clips[spotlightStep].markX}%`,
+                      top: `${clips[spotlightStep].markY ?? 50}%`,
+                      width: 48, height: 48, borderRadius: "50%",
+                      border: `3px solid ${accentHex}`,
+                      transform: "translate(-50%, -50%)",
+                      pointerEvents: "none",
+                      boxShadow: "0 0 0 2px rgba(0,0,0,0.5), 0 0 12px rgba(0,0,0,0.8)",
+                    }} />
+                  )}
+                  {/* Prompt when not yet tapped */}
+                  {clips[spotlightStep]?.markX === undefined && !frameLoading && (
+                    <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+                      <div style={{ background: "rgba(0,0,0,0.72)", borderRadius: 8, padding: "8px 14px", fontSize: 12, color: "#94a3b8" }}>
+                        Tap where you are
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Navigation */}
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <button type="button" onClick={() => setSpotlightStep(s => Math.max(0, s - 1))} disabled={spotlightStep === 0}
+                    style={{ width: 36, height: 36, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.1)", background: spotlightStep === 0 ? "transparent" : "#0D1F38", color: spotlightStep === 0 ? "#1E293B" : "#94a3b8", cursor: spotlightStep === 0 ? "default" : "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    ←
+                  </button>
+                  <div style={{ flex: 1, display: "flex", gap: 5, justifyContent: "center" }}>
+                    {clips.map((c, i) => (
+                      <button key={c.id} type="button" onClick={() => setSpotlightStep(i)}
+                        style={{ width: i === spotlightStep ? 20 : 6, height: 6, borderRadius: 3, border: "none", cursor: "pointer", padding: 0, transition: "all 0.2s",
+                          background: c.markX !== undefined ? "#22C55E" : i === spotlightStep ? accentHex : "#334155" }} />
+                    ))}
+                  </div>
+                  {spotlightStep < clips.length - 1 ? (
+                    <button type="button" onClick={() => setSpotlightStep(s => s + 1)}
+                      style={{ padding: "8px 16px", borderRadius: 8, border: "none", cursor: "pointer", background: accentHex, color: isLightAccent ? "#050A14" : "#FFFFFF", fontSize: 12, fontWeight: 700 }}>
+                      Next →
+                    </button>
+                  ) : (
+                    <button type="button" onClick={() => setSpotlightDone(true)}
+                      style={{ padding: "8px 16px", borderRadius: 8, border: "none", cursor: "pointer", background: "#22C55E", color: "#050A14", fontSize: 12, fontWeight: 700 }}>
+                      Done ✓
+                    </button>
+                  )}
+                </div>
+
+                {/* Skip */}
+                <div style={{ textAlign: "center", marginTop: 10 }}>
+                  <button type="button" onClick={() => {
+                    if (spotlightStep < clips.length - 1) setSpotlightStep(s => s + 1);
+                    else setSpotlightDone(true);
+                  }} style={{ background: "none", border: "none", cursor: "pointer", color: "#475569", fontSize: 11, textDecoration: "underline" }}>
+                    Skip this clip
+                  </button>
+                </div>
+              </div>
+            )
+          )}
         </SectionCard>
 
         {/* ─── 3 · OPENING TITLE CARD ─── */}
