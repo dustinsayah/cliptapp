@@ -1341,9 +1341,18 @@ async function buildReel(cfg: BuildConfig): Promise<Blob> {
 
   // Audio setup — failures are non-fatal, export continues without audio
   let audioCtx: AudioContext | null = null, gainNode: GainNode | null = null, audioDest: MediaStreamAudioDestinationNode | null = null;
-  const musicUrl = musicTrackId === "custom"
-    ? (() => { try { return localStorage.getItem("clipt_custom_music_url") || undefined; } catch { return undefined; } })()
-    : MUSIC_TRACK_URLS[musicTrackId];
+  // Resolve music URL — prefer cliptSettings.musicUrl (Cloudinary), fall back to legacy MUSIC_TRACK_URLS map
+  const musicUrl = (() => {
+    if (musicTrackId === "custom") {
+      try { return localStorage.getItem("clipt_custom_music_url") || undefined; } catch { return undefined; }
+    }
+    if (musicTrackId === "no-music") return undefined;
+    try {
+      const saved = JSON.parse(localStorage.getItem("cliptSettings") || "{}");
+      if (saved.musicUrl && typeof saved.musicUrl === "string") return saved.musicUrl;
+    } catch {}
+    return MUSIC_TRACK_URLS[musicTrackId];
+  })();
   if (musicUrl) {
     try {
       audioCtx = new AudioContext();
@@ -1680,12 +1689,13 @@ export default function ExportPage() {
     // Load selected music track for pre-export music card
     try {
       const s = JSON.parse(localStorage.getItem("cliptSettings") || "{}");
-      console.log("EXPORT READING MUSIC:", s.music, s.musicUrl, s.musicName);
-      console.log("EXPORT TYPE READ:", s.exportType);
-      // Read music — prefer new fields (music/musicName), fall back to legacy (musicTrackId)
-      const tid = s.music || s.musicId || s.musicTrackId || reel.musicTrackId || "no-music";
+      const music    = s.music     as string | null ?? null;
+      const musicUrl = s.musicUrl  as string | null ?? null;
+      const musicName = s.musicName as string | null ?? null;
+      console.log("EXPORT MUSIC:", { music, musicUrl, musicName });
+      const tid = music || s.musicId || s.musicTrackId || reel.musicTrackId || "no-music";
       setSelectedMusicTrackId(tid);
-      setSelectedMusicName(s.musicName ?? null);
+      setSelectedMusicName(musicName);
       // Read export type
       const et = s.exportType as string | undefined;
       if (et === "social") setExportTypeSetting("social");
@@ -1864,15 +1874,12 @@ export default function ExportPage() {
     // Read new cliptSettings fields (titleCard object saved by new customize page)
     const tc = (settings.titleCard as Record<string, string> | undefined) ?? {};
 
-    // Determine music — prefer new cliptSettings.musicUrl field, fall back to legacy musicTrackId
+    // Determine music — read directly from cliptSettings (set by new customize page)
+    const settingsMusicId  = (settings.music   as string | null) ?? (musicTrackId || "no-music");
     const settingsMusicUrl = (settings.musicUrl as string | null) ?? null;
-    const settingsMusicId  = (settings.music as string | null) ?? musicTrackId;
-    const legacyMusicUrl   = (settingsMusicId === "no-music" || settingsMusicId === "upload") ? undefined
-      : settingsMusicId === "custom"
-        ? (() => { try { return localStorage.getItem("clipt_custom_music_url") || undefined; } catch { return undefined; } })()
-        : MUSIC_TRACK_URLS[settingsMusicId];
-    const resolvedMusicUrl = settingsMusicUrl || legacyMusicUrl || null;
-    const resolvedMusicName = (settings.musicName as string | null) ?? (MUSIC_TRACK_LABELS[settingsMusicId] ?? null);
+    const resolvedMusicUrl = settingsMusicUrl;    // Cloudinary URL already in settings
+    const resolvedMusicName = (settings.musicName as string | null) ?? null;
+    console.log("API ROUTE MUSIC resolve:", { settingsMusicId, resolvedMusicUrl, resolvedMusicName });
 
     // Social flag — prefer forceSocial override, then cliptSettings.exportType, then aspect ratio
     const settingsExportType = (settings.exportType as string | undefined);
@@ -1906,7 +1913,8 @@ export default function ExportPage() {
       settings: {
         colorAccent:     accentHex,
         transition:      sGet("transition",        reel.transition        || "Hard Cut") as string,
-        musicUrl:        resolvedMusicUrl,  // always pass — both 16:9 and 9:16 support music
+        music:           settingsMusicId,       // track identifier — "no-music" skips audio
+        musicUrl:        resolvedMusicUrl,       // full Cloudinary URL or null
         musicName:       resolvedMusicName,
         statsEnabled:    sGet("statsEnabled", sGet("includeStatsCard", reel.includeStatsCard ?? true)) as boolean,
         jerseyOverlay:   sGet("jerseyOverlay", sGet("showJerseyOverlay", reel.showJerseyOverlay ?? true)) as boolean,
@@ -2138,9 +2146,16 @@ export default function ExportPage() {
   };
 
   const handleDownloadMusicTrack = () => {
-    const url = builtMusicTrackId === "custom"
-      ? (() => { try { return localStorage.getItem("clipt_custom_music_url") || null; } catch { return null; } })()
-      : MUSIC_TRACK_URLS[builtMusicTrackId] || null;
+    const url = (() => {
+      if (builtMusicTrackId === "custom") {
+        try { return localStorage.getItem("clipt_custom_music_url") || null; } catch { return null; }
+      }
+      try {
+        const saved = JSON.parse(localStorage.getItem("cliptSettings") || "{}");
+        if (saved.musicUrl && typeof saved.musicUrl === "string") return saved.musicUrl;
+      } catch {}
+      return MUSIC_TRACK_URLS[builtMusicTrackId] || null;
+    })();
     if (!url) return;
     const a = document.createElement("a");
     a.href = url; a.download = `${baseName}-music-${builtMusicTrackId}.mp3`;
@@ -2382,17 +2397,17 @@ export default function ExportPage() {
             {(() => {
               const hasMusic = selectedMusicTrackId && selectedMusicTrackId !== "no-music";
               const musicName = hasMusic
-                ? (selectedMusicName || MUSIC_TRACK_LABELS[selectedMusicTrackId] || selectedMusicTrackId)
+                ? (selectedMusicName || selectedMusicTrackId)
                 : null;
               return [
-                { label: "Transitions",     value: "Hard Cuts",  reason: "Coaches prefer no distractions", green: true },
-                { label: "Player Spotlight", value: "ON",         reason: "Circle identifies you in every clip", green: true },
+                { label: "Transitions",      value: "Hard Cuts",  reason: "Coaches prefer no distractions", green: true },
+                { label: "Player Spotlight", value: "Circle",     reason: "Circle identifies you in every clip", green: true },
                 { label: "Format",           value: exportTypeSetting === "social" ? "9:16 Vertical" : "1920×1080 16:9", reason: "Coach email & Hudl compatible", green: true },
                 { label: "Quality",          value: "Maximum",    reason: "H.264 High · 60fps · 100 quality", green: true },
                 {
                   label: "Music",
-                  value: musicName ? `${musicName} — mixed in` : "None — coaches watch on mute",
-                  reason: musicName ? "Track will be mixed into your reel" : "98% of coaches watch on mute",
+                  value: musicName ? musicName : "None",
+                  reason: musicName ? "Track mixed into your reel" : "98% of coaches watch on mute",
                   green: !!musicName,
                 },
               ];
@@ -2629,7 +2644,7 @@ export default function ExportPage() {
               )}
 
               {/* ── Button 2: Download Music Track ── */}
-              {builtMusicTrackId && builtMusicTrackId !== "no-music" && (MUSIC_TRACK_URLS[builtMusicTrackId] || builtMusicTrackId === "custom") && (
+              {builtMusicTrackId && builtMusicTrackId !== "no-music" && (
                 <button type="button" onClick={handleDownloadMusicTrack}
                   className="w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all hover:opacity-90"
                   style={{ background: "transparent", color: "#00A3FF", border: "1.5px solid #00A3FF40" }}>

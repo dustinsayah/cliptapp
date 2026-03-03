@@ -178,7 +178,6 @@ export const SPORTS_CONFIG: Record<string, SportConfig> = {
           { label: "Comp%",    key: "comppct", placeholder: "67%",   benchmark: 70   },
           { label: "Rush Yds", key: "rushyds", placeholder: "312",   benchmark: 1000 },
           { label: "INT",      key: "ints",    placeholder: "5",     benchmark: 10   },
-          { label: "Rating",   key: "rating",  placeholder: "108",   benchmark: 120  },
         ],
         extra: [
           { label: "Yds/Att",  key: "ypa",      placeholder: "8.2", benchmark: 10 },

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useReel } from "../providers";
 import { SPORTS_CONFIG } from "../../lib/sportsConfig";
 import { TitleCardPreview } from "../../components/TitleCardPreview";
+import { MUSIC_TRACKS, type MusicTrack } from "../../lib/musicTracks";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -108,16 +109,6 @@ const COLOR_SWATCHES = [
   { hex: "#C0C0C0", name: "Silver"        },
 ];
 
-const MUSIC_TRACKS = [
-  { id: "no-music", name: "No Music",       desc: "Clean — coach preferred",               url: null },
-  { id: "hype-1",   name: "Hype Mode",      desc: "Hard hitting sport energy",             url: "https://assets.mixkit.co/music/preview/mixkit-hip-hop-02-738.mp3" },
-  { id: "hype-2",   name: "Game Time",      desc: "Intense drums and bass",                url: "https://assets.mixkit.co/music/preview/mixkit-boxing-workout-625.mp3" },
-  { id: "hype-3",   name: "Champion",       desc: "Triumphant cinematic sport",            url: "https://assets.mixkit.co/music/preview/mixkit-sports-victory-623.mp3" },
-  { id: "hype-4",   name: "Grind Season",   desc: "Motivational hip hop",                  url: "https://assets.mixkit.co/music/preview/mixkit-rap-workout-668.mp3" },
-  { id: "hype-5",   name: "Beast Mode",     desc: "Dark trap instrumental",                url: "https://assets.mixkit.co/music/preview/mixkit-trap-hip-hop-intro-340.mp3" },
-  { id: "hype-6",   name: "Warm Up",        desc: "Smooth basketball vibes",               url: "https://assets.mixkit.co/music/preview/mixkit-basketball-hip-hop-498.mp3" },
-  { id: "custom",   name: "Upload My Own",  desc: "MP3, WAV or M4A up to 15MB",           url: null },
-];
 
 const GRAD_YEARS = ["2025", "2026", "2027", "2028", "2029", "2030", "2031"];
 
@@ -257,9 +248,9 @@ export default function CustomizePage() {
 
   // ── Clips ───────────────────────────────────────────────────────────────────
   const [clips, setClips]               = useState<ClipItem[]>([]);
+  const [activeClipIdx, setActiveClipIdx] = useState<number>(0);
   const dragIndexRef                    = useRef<number | null>(null);
   const [dragOver, setDragOver]         = useState<number | null>(null);
-  const [expandedClip, setExpandedClip] = useState<string | null>(null);
 
   // ── Title card ──────────────────────────────────────────────────────────────
   const [firstName,    setFirstName]    = useState("");
@@ -296,20 +287,17 @@ export default function CustomizePage() {
   const [exportType,    setExportType]    = useState<"landscape" | "social">("landscape");
 
   // ── Music ────────────────────────────────────────────────────────────────────
-  const [selectedMusic,     setSelectedMusic]     = useState<string>("no-music");
-  const [selectedMusicUrl,  setSelectedMusicUrl]  = useState<string | null>(null);
-  const [selectedMusicName, setSelectedMusicName] = useState<string | null>(null);
-  const [previewingTrack,   setPreviewingTrack]   = useState<string | null>(null);
-  const [uploadedMusicName, setUploadedMusicName] = useState<string | null>(null);
-  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [selectedMusicId,   setSelectedMusicId]   = useState<string>("no-music");
+  const [previewingId,      setPreviewingId]       = useState<string | null>(null);
+  const [customMusicUrl,    setCustomMusicUrl]     = useState<string | null>(null);
+  const [customMusicName,   setCustomMusicName]    = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // ── Audio cleanup on unmount ─────────────────────────────────────────────────
   useEffect(() => {
     return () => {
-      if (previewAudioRef.current) {
-        previewAudioRef.current.pause();
-        previewAudioRef.current = null;
-      }
+      audioRef.current?.pause();
+      audioRef.current = null;
     };
   }, []);
 
@@ -369,19 +357,21 @@ export default function CustomizePage() {
       setExportType("landscape"); // migrate legacy value
     }
     if (prev.music) {
-      setSelectedMusic(prev.music);
-      setSelectedMusicUrl(prev.musicUrl ?? null);
-      setSelectedMusicName(prev.musicName ?? null);
-    } else if (prev.musicId) {
-      // migrate legacy musicId — try to find in current tracks, fall back to no-music
-      const legacyTrack = MUSIC_TRACKS.find(m => m.id === prev.musicId);
-      if (legacyTrack) {
-        setSelectedMusic(legacyTrack.id);
-        setSelectedMusicUrl(legacyTrack.url ?? null);
-        setSelectedMusicName(legacyTrack.name);
+      // Check if saved track id still exists in current MUSIC_TRACKS
+      const savedTrack = MUSIC_TRACKS.find(m => m.id === prev.music);
+      if (savedTrack) {
+        setSelectedMusicId(prev.music);
+        if (prev.music === "custom") {
+          setCustomMusicUrl(prev.musicUrl ?? null);
+          setCustomMusicName(prev.musicName ?? null);
+        }
       } else {
-        setSelectedMusic("no-music");
+        setSelectedMusicId("no-music"); // legacy id no longer exists
       }
+    } else if (prev.musicId) {
+      // migrate legacy musicId
+      const legacyTrack = MUSIC_TRACKS.find(m => m.id === prev.musicId);
+      setSelectedMusicId(legacyTrack ? legacyTrack.id : "no-music");
     }
 
     // Build clip list
@@ -438,6 +428,8 @@ export default function CustomizePage() {
       next.splice(idx, 0, moved);
       return next;
     });
+    // Keep the active clip in view when dragging it
+    if (from === activeClipIdx) setActiveClipIdx(idx);
     dragIndexRef.current = idx;
     setDragOver(idx);
   }
@@ -458,51 +450,42 @@ export default function CustomizePage() {
     setClips(prev => prev.map(c => c.id === id ? { ...c, markX: x, markY: y } : c));
   }
   function removeClip(id: string) {
-    setClips(prev => prev.filter(c => c.id !== id));
+    setClips(prev => {
+      const idx = prev.findIndex(c => c.id === id);
+      const next = prev.filter(c => c.id !== id);
+      // Keep activeClipIdx in bounds after removal
+      setActiveClipIdx(cur => Math.min(cur, Math.max(0, next.length - 1)));
+      if (idx !== -1 && idx < activeClipIdx) setActiveClipIdx(cur => Math.max(0, cur - 1));
+      return next;
+    });
   }
 
   // ── Music preview ────────────────────────────────────────────────────────────
-  const handlePreviewToggle = useCallback((trackId: string, trackUrl: string | null) => {
-    if (!trackUrl) return;
-    if (previewingTrack === trackId) {
-      previewAudioRef.current?.pause();
-      setPreviewingTrack(null);
-    } else {
-      if (previewAudioRef.current) {
-        previewAudioRef.current.pause();
-        previewAudioRef.current = null;
-      }
-      const audio = new Audio(trackUrl);
-      audio.crossOrigin = "anonymous";
-      audio.volume = 0.7;
-      previewAudioRef.current = audio;
-      audio.play().catch(err => console.log("Preview failed:", err));
-      audio.addEventListener("ended", () => setPreviewingTrack(null));
-      setPreviewingTrack(trackId);
+  const handlePreview = useCallback((track: MusicTrack) => {
+    if (!track.url) return;
+    if (previewingId === track.id) {
+      audioRef.current?.pause();
+      setPreviewingId(null);
+      return;
     }
-  }, [previewingTrack]);
-
-  function selectMusicTrack(track: typeof MUSIC_TRACKS[0]) {
-    if (track.id === "no-music") {
-      setSelectedMusic("no-music");
-      setSelectedMusicUrl(null);
-      setSelectedMusicName(null);
-    } else if (track.id === "custom") {
-      setSelectedMusic("custom");
-      // URL set when user picks file
-    } else {
-      setSelectedMusic(track.id);
-      setSelectedMusicUrl(track.url ?? null);
-      setSelectedMusicName(track.name);
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
     }
-  }
+    const audio = new Audio(track.url);
+    audio.crossOrigin = "anonymous";
+    audio.volume = 0.8;
+    audio.play().catch(err => console.error("Preview failed:", err));
+    audio.onended = () => setPreviewingId(null);
+    audioRef.current = audio;
+    setPreviewingId(track.id);
+  }, [previewingId]);
 
   function handleMusicFileUpload(file: File) {
     const blobUrl = URL.createObjectURL(file);
-    setSelectedMusic("custom");
-    setSelectedMusicUrl(blobUrl);
-    setSelectedMusicName(file.name);
-    setUploadedMusicName(file.name);
+    setSelectedMusicId("custom");
+    setCustomMusicUrl(blobUrl);
+    setCustomMusicName(file.name);
   }
 
   // ── Submit ───────────────────────────────────────────────────────────────────
@@ -520,12 +503,17 @@ export default function CustomizePage() {
 
     const statsEnabled = filledStatCount > 0;
 
-    // Resolve final music values
-    const finalMusic     = selectedMusic;
-    const finalMusicUrl  = selectedMusicUrl;
-    const finalMusicName = selectedMusicName;
+    // Resolve final music values from new state
+    const selectedTrack = MUSIC_TRACKS.find(t => t.id === selectedMusicId);
+    const music    = selectedMusicId;
+    const musicUrl = selectedMusicId === "custom"
+      ? customMusicUrl
+      : selectedTrack?.url ?? null;
+    const musicName = selectedMusicId === "custom"
+      ? customMusicName
+      : selectedTrack?.name ?? null;
 
-    console.log("SAVING MUSIC:", finalMusic, finalMusicUrl, finalMusicName);
+    console.log("SAVING MUSIC:", { music, musicUrl, musicName });
     console.log("SAVING EXPORT TYPE:", exportType);
 
     const cliptSettings = {
@@ -555,10 +543,10 @@ export default function CustomizePage() {
         statsEnabled,
       },
       spotlightStyle,
-      exportType,          // "landscape" or "social"
-      music:     finalMusic,     // track identifier
-      musicUrl:  finalMusicUrl,  // full URL or null
-      musicName: finalMusicName, // display name or null
+      exportType,   // "landscape" or "social"
+      music,        // track identifier
+      musicUrl,     // full URL or null
+      musicName,    // display name or null
     };
 
     try {
@@ -676,7 +664,7 @@ export default function CustomizePage() {
         <SectionCard
           number={1}
           title="Your Clips"
-          subtitle={clips.length > 0 ? `${clips.length} clips · ${fmtDur(totalSeconds)} total` : "Drag to reorder, rate your best plays"}
+          subtitle={clips.length > 0 ? `${clips.length} clips · ${fmtDur(totalSeconds)} total` : "Upload clips to get started"}
           open={openSection === 1}
           onToggle={() => setOpenSection(openSection === 1 ? 0 : 1)}
           accentHex={accentHex}
@@ -695,7 +683,7 @@ export default function CustomizePage() {
               {healthScore < 50
                 ? "Add coach email + at least 3 stats to boost your score"
                 : healthScore < 80
-                ? "Almost there — rate your best clips and add coach info"
+                ? "Almost there — add coach info and more stats"
                 : "Great reel! Coaches will be impressed"}
             </div>
           </div>
@@ -709,142 +697,175 @@ export default function CustomizePage() {
                 Go Upload Clips
               </button>
             </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {clips.map((clip, idx) => {
-                const isExpanded = expandedClip === clip.id;
-                return (
-                  <div
-                    key={clip.id}
-                    draggable
-                    onDragStart={() => handleDragStart(idx)}
-                    onDragOver={e => handleDragOver(e, idx)}
-                    onDragEnd={handleDragEnd}
-                    style={{
-                      background: "#0D1F38", borderRadius: 10, overflow: "hidden",
-                      border: dragOver === idx ? `1px solid ${accentHex}` : "1px solid rgba(255,255,255,0.06)",
-                      transition: "border-color 0.15s",
-                    }}
-                  >
-                    {/* Clip header row */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px" }}>
-                      {/* Drag handle */}
-                      <div style={{ color: "#334155", cursor: "grab", flexShrink: 0, lineHeight: 0 }}><GripIcon /></div>
-                      {/* Thumbnail */}
-                      {clip.thumbnailUrl ? (
-                        <img src={clip.thumbnailUrl} alt="" style={{ width: 56, height: 32, objectFit: "cover", borderRadius: 4, flexShrink: 0 }} />
-                      ) : (
-                        <div style={{ width: 56, height: 32, background: "#1E293B", borderRadius: 4, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>🎬</div>
+          ) : (() => {
+            const safeIdx   = Math.min(activeClipIdx, clips.length - 1);
+            const activeClip = clips[safeIdx];
+            return (
+              <div>
+                {/* ── Clip counter + remove ── */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "#94a3b8" }}>
+                    Clip {safeIdx + 1} of {clips.length}
+                    <span style={{ color: "#475569", fontWeight: 400, marginLeft: 8 }}>{activeClip.name}</span>
+                  </span>
+                  <button type="button" onClick={() => removeClip(activeClip.id)}
+                    style={{ fontSize: 12, color: "#EF4444", background: "none", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>
+                    Remove
+                  </button>
+                </div>
+
+                {/* ── Step 1: Tap to mark yourself ── */}
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                    <span style={{ width: 22, height: 22, borderRadius: "50%", background: accentHex, color: isLightAccent ? "#050A14" : "#fff", fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>1</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: "#FFFFFF" }}>Tap the video to mark yourself</span>
+                    <span style={{ fontSize: 11, color: "#475569" }}>— sets your spotlight position</span>
+                  </div>
+                  {activeClip.blobUrl ? (
+                    <div style={{ position: "relative", borderRadius: 8, overflow: "hidden", background: "#000", cursor: "crosshair" }}>
+                      <video
+                        src={activeClip.blobUrl}
+                        playsInline muted controls
+                        style={{ width: "100%", display: "block", maxHeight: 260, objectFit: "contain" }}
+                        onClick={e => {
+                          const rect = (e.target as HTMLVideoElement).getBoundingClientRect();
+                          const x = Math.round(((e.clientX - rect.left) / rect.width) * 100);
+                          const y = Math.round(((e.clientY - rect.top) / rect.height) * 100);
+                          setClipMark(activeClip.id, x, y);
+                        }}
+                      />
+                      {activeClip.markX !== undefined && (
+                        <div style={{
+                          position: "absolute", pointerEvents: "none",
+                          left: `${activeClip.markX}%`, top: `${activeClip.markY ?? 40}%`,
+                          transform: "translate(-50%, -50%)",
+                          width: 44, height: 44,
+                          border: `2px solid ${accentHex}`,
+                          borderRadius: "50%",
+                          boxShadow: `0 0 0 2px rgba(0,0,0,0.5), 0 0 16px ${accentHex}80`,
+                        }} />
                       )}
-                      {/* Info */}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: "#FFFFFF", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{clip.name}</div>
-                        <div style={{ fontSize: 11, color: "#475569", marginTop: 2 }}>
-                          {fmtDur(clip.duration)} · {clip.skillCategory}
-                          {clip.playType && <span style={{ marginLeft: 6 }}>· {clip.playType}</span>}
-                        </div>
-                      </div>
-                      {/* Expand */}
-                      <button type="button" onClick={() => setExpandedClip(isExpanded ? null : clip.id)}
-                        style={{ background: "none", border: "none", cursor: "pointer", color: "#475569", padding: 4, lineHeight: 0 }}>
-                        <ChevronIcon open={isExpanded} />
-                      </button>
-                      {/* Remove */}
-                      <button type="button" onClick={() => removeClip(clip.id)}
-                        style={{ background: "none", border: "none", cursor: "pointer", color: "#475569", padding: "4px 6px", fontSize: 18, lineHeight: 1 }}>
-                        ×
+                    </div>
+                  ) : (
+                    <div style={{ height: 140, borderRadius: 8, background: "#0D1F38", display: "flex", alignItems: "center", justifyContent: "center", color: "#334155", fontSize: 13 }}>
+                      No video preview
+                    </div>
+                  )}
+                  {activeClip.markX !== undefined ? (
+                    <div style={{ fontSize: 11, color: accentHex, marginTop: 5, display: "flex", alignItems: "center", gap: 10 }}>
+                      ✓ Marked at {activeClip.markX}%, {activeClip.markY ?? 40}%
+                      <button type="button" onClick={() => setClipMark(activeClip.id, 50, 40)}
+                        style={{ fontSize: 10, color: "#475569", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+                        Reset
                       </button>
                     </div>
+                  ) : (
+                    <div style={{ fontSize: 11, color: "#475569", marginTop: 5 }}>↑ Tap video to mark your position (used for spotlight circle)</div>
+                  )}
+                </div>
 
-                    {/* Expanded clip options */}
-                    {isExpanded && (
-                      <div style={{ padding: "0 12px 14px", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-                        {/* Video preview with tap-to-mark */}
-                        {clip.blobUrl && (
-                          <div style={{ marginTop: 12 }}>
-                            <label style={labelStyle}>
-                              Mark Yourself
-                              <span style={{ color: "#475569", fontWeight: 400, textTransform: "none", marginLeft: 6 }}>— tap the video to set your spotlight position</span>
-                            </label>
-                            <div style={{ position: "relative", borderRadius: 8, overflow: "hidden", background: "#000" }}>
-                              <video
-                                src={clip.blobUrl}
-                                playsInline muted controls
-                                style={{ width: "100%", display: "block", maxHeight: 200, objectFit: "contain" }}
-                                onClick={e => {
-                                  const rect = (e.target as HTMLVideoElement).getBoundingClientRect();
-                                  const x = Math.round(((e.clientX - rect.left) / rect.width) * 100);
-                                  const y = Math.round(((e.clientY - rect.top) / rect.height) * 100);
-                                  setClipMark(clip.id, x, y);
-                                }}
-                              />
-                              {/* Crosshair at mark position */}
-                              {(clip.markX !== undefined || clip.markY !== undefined) && (
-                                <div style={{
-                                  position: "absolute", pointerEvents: "none",
-                                  left: `${clip.markX ?? 50}%`, top: `${clip.markY ?? 40}%`,
-                                  transform: "translate(-50%, -50%)",
-                                  width: 32, height: 32,
-                                  border: `2px solid ${accentHex}`,
-                                  borderRadius: "50%",
-                                  boxShadow: `0 0 0 1px rgba(0,0,0,0.6)`,
-                                }} />
-                              )}
-                            </div>
-                            {(clip.markX !== undefined || clip.markY !== undefined) && (
-                              <div style={{ fontSize: 11, color: accentHex, marginTop: 4 }}>
-                                ✓ Marked at {clip.markX ?? 50}%, {clip.markY ?? 40}%
-                                <button type="button" onClick={() => setClipMark(clip.id, 50, 40)}
-                                  style={{ marginLeft: 10, fontSize: 10, color: "#475569", background: "none", border: "none", cursor: "pointer" }}>
-                                  Reset
-                                </button>
-                              </div>
-                            )}
-                          </div>
+                {/* ── Step 2: Trim ── */}
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                    <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#1E293B", color: "#94a3b8", fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>2</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: "#FFFFFF" }}>Trim clip</span>
+                    <span style={{ fontSize: 11, color: "#475569" }}>— {fmtDur(activeClip.duration)} total</span>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    <div>
+                      <label style={labelStyle}>Start (sec)</label>
+                      <input type="number" min={0} max={activeClip.duration} step={0.1}
+                        value={activeClip.trimStart || ""} placeholder="0"
+                        onChange={e => setClipTrim(activeClip.id, "trimStart", e.target.value)}
+                        style={inputStyle} />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>End (sec)</label>
+                      <input type="number" min={0} max={activeClip.duration} step={0.1}
+                        value={activeClip.trimEnd ?? ""} placeholder={String(Math.round(activeClip.duration))}
+                        onChange={e => setClipTrim(activeClip.id, "trimEnd", e.target.value)}
+                        style={inputStyle} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── Play type chips ── */}
+                {skillCats.length > 0 && (
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={labelStyle}>Play Type</label>
+                    <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 6 }}>
+                      {skillCats.map(cat => (
+                        <button key={cat} type="button" onClick={() => setClipCategory(activeClip.id, cat)}
+                          style={{
+                            padding: "5px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600,
+                            cursor: "pointer", border: "1px solid", transition: "all 0.15s",
+                            background: activeClip.skillCategory === cat ? accentHex : "transparent",
+                            borderColor: activeClip.skillCategory === cat ? accentHex : "rgba(255,255,255,0.1)",
+                            color: activeClip.skillCategory === cat ? (isLightAccent ? "#050A14" : "#fff") : "#64748b",
+                          }}>
+                          {cat}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Prev / Next + progress dots ── */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 16, marginBottom: 16 }}>
+                  <button type="button"
+                    onClick={() => setActiveClipIdx(i => Math.max(0, i - 1))}
+                    disabled={safeIdx === 0}
+                    style={{ width: 36, height: 36, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.1)", background: safeIdx === 0 ? "transparent" : "#0D1F38", color: safeIdx === 0 ? "#1E293B" : "#94a3b8", cursor: safeIdx === 0 ? "default" : "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    ←
+                  </button>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {clips.map((_, i) => (
+                      <button key={i} type="button" onClick={() => setActiveClipIdx(i)}
+                        style={{ width: i === safeIdx ? 20 : 6, height: 6, borderRadius: 3, background: i === safeIdx ? accentHex : "#334155", border: "none", cursor: "pointer", transition: "all 0.2s", padding: 0 }} />
+                    ))}
+                  </div>
+                  <button type="button"
+                    onClick={() => setActiveClipIdx(i => Math.min(clips.length - 1, i + 1))}
+                    disabled={safeIdx === clips.length - 1}
+                    style={{ width: 36, height: 36, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.1)", background: safeIdx === clips.length - 1 ? "transparent" : "#0D1F38", color: safeIdx === clips.length - 1 ? "#1E293B" : "#94a3b8", cursor: safeIdx === clips.length - 1 ? "default" : "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    →
+                  </button>
+                </div>
+
+                {/* ── Filmstrip reorder ── */}
+                <div>
+                  <label style={labelStyle}>Drag to Reorder</label>
+                  <div style={{ display: "flex", gap: 6, overflowX: "auto" as const, paddingBottom: 4 }}>
+                    {clips.map((c, i) => (
+                      <div key={c.id}
+                        draggable
+                        onDragStart={() => handleDragStart(i)}
+                        onDragOver={e => handleDragOver(e, i)}
+                        onDragEnd={handleDragEnd}
+                        onClick={() => setActiveClipIdx(i)}
+                        style={{
+                          flexShrink: 0, cursor: "pointer",
+                          border: `2px solid ${i === safeIdx ? accentHex : dragOver === i ? "#475569" : "transparent"}`,
+                          borderRadius: 6, overflow: "hidden",
+                          opacity: dragOver === i && dragIndexRef.current !== i ? 0.5 : 1,
+                          transition: "border-color 0.15s",
+                        }}>
+                        {c.thumbnailUrl ? (
+                          <img src={c.thumbnailUrl} alt="" style={{ width: 60, height: 34, objectFit: "cover", display: "block" }} />
+                        ) : (
+                          <div style={{ width: 60, height: 34, background: "#1E293B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>🎬</div>
                         )}
-
-                        {/* Play Type */}
-                        <div style={{ marginTop: 12 }}>
-                          <label style={labelStyle}>Play Type</label>
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                            {skillCats.map(cat => (
-                              <button key={cat} type="button" onClick={() => setClipCategory(clip.id, cat)}
-                                style={{
-                                  padding: "5px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600,
-                                  cursor: "pointer", border: "1px solid", transition: "all 0.15s",
-                                  background: clip.skillCategory === cat ? accentHex : "transparent",
-                                  borderColor: clip.skillCategory === cat ? accentHex : "rgba(255,255,255,0.1)",
-                                  color: clip.skillCategory === cat ? "#fff" : "#64748b",
-                                }}>
-                                {cat}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                        {/* Trim */}
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
-                          <div>
-                            <label style={labelStyle}>Trim Start (sec)</label>
-                            <input type="number" min={0} max={clip.duration} step={0.1}
-                              value={clip.trimStart || ""} placeholder="0"
-                              onChange={e => setClipTrim(clip.id, "trimStart", e.target.value)}
-                              style={inputStyle} />
-                          </div>
-                          <div>
-                            <label style={labelStyle}>Trim End (sec)</label>
-                            <input type="number" min={0} max={clip.duration} step={0.1}
-                              value={clip.trimEnd ?? ""} placeholder={String(Math.round(clip.duration))}
-                              onChange={e => setClipTrim(clip.id, "trimEnd", e.target.value)}
-                              style={inputStyle} />
-                          </div>
+                        <div style={{ fontSize: 10, color: i === safeIdx ? accentHex : "#475569", textAlign: "center", padding: "2px 0", background: "#0D1F38", display: "flex", alignItems: "center", justifyContent: "center", gap: 3 }}>
+                          <span style={{ color: "#334155" }}><GripIcon /></span>
+                          {i + 1}
                         </div>
                       </div>
-                    )}
+                    ))}
                   </div>
-                );
-              })}
-            </div>
-          )}
+                </div>
+              </div>
+            );
+          })()}
         </SectionCard>
 
         {/* ─── 2 · PLAYER SPOTLIGHT ─── */}
@@ -1150,88 +1171,86 @@ export default function CustomizePage() {
             ))}
           </div>
 
-          {/* Music selector — always visible */}
+          {/* Music selector */}
           <div>
             <label style={labelStyle}>Background Music</label>
             <p style={{ fontSize: 12, color: "#475569", margin: "0 0 14px", lineHeight: 1.5 }}>
-              Music is available on both formats. Select a track or upload your own.
+              Select a track or upload your own. Clicking a card selects it — use the play button to preview.
             </p>
+            <style>{`@keyframes eq-bar { 0%,100% { transform: scaleY(0.3); } 50% { transform: scaleY(1); } }`}</style>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {MUSIC_TRACKS.map(track => {
-                const isSelected   = selectedMusic === track.id;
-                const isPreviewing = previewingTrack === track.id;
+                const isSelected   = selectedMusicId === track.id;
+                const isPreviewing = previewingId === track.id;
                 return (
-                  <div key={track.id}
-                    style={{
-                      borderRadius: 10, border: "2px solid",
-                      borderColor: isSelected ? accentHex : "rgba(255,255,255,0.08)",
-                      background:  isSelected ? `${accentHex}14` : "#0D1F38",
-                      overflow: "hidden",
-                    }}>
-                    <div style={{ display: "flex", alignItems: "center", padding: "12px 14px", gap: 12 }}>
-                      {/* Select + info */}
-                      <button type="button" onClick={() => selectMusicTrack(track)}
-                        style={{ flex: 1, background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: 0 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <span style={{ fontSize: 14, fontWeight: 700, color: "#FFFFFF" }}>{track.name}</span>
-                          {isSelected && <span style={{ fontSize: 10, color: accentHex, fontWeight: 700 }}>✓</span>}
-                        </div>
-                        {"desc" in track && (
-                          <div style={{ fontSize: 11, color: "#475569", marginTop: 2 }}>{(track as { desc?: string }).desc}</div>
-                        )}
-                      </button>
+                  <div key={track.id} style={{ borderRadius: 10, overflow: "hidden" }}>
+                    {/* Card row — click selects, play button previews */}
+                    <div
+                      onClick={() => setSelectedMusicId(track.id)}
+                      style={{
+                        display: "flex", alignItems: "center", padding: "14px 16px", gap: 14,
+                        background: isSelected ? `${accentHex}1A` : "#0D1117",
+                        border: `1px solid ${isSelected ? accentHex : "#1E2530"}`,
+                        borderRadius: isSelected && track.id === "custom" ? "10px 10px 0 0" : 10,
+                        cursor: "pointer", transition: "all 0.15s",
+                      }}>
+                      {/* Emoji */}
+                      <span style={{ fontSize: 24, lineHeight: 1, flexShrink: 0 }}>{track.emoji}</span>
 
-                      {/* Equalizer animation while previewing */}
+                      {/* Info */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: "#FFFFFF" }}>{track.name}</div>
+                        <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>{track.description}</div>
+                      </div>
+
+                      {/* Equalizer while previewing */}
                       {isPreviewing && (
-                        <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 20, marginRight: 4 }}>
-                          {[0, 1, 2].map(i => (
+                        <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 20, flexShrink: 0 }}>
+                          {[0.6, 0.9, 0.75].map((dur, i) => (
                             <div key={i} style={{
-                              width: 3, borderRadius: 2, background: accentHex,
-                              animation: `eq-bounce ${0.6 + i * 0.15}s ease-in-out infinite alternate`,
-                              height: `${8 + i * 4}px`,
+                              width: 3, height: `${10 + i * 5}px`, borderRadius: 2,
+                              background: accentHex,
+                              animation: `eq-bar ${dur}s ease-in-out infinite`,
+                              animationDelay: `${i * 0.15}s`,
                             }} />
                           ))}
-                          <style>{`@keyframes eq-bounce { from { transform: scaleY(0.3); } to { transform: scaleY(1); } }`}</style>
                         </div>
                       )}
 
-                      {/* Play/pause button — real tracks only */}
-                      {track.url && (
-                        <button type="button"
-                          onClick={e => { e.stopPropagation(); handlePreviewToggle(track.id, track.url ?? null); }}
+                      {/* Play/pause button — only for real URLs */}
+                      {track.url ? (
+                        <button
+                          type="button"
+                          onClick={e => { e.stopPropagation(); handlePreview(track); }}
                           style={{
-                            width: 34, height: 34, borderRadius: "50%", flexShrink: 0,
-                            background: isPreviewing ? accentHex : `${accentHex}22`,
-                            border: `1.5px solid ${accentHex}50`,
-                            cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                            width: 40, height: 40, borderRadius: "50%", flexShrink: 0,
+                            background: isPreviewing ? accentHex : `${accentHex}30`,
+                            border: "none", cursor: "pointer",
+                            display: "flex", alignItems: "center", justifyContent: "center",
                           }}>
                           {isPreviewing ? (
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill={isLightAccent ? "#050A14" : "#FFFFFF"}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill={isLightAccent ? "#050A14" : "#FFFFFF"}>
                               <rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" />
                             </svg>
                           ) : (
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill={accentHex}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill={isLightAccent ? "#050A14" : "#FFFFFF"}>
                               <polygon points="5,3 19,12 5,21" />
                             </svg>
                           )}
                         </button>
-                      )}
-
-                      {/* No music / upload icons */}
-                      {!track.url && track.id === "no-music" && (
-                        <div style={{ width: 34, height: 34, borderRadius: "50%", flexShrink: 0, background: "#1E293B", border: "1.5px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15 }}>🔇</div>
-                      )}
-                      {!track.url && track.id === "custom" && (
-                        <div style={{ width: 34, height: 34, borderRadius: "50%", flexShrink: 0, background: "#1E293B", border: "1.5px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15 }}>📁</div>
+                      ) : (
+                        <div style={{ width: 40, height: 40, borderRadius: "50%", flexShrink: 0, background: "#1E293B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>
+                          {track.emoji}
+                        </div>
                       )}
                     </div>
 
-                    {/* Upload My Own — file picker */}
+                    {/* Upload My Own — file picker (only when selected) */}
                     {track.id === "custom" && isSelected && (
-                      <div style={{ padding: "0 14px 14px" }}>
-                        <label style={{ ...labelStyle, cursor: "pointer" }}>
-                          <div style={{ padding: "10px 14px", borderRadius: 8, background: "#0A1628", border: "1px dashed rgba(255,255,255,0.15)", textAlign: "center", fontSize: 13, color: "#64748b", cursor: "pointer" }}>
-                            {uploadedMusicName ?? "Choose MP3 / WAV / M4A — max 15 MB"}
+                      <div style={{ padding: "12px 16px", background: `${accentHex}0D`, border: `1px solid ${accentHex}`, borderTop: "none", borderRadius: "0 0 10px 10px" }}>
+                        <label style={{ cursor: "pointer", display: "block" }}>
+                          <div style={{ padding: "10px 14px", borderRadius: 8, background: "#0A1628", border: "1px dashed rgba(255,255,255,0.2)", textAlign: "center", fontSize: 13, color: "#64748b" }}>
+                            {customMusicName ?? "Choose MP3 / WAV / M4A — max 15 MB"}
                           </div>
                           <input type="file" accept=".mp3,.wav,.m4a,audio/mp3,audio/wav,audio/m4a,audio/mpeg"
                             style={{ display: "none" }}
@@ -1242,8 +1261,8 @@ export default function CustomizePage() {
                               handleMusicFileUpload(f);
                             }} />
                         </label>
-                        {selectedMusicName && selectedMusic === "custom" && (
-                          <div style={{ fontSize: 11, color: accentHex, marginTop: 6 }}>✓ {selectedMusicName}</div>
+                        {customMusicName && (
+                          <div style={{ fontSize: 11, color: accentHex, marginTop: 6 }}>✓ {customMusicName}</div>
                         )}
                       </div>
                     )}

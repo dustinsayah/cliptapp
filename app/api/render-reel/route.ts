@@ -61,7 +61,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const musicUrl: string | undefined = settings.musicUrl || undefined;
+    const music    = settings.music    ?? body.music    ?? null;
+    const musicUrl = settings.musicUrl ?? body.musicUrl ?? null;
+    const musicName = settings.musicName ?? body.musicName ?? null;
+    console.log("[render-reel] API ROUTE MUSIC:", music, musicUrl);
 
     reelInput = {
       // Athlete identity
@@ -90,7 +93,9 @@ export async function POST(req: NextRequest) {
         trimEnd:       c.trimEnd       ?? undefined,
         skillCategory: c.skillCategory ?? undefined,
       })),
-      musicUrl,
+      music:           music    || undefined,
+      musicUrl:        musicUrl || undefined,
+      musicName:       musicName || undefined,
       accentHex:       settings.colorAccent    || "#00A3FF",
       transitionStyle: settings.transition     || "Hard Cut",
       jerseyOverlay:   settings.jerseyOverlay  !== false,

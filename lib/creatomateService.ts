@@ -56,8 +56,9 @@ export interface ReelRenderInput {
   clipUrls?: string[];  // legacy — treated as clips with no trim data
 
   // Audio / style
-  musicUrl?: string;
-  music?: string;      // track identifier — "no-music" skips audio even if musicUrl set
+  musicUrl?:  string | null;  // full URL to audio file — Cloudinary or blob
+  music?:     string | null;  // track identifier — "no-music" skips audio even if musicUrl set
+  musicName?: string | null;  // display name for UI only
   accentHex?: string;
 
   // Dimensions
@@ -142,6 +143,8 @@ export async function getRenderStatus(renderId: string): Promise<RenderStatus> {
 // ── Composition Builder ───────────────────────────────────────────────────────
 
 function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
+  console.log("CREATOMATE MUSIC INPUT:", input.musicUrl, input.music);
+
   const {
     firstName    = "ATHLETE",
     lastName     = "",
@@ -532,18 +535,24 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
   //
   // Video fit "contain" for landscape (letterbox), "cover" for vertical social.
 
+  // ── Freeze-frame duration for spotlight ──────────────────────────────────
+  // When spotlightStyle !== "none", each clip starts with a 1-second still
+  // frame (holding the first frame of the video) with the circle/arrow overlay
+  // on top, then the video plays normally. This makes the spotlight visible.
+  const FREEZE_DUR = spotlightStyle !== "none" ? 1.0 : 0;
+
   clips.forEach((clip, idx) => {
     const trimStart    = clip.trimStart != null && clip.trimStart > 0 ? clip.trimStart : 0;
     const clipDur      = clip.duration || 10;
     const rawEnd       = clip.trimEnd  != null && clip.trimEnd  > 0 ? clip.trimEnd  : clipDur;
     const trimDuration = Math.max(rawEnd - trimStart, 1);
 
-    const clipStartTime = currentTime;
+    const sectionStart = currentTime; // start of freeze (or clip if no freeze)
 
     // Landscape: fit "contain" so vertical source clips letterbox with black bars.
     // Vertical social 9:16: fit "cover" so vertical clips fill the frame perfectly.
-    const videoFit    = isVertical ? "cover"  : "contain";
-    const videoYAnch  = isVertical ? "35%"    : "50%";
+    const videoFit   = isVertical ? "cover"  : "contain";
+    const videoYAnch = isVertical ? "35%"    : "50%";
 
     const videoBase: Record<string, unknown> = {
       type:       "video",
@@ -556,131 +565,147 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
     };
 
     // Black letterbox bars — always fill the composition background for landscape.
-    // For vertical social the video already fills the frame so no bars are needed.
     const blackBg: Record<string, unknown> = {
-      type:      "shape",
-      shape:     "rectangle",
+      type:       "shape",
+      shape:      "rectangle",
       fill_color: "#000000",
-      width:     "100%",
-      height:    "100%",
-      x:         "50%",
-      y:         "50%",
-      x_anchor:  "50%",
-      y_anchor:  "50%",
+      width:      "100%",
+      height:     "100%",
+      x:          "50%",
+      y:          "50%",
+      x_anchor:   "50%",
+      y_anchor:   "50%",
     };
 
-    let clipEl: Record<string, unknown>;
-
-    if (jerseyOverlay && jerseyNumber) {
-      // Composition: [black bg if landscape] + video + jersey number text overlay
+    // ── Helper: build clip composition elements ──────────────────────────────
+    function buildClipInnerEls(videoOverrides?: Record<string, unknown>): unknown[] {
+      const vid = { ...videoBase, width: "100%", height: "100%", ...videoOverrides };
       const innerEls: unknown[] = [];
       if (!isVertical) innerEls.push(blackBg);
-      innerEls.push({ ...videoBase, width: "100%", height: "100%" });
-      innerEls.push({
-        type:                 "text",
-        text:                 `#${jerseyNumber}`,
-        font_family:          "Oswald",
-        font_size:            Math.round(48 * s),
-        font_weight:          "700",
-        fill_color:           accentHex,
-        background_color:     "rgba(0,0,0,0.6)",
-        background_x_padding: "3%",
-        background_y_padding: "2%",
-        x:            "5%",
-        y:            "90%",
-        x_anchor:     "0%",
-        y_anchor:     "50%",
-        shadow_color: "rgba(0,0,0,0)",
-        shadow_blur:  0,
-      });
-      clipEl = {
+      innerEls.push(vid);
+      if (jerseyOverlay && jerseyNumber) {
+        innerEls.push({
+          type:                 "text",
+          text:                 `#${jerseyNumber}`,
+          font_family:          "Oswald",
+          font_size:            Math.round(48 * s),
+          font_weight:          "700",
+          fill_color:           accentHex,
+          background_color:     "rgba(0,0,0,0.6)",
+          background_x_padding: "3%",
+          background_y_padding: "2%",
+          x:            "5%",
+          y:            "90%",
+          x_anchor:     "0%",
+          y_anchor:     "50%",
+          shadow_color: "rgba(0,0,0,0)",
+          shadow_blur:  0,
+        });
+      }
+      return innerEls;
+    }
+
+    // ── 1. FREEZE FRAME (spotlight only) ─────────────────────────────────────
+    // Show first frame of the clip for FREEZE_DUR seconds with circle overlay.
+    // Creatomate holds the last frame when the video source is shorter than duration.
+    if (FREEZE_DUR > 0) {
+      // Freeze: same trimStart, trim_end just past first frame → holds that frame
+      const freezeEl: Record<string, unknown> = {
         type:     "composition",
         track:    1,
-        time:     clipStartTime,
-        duration: trimDuration,
-        elements: innerEls,
+        time:     sectionStart,
+        duration: FREEZE_DUR,
+        elements: buildClipInnerEls({ trim_end: trimStart + 0.034 }), // one frame @ 30fps
       };
-    } else if (!isVertical) {
-      // Landscape with no jersey overlay: wrap in composition so black bars show
-      clipEl = {
-        type:     "composition",
-        track:    1,
-        time:     clipStartTime,
-        duration: trimDuration,
-        elements: [
-          blackBg,
-          { ...videoBase, width: "100%", height: "100%" },
-        ],
-      };
-    } else {
-      // Vertical social: plain video fills frame — no composition needed
+      if (idx > 0) freezeEl.transition = clipTransition;
+      elements.push(freezeEl);
+    }
+
+    // ── 2. ACTUAL CLIP ────────────────────────────────────────────────────────
+    const clipStartTime = sectionStart + FREEZE_DUR;
+
+    let clipEl: Record<string, unknown>;
+    if (isVertical && !(jerseyOverlay && jerseyNumber)) {
+      // Vertical social with no jersey overlay: plain video (no composition wrapper)
       clipEl = {
         ...videoBase,
         track:    1,
         time:     clipStartTime,
         duration: trimDuration,
       };
+    } else {
+      clipEl = {
+        type:     "composition",
+        track:    1,
+        time:     clipStartTime,
+        duration: trimDuration,
+        elements: buildClipInnerEls(),
+      };
     }
 
-    if (idx > 0) {
+    // Apply transition: freeze frame gets it when present; otherwise the clip itself
+    if (FREEZE_DUR === 0 && idx > 0) {
       clipEl.transition = clipTransition;
     }
 
     elements.push(clipEl);
 
-    // Spotlight overlay — track 3, first 1.5s of this clip only
-    if (spotlightStyle !== "none" && trimDuration >= 1.5) {
-      const markXPct = clip.markX ?? 50;
-      const markYPct = clip.markY ?? 40;
-      const spotName = (lastName || firstName).toUpperCase();
-      const spotText = spotlightStyle === "arrow"
-        ? `▼  ${spotName}`
-        : `● ${spotName}`;
+    // ── 3. SPOTLIGHT OVERLAY (track 3) ────────────────────────────────────────
+    // Circle + name tag visible during freeze frame (first FREEZE_DUR seconds).
+    // If no freeze, show for first 1.5s of the clip itself.
+    if (spotlightStyle !== "none") {
+      const markXPct  = clip.markX ?? 50;
+      const markYPct  = clip.markY ?? 40;
+      const spotName  = (lastName || firstName).toUpperCase();
+      const spotText  = spotlightStyle === "arrow" ? `▼  ${spotName}` : `● ${spotName}`;
+      const overlayT  = sectionStart;                        // starts at freeze (or clip)
+      const overlayD  = FREEZE_DUR > 0 ? FREEZE_DUR : 1.5;  // holds for freeze or 1.5s
+      const circleSize = Math.round(140 * s);
 
-      // Circle highlight at mark position
+      // Circle highlight
       elements.push({
         type:         "shape",
         shape:        "circle",
         track:        3,
-        time:         clipStartTime,
-        duration:     1.5,
+        time:         overlayT,
+        duration:     overlayD,
         x:            `${markXPct}%`,
         y:            `${markYPct}%`,
         x_anchor:     "50%",
         y_anchor:     "50%",
-        width:        `${Math.round(130 * s)}px`,
-        height:       `${Math.round(130 * s)}px`,
+        width:        `${circleSize}px`,
+        height:       `${circleSize}px`,
         fill_color:   "rgba(0,0,0,0)",
         stroke_color: accentHex,
-        stroke_width: `${Math.round(3 * s)}px`,
-        shadow_color: "rgba(0,0,0,0)",
-        shadow_blur:  0,
+        stroke_width: `${Math.round(5 * s)}px`,
+        shadow_color: "rgba(0,0,0,0.8)",
+        shadow_blur:  12,
       });
 
-      // Name tag text below circle
+      // Name tag below circle
       elements.push({
         type:                 "text",
         track:                3,
-        time:                 clipStartTime,
-        duration:             1.5,
+        time:                 overlayT,
+        duration:             overlayD,
         text:                 spotText,
         font_family:          "Oswald",
-        font_size:            Math.round(42 * s),
+        font_size:            Math.round(44 * s),
         font_weight:          "700",
         fill_color:           accentHex,
-        background_color:     "rgba(0,0,0,0.65)",
+        background_color:     "rgba(0,0,0,0.70)",
         background_x_padding: "3%",
         background_y_padding: "1.5%",
-        x:            `${markXPct}%`,
-        y:            `${Math.min(markYPct + 9, 95)}%`,
-        x_anchor:     "50%",
-        y_anchor:     "0%",
-        shadow_color: "rgba(0,0,0,0)",
-        shadow_blur:  0,
+        x:                    `${markXPct}%`,
+        y:                    `${Math.min(markYPct + 10, 95)}%`,
+        x_anchor:             "50%",
+        y_anchor:             "0%",
+        shadow_color:         "rgba(0,0,0,0)",
+        shadow_blur:          0,
       });
     }
 
-    currentTime += trimDuration;
+    currentTime = sectionStart + FREEZE_DUR + trimDuration;
   });
 
   // ── 4. END CARD (5s) — rebuilt layout ────────────────────────────────────
@@ -778,25 +803,28 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
   // It must NOT be nested inside any composition element.
   //
   // Condition: add audio if musicUrl is set AND music id is not "no-music".
-  const shouldAddMusic = !!musicUrl && music !== "no-music";
-  console.log("MUSIC DECISION: shouldAdd =", shouldAddMusic,
-    "| musicUrl =", musicUrl ?? "null",
-    "| music =", music ?? "undefined");
+  const shouldAddMusic = !!(
+    input.musicUrl &&
+    input.musicUrl.length > 0 &&
+    input.music !== "no-music" &&
+    input.music !== null &&
+    input.music !== undefined
+  );
+  console.log("SHOULD ADD MUSIC:", shouldAddMusic,
+    "| musicUrl =", input.musicUrl ?? "null",
+    "| music =", input.music ?? "undefined");
 
   if (shouldAddMusic) {
-    const audioEl = {
+    elements.push({
       type:           "audio",
       track:          2,
-      source:         musicUrl,
       time:           0,
-      duration:       totalDuration,
-      trim_start:     0,
-      volume:         "35%",
-      audio_fade_in:  2,
+      source:         input.musicUrl,
+      volume:         "40%",
+      audio_fade_in:  1,
       audio_fade_out: 3,
-    };
-    console.log("AUDIO ELEMENT:", JSON.stringify(audioEl));
-    elements.push(audioEl);
+    });
+    console.log("AUDIO ELEMENT pushed — source:", input.musicUrl?.slice(0, 80));
   }
 
   return {
