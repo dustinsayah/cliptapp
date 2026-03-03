@@ -167,27 +167,39 @@ function StatsCardPreview({ statsData, sport, position, accentHex }: StatsCardPr
     ? [...sportConfig.getStatFields(position).base, ...sportConfig.getStatFields(position).extra]
     : [];
   const filled = allFields.filter(f => statsData[f.key]?.trim());
-  const show   = filled.slice(0, 12); // show up to 12 (2 slides worth)
+  const show   = filled.slice(0, 9); // max 9 stats (3×3 grid)
+
+  // 3×3 grid positions matching Creatomate layout
+  const gridPositions = [
+    { col: 0 }, { col: 1 }, { col: 2 },
+    { col: 0 }, { col: 1 }, { col: 2 },
+    { col: 0 }, { col: 1 }, { col: 2 },
+  ];
 
   return (
     <div style={{ aspectRatio: "16/9", background: "#050A14", borderRadius: 8, overflow: "hidden", position: "relative", fontFamily: "Inter, sans-serif" }}>
       <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 4, background: accentHex }} />
-      <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", padding: "6% 6% 5%", gap: "4%" }}>
-        <div style={{ fontSize: "clamp(5px, 1.4vw, 11px)", color: accentHex, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em" }}>
-          Season Stats {sport ? `· ${sport}` : ""}
+      <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 4, background: accentHex }} />
+      <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", padding: "4% 5% 5%" }}>
+        <div style={{ fontSize: "clamp(5px, 1.2vw, 10px)", color: accentHex, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "1%" }}>
+          Season Stats
         </div>
         {show.length === 0 ? (
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#334155", fontSize: "clamp(5px, 1.2vw, 11px)" }}>
             Fill in your stats above to see a preview
           </div>
         ) : (
-          <div style={{ flex: 1, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "4%", alignItems: "center" }}>
-            {show.map(f => (
-              <div key={f.key} style={{ textAlign: "center", background: "#0A1628", borderRadius: 4, padding: "5% 3%", borderTop: `2px solid ${accentHex}` }}>
-                <div style={{ fontSize: "clamp(9px, 2.5vw, 20px)", fontWeight: 800, color: "#FFFFFF" }}>{statsData[f.key]}</div>
-                <div style={{ fontSize: "clamp(4px, 1vw, 9px)", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em", marginTop: "6%" }}>{f.label}</div>
-              </div>
-            ))}
+          <div style={{ flex: 1, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gridTemplateRows: "repeat(3, 1fr)", gap: "3%", alignItems: "center", justifyItems: "center" }}>
+            {Array.from({ length: 9 }).map((_, idx) => {
+              const f = show[idx];
+              if (!f) return <div key={idx} />;
+              return (
+                <div key={f.key} style={{ textAlign: "center", width: "100%" }}>
+                  <div style={{ fontSize: "clamp(8px, 2.2vw, 18px)", fontWeight: 800, color: accentHex }}>{statsData[f.key]}</div>
+                  <div style={{ fontSize: "clamp(4px, 0.9vw, 8px)", color: "#9CA3AF", textTransform: "uppercase", letterSpacing: "0.06em", marginTop: "4%" }}>{f.label}</div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -249,6 +261,7 @@ export default function CustomizePage() {
   // ── Clips ───────────────────────────────────────────────────────────────────
   const [clips, setClips]               = useState<ClipItem[]>([]);
   const [activeClipIdx, setActiveClipIdx] = useState<number>(0);
+  const [trimPanelOpen, setTrimPanelOpen] = useState<boolean>(false);
   const dragIndexRef                    = useRef<number | null>(null);
   const [dragOver, setDragOver]         = useState<number | null>(null);
 
@@ -755,175 +768,123 @@ export default function CustomizePage() {
                 Go Upload Clips
               </button>
             </div>
-          ) : (() => {
-            const safeIdx   = Math.min(activeClipIdx, clips.length - 1);
-            const activeClip = clips[safeIdx];
-            return (
-              <div>
-                {/* ── Clip counter + remove ── */}
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: "#94a3b8" }}>
-                    Clip {safeIdx + 1} of {clips.length}
-                    <span style={{ color: "#475569", fontWeight: 400, marginLeft: 8 }}>{activeClip.name}</span>
-                  </span>
-                  <button type="button" onClick={() => removeClip(activeClip.id)}
-                    style={{ fontSize: 12, color: "#EF4444", background: "none", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>
-                    Remove
-                  </button>
-                </div>
-
-                {/* ── Step 1: Tap to mark yourself ── */}
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                    <span style={{ width: 22, height: 22, borderRadius: "50%", background: accentHex, color: isLightAccent ? "#050A14" : "#fff", fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>1</span>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: "#FFFFFF" }}>Tap the video to mark yourself</span>
-                    <span style={{ fontSize: 11, color: "#475569" }}>— sets your spotlight position</span>
-                  </div>
-                  {activeClip.blobUrl ? (
-                    <div style={{ position: "relative", borderRadius: 8, overflow: "hidden", background: "#000", cursor: "crosshair" }}>
-                      <video
-                        src={activeClip.blobUrl}
-                        playsInline muted controls
-                        style={{ width: "100%", display: "block", maxHeight: 260, objectFit: "contain" }}
-                        onClick={e => {
-                          const rect = (e.target as HTMLVideoElement).getBoundingClientRect();
-                          const x = Math.round(((e.clientX - rect.left) / rect.width) * 100);
-                          const y = Math.round(((e.clientY - rect.top) / rect.height) * 100);
-                          setClipMark(activeClip.id, x, y);
-                        }}
-                      />
-                      {activeClip.markX !== undefined && (
-                        <div style={{
-                          position: "absolute", pointerEvents: "none",
-                          left: `${activeClip.markX}%`, top: `${activeClip.markY ?? 40}%`,
-                          transform: "translate(-50%, -50%)",
-                          width: 44, height: 44,
-                          border: `2px solid ${accentHex}`,
-                          borderRadius: "50%",
-                          boxShadow: `0 0 0 2px rgba(0,0,0,0.5), 0 0 16px ${accentHex}80`,
-                        }} />
-                      )}
-                    </div>
-                  ) : (
-                    <div style={{ height: 140, borderRadius: 8, background: "#0D1F38", display: "flex", alignItems: "center", justifyContent: "center", color: "#334155", fontSize: 13 }}>
-                      No video preview
-                    </div>
-                  )}
-                  {activeClip.markX !== undefined ? (
-                    <div style={{ fontSize: 11, color: accentHex, marginTop: 5, display: "flex", alignItems: "center", gap: 10 }}>
-                      ✓ Marked at {activeClip.markX}%, {activeClip.markY ?? 40}%
-                      <button type="button" onClick={() => setClipMark(activeClip.id, 50, 40)}
-                        style={{ fontSize: 10, color: "#475569", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
-                        Reset
-                      </button>
-                    </div>
-                  ) : (
-                    <div style={{ fontSize: 11, color: "#475569", marginTop: 5 }}>↑ Tap video to mark your position (used for spotlight circle)</div>
-                  )}
-                </div>
-
-                {/* ── Step 2: Trim ── */}
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                    <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#1E293B", color: "#94a3b8", fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>2</span>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: "#FFFFFF" }}>Trim clip</span>
-                    <span style={{ fontSize: 11, color: "#475569" }}>— {fmtDur(activeClip.duration)} total</span>
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                    <div>
-                      <label style={labelStyle}>Start (sec)</label>
-                      <input type="number" min={0} max={activeClip.duration} step={0.1}
-                        value={activeClip.trimStart || ""} placeholder="0"
-                        onChange={e => setClipTrim(activeClip.id, "trimStart", e.target.value)}
-                        style={inputStyle} />
-                    </div>
-                    <div>
-                      <label style={labelStyle}>End (sec)</label>
-                      <input type="number" min={0} max={activeClip.duration} step={0.1}
-                        value={activeClip.trimEnd ?? ""} placeholder={String(Math.round(activeClip.duration))}
-                        onChange={e => setClipTrim(activeClip.id, "trimEnd", e.target.value)}
-                        style={inputStyle} />
-                    </div>
-                  </div>
-                </div>
-
-                {/* ── Play type chips ── */}
-                {skillCats.length > 0 && (
-                  <div style={{ marginBottom: 16 }}>
-                    <label style={labelStyle}>Play Type</label>
-                    <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 6 }}>
-                      {skillCats.map(cat => (
-                        <button key={cat} type="button" onClick={() => setClipCategory(activeClip.id, cat)}
+          ) : (
+            <div>
+              {/* ── Filmstrip — drag to reorder, click to open trim panel ── */}
+              <div style={{ marginBottom: 12 }}>
+                <label style={labelStyle}>
+                  {clips.length} {clips.length === 1 ? "Clip" : "Clips"} · {fmtDur(totalSeconds)} total
+                  <span style={{ color: "#475569", fontWeight: 400, marginLeft: 8, textTransform: "none" as const, letterSpacing: 0 }}>Drag to reorder · Tap to trim</span>
+                </label>
+                <div style={{ overflowX: "auto" as const, paddingBottom: 6 }}>
+                  <div style={{ display: "flex", gap: 6, minWidth: "min-content" }}>
+                    {clips.map((c, i) => {
+                      const isActive = i === activeClipIdx && trimPanelOpen;
+                      return (
+                        <div key={c.id}
+                          draggable
+                          onDragStart={() => handleDragStart(i)}
+                          onDragOver={e => handleDragOver(e, i)}
+                          onDragEnd={handleDragEnd}
+                          onClick={() => { setActiveClipIdx(i); setTrimPanelOpen(true); }}
                           style={{
-                            padding: "5px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600,
-                            cursor: "pointer", border: "1px solid", transition: "all 0.15s",
-                            background: activeClip.skillCategory === cat ? accentHex : "transparent",
-                            borderColor: activeClip.skillCategory === cat ? accentHex : "rgba(255,255,255,0.1)",
-                            color: activeClip.skillCategory === cat ? (isLightAccent ? "#050A14" : "#fff") : "#64748b",
+                            flexShrink: 0, cursor: "pointer",
+                            border: `2px solid ${isActive ? accentHex : dragOver === i ? "#475569" : "rgba(255,255,255,0.08)"}`,
+                            borderRadius: 8, overflow: "hidden",
+                            opacity: dragOver === i && dragIndexRef.current !== i ? 0.5 : 1,
+                            transition: "border-color 0.15s",
                           }}>
-                          {cat}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* ── Prev / Next + progress dots ── */}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 16, marginBottom: 16 }}>
-                  <button type="button"
-                    onClick={() => setActiveClipIdx(i => Math.max(0, i - 1))}
-                    disabled={safeIdx === 0}
-                    style={{ width: 36, height: 36, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.1)", background: safeIdx === 0 ? "transparent" : "#0D1F38", color: safeIdx === 0 ? "#1E293B" : "#94a3b8", cursor: safeIdx === 0 ? "default" : "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    ←
-                  </button>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    {clips.map((_, i) => (
-                      <button key={i} type="button" onClick={() => setActiveClipIdx(i)}
-                        style={{ width: i === safeIdx ? 20 : 6, height: 6, borderRadius: 3, background: i === safeIdx ? accentHex : "#334155", border: "none", cursor: "pointer", transition: "all 0.2s", padding: 0 }} />
-                    ))}
-                  </div>
-                  <button type="button"
-                    onClick={() => setActiveClipIdx(i => Math.min(clips.length - 1, i + 1))}
-                    disabled={safeIdx === clips.length - 1}
-                    style={{ width: 36, height: 36, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.1)", background: safeIdx === clips.length - 1 ? "transparent" : "#0D1F38", color: safeIdx === clips.length - 1 ? "#1E293B" : "#94a3b8", cursor: safeIdx === clips.length - 1 ? "default" : "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    →
-                  </button>
-                </div>
-
-                {/* ── Filmstrip reorder ── */}
-                <div>
-                  <label style={labelStyle}>Drag to Reorder</label>
-                  <div style={{ display: "flex", gap: 6, overflowX: "auto" as const, paddingBottom: 4 }}>
-                    {clips.map((c, i) => (
-                      <div key={c.id}
-                        draggable
-                        onDragStart={() => handleDragStart(i)}
-                        onDragOver={e => handleDragOver(e, i)}
-                        onDragEnd={handleDragEnd}
-                        onClick={() => setActiveClipIdx(i)}
-                        style={{
-                          flexShrink: 0, cursor: "pointer",
-                          border: `2px solid ${i === safeIdx ? accentHex : dragOver === i ? "#475569" : "transparent"}`,
-                          borderRadius: 6, overflow: "hidden",
-                          opacity: dragOver === i && dragIndexRef.current !== i ? 0.5 : 1,
-                          transition: "border-color 0.15s",
-                        }}>
-                        {c.thumbnailUrl ? (
-                          <img src={c.thumbnailUrl} alt="" style={{ width: 60, height: 34, objectFit: "cover", display: "block" }} />
-                        ) : (
-                          <div style={{ width: 60, height: 34, background: "#1E293B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>🎬</div>
-                        )}
-                        <div style={{ fontSize: 10, color: i === safeIdx ? accentHex : "#475569", textAlign: "center", padding: "2px 0", background: "#0D1F38", display: "flex", alignItems: "center", justifyContent: "center", gap: 3 }}>
-                          <span style={{ color: "#334155" }}><GripIcon /></span>
-                          {i + 1}
+                          {c.thumbnailUrl ? (
+                            <img src={c.thumbnailUrl} alt="" style={{ width: 72, height: 40, objectFit: "cover", display: "block" }} />
+                          ) : (
+                            <div style={{ width: 72, height: 40, background: "#1E293B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>🎬</div>
+                          )}
+                          <div style={{ fontSize: 10, color: isActive ? accentHex : "#475569", textAlign: "center", padding: "3px 0", background: "#0D1F38", display: "flex", alignItems: "center", justifyContent: "center", gap: 3 }}>
+                            <span style={{ color: "#334155" }}><GripIcon /></span>
+                            {i + 1}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               </div>
-            );
-          })()}
+
+              {/* ── Trim panel — shown when a clip is selected ── */}
+              {trimPanelOpen && activeClipIdx < clips.length && (() => {
+                const clip = clips[activeClipIdx];
+                const trimStart = clip.trimStart || 0;
+                const trimEnd   = clip.trimEnd ?? clip.duration;
+                const dur       = clip.duration || 1;
+                const startPct  = (trimStart / dur) * 100;
+                const endPct    = (trimEnd   / dur) * 100;
+                return (
+                  <div style={{ background: "#0D1F38", borderRadius: 12, padding: "16px 16px 18px", border: `1px solid ${accentHex}40` }}>
+                    {/* Header */}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "#FFFFFF" }}>{clip.name}</div>
+                        <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
+                          {fmtDur(dur)} total · Trimmed: {fmtDur(Math.max(0, trimEnd - trimStart))}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button type="button" onClick={() => removeClip(clip.id)}
+                          style={{ fontSize: 12, color: "#EF4444", background: "none", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 6, padding: "5px 12px", cursor: "pointer" }}>
+                          Remove
+                        </button>
+                        <button type="button" onClick={() => setTrimPanelOpen(false)}
+                          style={{ fontSize: 12, color: "#94a3b8", background: "#1E293B", border: "none", borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontWeight: 600 }}>
+                          Done
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Time labels */}
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                      <span style={{ fontSize: 12, color: accentHex, fontWeight: 600 }}>{fmtDur(trimStart)}</span>
+                      <span style={{ fontSize: 12, color: accentHex, fontWeight: 600 }}>{fmtDur(trimEnd)}</span>
+                    </div>
+
+                    {/* Dual range slider */}
+                    <div style={{ position: "relative", height: 44, marginBottom: 6 }}>
+                      {/* Track background */}
+                      <div style={{ position: "absolute", left: 0, right: 0, top: "50%", height: 4, background: "#1E293B", borderRadius: 2, transform: "translateY(-50%)", pointerEvents: "none" }}>
+                        {/* Active range fill */}
+                        <div style={{ position: "absolute", left: `${startPct}%`, right: `${100 - endPct}%`, top: 0, bottom: 0, background: accentHex, borderRadius: 2 }} />
+                      </div>
+                      {/* Start thumb */}
+                      <div style={{ position: "absolute", top: "50%", left: `${startPct}%`, transform: "translate(-50%, -50%)", width: 20, height: 20, borderRadius: "50%", background: accentHex, border: "2px solid #FFFFFF", boxShadow: "0 0 0 2px rgba(0,0,0,0.4)", pointerEvents: "none" }} />
+                      {/* End thumb */}
+                      <div style={{ position: "absolute", top: "50%", left: `${endPct}%`, transform: "translate(-50%, -50%)", width: 20, height: 20, borderRadius: "50%", background: accentHex, border: "2px solid #FFFFFF", boxShadow: "0 0 0 2px rgba(0,0,0,0.4)", pointerEvents: "none" }} />
+                      {/* Start range input (transparent, on top) */}
+                      <input type="range" min={0} max={dur} step={0.1}
+                        value={trimStart}
+                        onChange={e => {
+                          const v = parseFloat(e.target.value);
+                          if (v < (clip.trimEnd ?? dur)) setClipTrim(clip.id, "trimStart", String(v));
+                        }}
+                        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0, cursor: "ew-resize", margin: 0, zIndex: startPct > 85 ? 5 : 2 }}
+                      />
+                      {/* End range input (transparent, on top) */}
+                      <input type="range" min={0} max={dur} step={0.1}
+                        value={trimEnd}
+                        onChange={e => {
+                          const v = parseFloat(e.target.value);
+                          if (v > (clip.trimStart || 0)) setClipTrim(clip.id, "trimEnd", String(v));
+                        }}
+                        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0, cursor: "ew-resize", margin: 0, zIndex: startPct > 85 ? 2 : 5 }}
+                      />
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span style={{ fontSize: 10, color: "#334155" }}>0:00</span>
+                      <span style={{ fontSize: 10, color: "#334155" }}>{fmtDur(dur)}</span>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
         </SectionCard>
 
         {/* ─── 2 · PLAYER SPOTLIGHT ─── */}
@@ -1193,13 +1154,6 @@ export default function CustomizePage() {
             </div>
           ) : (
             <>
-              {/* 2-slide note */}
-              {filledStatCount > 6 && (
-                <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: 8, background: `${accentHex}14`, border: `1px solid ${accentHex}30`, fontSize: 12, color: accentHex, fontWeight: 600 }}>
-                  ✓ Your stats will show across 2 slides — first 6 on slide 1, remainder on slide 2
-                </div>
-              )}
-
               {/* Live preview */}
               <div style={{ marginBottom: 24 }}>
                 <label style={labelStyle}>Live Preview</label>

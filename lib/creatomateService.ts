@@ -204,10 +204,8 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
 
   const statsEntries = Object.entries(statsData)
     .filter(([, v]) => v?.trim())
-    .slice(0, 12); // up to 12 stats across 2 slides
+    .slice(0, 9); // up to 9 stats on one card (3×3 grid)
   const showStatsCard = statsEnabled !== false && statsEntries.length > 0;
-  const statsSlide1 = statsEntries.slice(0, 6);
-  const statsSlide2 = statsEntries.length > 6 ? statsEntries.slice(6, 12) : [];
 
   // ── Duration constants (seconds) ─────────────────────────────────────────
   const TITLE_DUR   = 6;
@@ -221,7 +219,7 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
     const ce = c.trimEnd ?? (c.duration ?? 10);
     return sum + Math.max(ce - cs, 1);
   }, 0);
-  const statsSlideDur  = showStatsCard ? (statsSlide2.length > 0 ? STATS_DUR * 2 : STATS_DUR) : 0;
+  const statsSlideDur  = showStatsCard ? STATS_DUR : 0;
   const estimatedTotal = TITLE_DUR + statsSlideDur + estimatedClipDur + END_DUR;
   if (estimatedTotal > maxDur) {
     console.warn(`[Creatomate] WARNING: estimated ${estimatedTotal}s exceeds ${sport || "default"} max ${maxDur}s`);
@@ -508,40 +506,65 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
   //   980px  — "POWERED BY CLIPT" 22px gray (90.7%)
   //   1074px — bottom accent stripe 6px (99.4%)
 
-  // Helper to build one stat slide composition
-  function buildStatSlide(slideEntries: [string, string][]): unknown[] {
-    const els: unknown[] = [
-      { type: "shape", shape: "rectangle", x: "50%", y: "50%", x_anchor: "50%", y_anchor: "50%", width: "100%", height: "100%", fill_color: "#050A14" },
-      { type: "shape", shape: "rectangle", x: "0%", y: "0%", x_anchor: "0%", y_anchor: "0%", width: "100%", height: `${Math.round(14 * s)}px`, fill_color: accentHex },
-      { type: "shape", shape: "rectangle", x: "0%", y: "99.4%", x_anchor: "0%", y_anchor: "100%", width: "100%", height: `${Math.round(6 * s)}px`, fill_color: accentHex },
-      { type: "text", text: "SEASON STATS", x: "50%", y: "5.6%", x_anchor: "50%", y_anchor: "50%", font_size: Math.round(36 * s), font_weight: "700", fill_color: accentHex, font_family: "Inter", shadow_color: "rgba(0,0,0,0)", shadow_blur: 0 },
-      { type: "text", text: fullName, x: "50%", y: "14.8%", x_anchor: "50%", y_anchor: "50%", width: "90%", font_size: Math.round(72 * s), font_weight: "900", fill_color: "#FFFFFF", font_family: "Oswald", shadow_color: "rgba(0,0,0,0)", shadow_blur: 0 },
-      { type: "text", text: subLine, x: "50%", y: "21.3%", x_anchor: "50%", y_anchor: "50%", width: "80%", font_size: Math.round(38 * s), fill_color: "#64748b", font_family: "Inter", shadow_color: "rgba(0,0,0,0)", shadow_blur: 0 },
-      { type: "shape", shape: "rectangle", x: "50%", y: "26.9%", x_anchor: "50%", y_anchor: "50%", width: "90%", height: `${Math.max(1, Math.round(2 * s))}px`, fill_color: accentHex, opacity: 0.3 },
+  // Stats card — always exactly one composition, 3×3 grid layout (max 9 stats)
+  function buildStatsCardEls(): unknown[] {
+    const statPositions = [
+      { x: "18%", y: "42%" },
+      { x: "50%", y: "42%" },
+      { x: "82%", y: "42%" },
+      { x: "18%", y: "62%" },
+      { x: "50%", y: "62%" },
+      { x: "82%", y: "62%" },
+      { x: "18%", y: "82%" },
+      { x: "50%", y: "82%" },
+      { x: "82%", y: "82%" },
     ];
-    const gridCols  = ["22%", "50%", "78%"];
-    const rowValueY = ["38.9%", "59.3%"];
-    const rowLabelY = ["47.2%", "67.6%"];
-    slideEntries.forEach(([label, value], idx) => {
-      const col = idx % 3, row = Math.floor(idx / 3);
-      if (row > 1) return;
-      els.push(
-        { type: "text", text: value, x: gridCols[col], y: rowValueY[row], x_anchor: "50%", y_anchor: "50%", font_size: Math.round(96 * s), font_weight: "900", fill_color: accentHex, font_family: "Oswald", shadow_color: "rgba(0,0,0,0)", shadow_blur: 0 },
-        { type: "text", text: label.toUpperCase(), x: gridCols[col], y: rowLabelY[row], x_anchor: "50%", y_anchor: "50%", font_size: Math.round(28 * s), fill_color: "#64748b", font_family: "Inter", shadow_color: "rgba(0,0,0,0)", shadow_blur: 0 }
-      );
+    const els: unknown[] = [
+      // Background
+      { type: "shape", shape: "rectangle", x: "50%", y: "50%", x_anchor: "50%", y_anchor: "50%", width: "100%", height: "100%", fill_color: "#050A14" },
+      // Top accent stripe 16px
+      { type: "shape", shape: "rectangle", x: "0%", y: "0%", x_anchor: "0%", y_anchor: "0%", width: "100%", height: `${Math.round(16 * s)}px`, fill_color: accentHex },
+      // Bottom accent stripe 16px
+      { type: "shape", shape: "rectangle", x: "0%", y: "100%", x_anchor: "0%", y_anchor: "100%", width: "100%", height: `${Math.round(16 * s)}px`, fill_color: accentHex },
+      // "SEASON STATS" header
+      { type: "text", text: "SEASON STATS", x: "50%", y: "12%", x_anchor: "50%", y_anchor: "50%", width: "90%", font_size: Math.round(32 * s), font_weight: "700", fill_color: accentHex, font_family: "Inter", letter_spacing: "10%", shadow_color: "rgba(0,0,0,0)", shadow_blur: 0 },
+      // Player name
+      { type: "text", text: fullName, x: "50%", y: "22%", x_anchor: "50%", y_anchor: "50%", width: "90%", font_size: Math.round(52 * s), font_weight: "900", fill_color: "#FFFFFF", font_family: "Oswald", shadow_color: "rgba(0,0,0,0)", shadow_blur: 0 },
+      // Divider
+      { type: "shape", shape: "rectangle", x: "50%", y: "32%", x_anchor: "50%", y_anchor: "50%", width: "90%", height: `${Math.max(1, Math.round(2 * s))}px`, fill_color: accentHex, opacity: 0.3 },
+      // POWERED BY CLIPT
+      { type: "text", text: "POWERED BY CLIPT", x: "50%", y: "94%", x_anchor: "50%", y_anchor: "50%", font_size: Math.round(22 * s), font_weight: "700", fill_color: "#334155", font_family: "Inter", shadow_color: "rgba(0,0,0,0)", shadow_blur: 0 },
+    ];
+    statsEntries.forEach(([label, value], idx) => {
+      const pos = statPositions[idx];
+      if (!pos) return;
+      // Stat value (above the label)
+      els.push({
+        type: "text", text: value,
+        x: pos.x, y: pos.y,
+        width: "28%", height: "12%",
+        x_anchor: "50%", y_anchor: "100%",
+        font_family: "Oswald", font_size: Math.round(58 * s), font_weight: "700",
+        fill_color: accentHex, x_alignment: "center%",
+        shadow_color: "rgba(0,0,0,0)", shadow_blur: 0,
+      });
+      // Stat label (below the value)
+      els.push({
+        type: "text", text: label.toUpperCase(),
+        x: pos.x, y: pos.y,
+        width: "28%", height: "8%",
+        x_anchor: "50%", y_anchor: "0%",
+        font_family: "Montserrat", font_size: Math.round(22 * s), font_weight: "600",
+        fill_color: "#9CA3AF", x_alignment: "center%", letter_spacing: "6%",
+        shadow_color: "rgba(0,0,0,0)", shadow_blur: 0,
+      });
     });
-    els.push({ type: "text", text: "POWERED BY CLIPT", x: "50%", y: "90.7%", x_anchor: "50%", y_anchor: "50%", font_size: Math.round(22 * s), font_weight: "700", fill_color: "#334155", font_family: "Inter", shadow_color: "rgba(0,0,0,0)", shadow_blur: 0 });
     return els;
   }
 
   if (showStatsCard) {
-    elements.push({ type: "composition", track: 1, time: currentTime, duration: STATS_DUR, elements: buildStatSlide(statsSlide1) });
+    elements.push({ type: "composition", track: 1, time: currentTime, duration: STATS_DUR, elements: buildStatsCardEls() });
     currentTime += STATS_DUR;
-    // Second slide for 7+ stats
-    if (statsSlide2.length > 0) {
-      elements.push({ type: "composition", track: 1, time: currentTime, duration: STATS_DUR, elements: buildStatSlide(statsSlide2) });
-      currentTime += STATS_DUR;
-    }
   }
 
   // ── 3. CLIPS + SPOTLIGHT OVERLAY ─────────────────────────────────────────
@@ -662,8 +685,8 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
         shadow_color: "rgba(0,0,0,0.8)",
         shadow_blur:  16,
         animations: [
-          { time: 0,   duration: 0.35, easing: "ease-out", type: "scale",   start_scale: "150%", end_scale: "100%" },
-          { time: 0.9, duration: 0.30, easing: "ease-in",  type: "opacity", start_opacity: "100%", end_opacity: "0%" },
+          { time: 0,   duration: 0.35, easing: "ease-out", type: "scale", fade: false, start_scale: "150%", end_scale: "100%" },
+          { time: 0.9, duration: 0.3,  easing: "ease-in",  type: "fade",  fade: true },
         ],
       });
     }
@@ -685,7 +708,7 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
   //   87%  — top 3 stats (values 80px, labels 26px)
   //   96%  — "POWERED BY CLIPT" watermark
 
-  const topStats    = statsSlide1.slice(0, 3);
+  const topStats    = statsEntries.slice(0, 3);
   const endStatCols = Math.min(topStats.length, 3);
   const endColX: Record<number, string[]> = {
     0: [],
