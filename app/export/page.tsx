@@ -1535,7 +1535,7 @@ function ProgressBar({ active, accent }: { active: number; accent: string }) {
 
 const cardBase: React.CSSProperties = { background: "#0A1628", border: "1px solid rgba(255,255,255,0.08)" };
 
-type Phase = "idle" | "uploading" | "processing" | "done" | "error";
+type Phase = "idle" | "confirm" | "uploading" | "processing" | "done" | "error";
 
 // ── Quality Preset Selector ────────────────────────────────────────────────────
 
@@ -1608,6 +1608,8 @@ export default function ExportPage() {
   const [selectedMusicTrackId, setSelectedMusicTrackId] = useState<string>("");
   const [selectedMusicName, setSelectedMusicName] = useState<string | null>(null);
   const [exportTypeSetting, setExportTypeSetting] = useState<"landscape" | "social">("landscape");
+  const [spotlightStyleSetting, setSpotlightStyleSetting] = useState<string>("none");
+  const [clipCountSetting, setClipCountSetting] = useState<number>(0);
   const [showCapcutGuide, setShowCapcutGuide] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const successTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1700,6 +1702,9 @@ export default function ExportPage() {
       const et = s.exportType as string | undefined;
       if (et === "social") setExportTypeSetting("social");
       else setExportTypeSetting("landscape");
+      const sp = s.spotlightStyle as string | undefined;
+      setSpotlightStyleSetting(sp || "none");
+      if (Array.isArray(s.clips)) setClipCountSetting(s.clips.length);
     } catch {}
     // Load last Creatomate render URL for "Previous Reels" section
     try {
@@ -1785,9 +1790,12 @@ export default function ExportPage() {
     } catch { return (reel.firstName || "reel").toLowerCase().replace(/\s+/g, "-"); }
   })();
 
-  const handleBuild = async (forceSocial?: boolean) => {
+  const handleBuild = () => {
     if (isOverLimit) { setDurationModal(true); return; }
-    // Route to Creatomate when configured, canvas otherwise
+    setPhase("confirm");
+  };
+
+  const startActualBuild = async (forceSocial?: boolean) => {
     if (creatomatAvailable) { await doCreatomateBuild(forceSocial); return; }
     await doBuild(forceSocial);
   };
@@ -1925,9 +1933,20 @@ export default function ExportPage() {
       preserveQuality: true,
     };
 
+    // Debug logs — music + dimensions
+    console.log("PRE-RENDER MUSIC CHECK:", { settingsMusicId, resolvedMusicUrl, resolvedMusicName, isSocial });
+    console.log("RENDER PAYLOAD:", JSON.stringify({
+      clipCount: renderPayload.clips.length,
+      music: renderPayload.settings.music,
+      musicUrl: renderPayload.settings.musicUrl,
+      musicName: renderPayload.settings.musicName,
+      social: renderPayload.social,
+      aspectRatio: renderPayload.aspectRatio,
+    }, null, 2));
+
     // Start Creatomate render
     setPhase("processing");
-    setStep("Starting server render...");
+    setStep("Starting render job...");
     setPct(36);
 
     let renderId: string;
@@ -1949,8 +1968,19 @@ export default function ExportPage() {
 
     if (abortRef.current) { setPhase("idle"); setIsCreatomateRender(false); return; }
 
-    // Poll for render completion every 4 seconds
-    setStep("Rendering on Creatomate servers... (2–5 min)");
+    // Sequential progress messages — mapped to render progress % bands
+    const RENDER_MESSAGES: Array<{ maxPct: number; text: string }> = [
+      { maxPct: 10,  text: "Starting render job..." },
+      { maxPct: 25,  text: "Loading your clips onto the server..." },
+      { maxPct: 40,  text: "Building title card and intro..." },
+      { maxPct: 70,  text: "Processing clips and transitions..." },
+      { maxPct: 85,  text: "Adding music and mixing audio..." },
+      { maxPct: 95,  text: "Encoding final MP4..." },
+      { maxPct: 100, text: "Almost done — finalizing..." },
+    ];
+
+    // Poll for render completion every 3 seconds
+    setStep("Starting render job...");
     const renderStartTime = Date.now();
 
     creatomatePollRef.current = setInterval(async () => {
@@ -1963,15 +1993,14 @@ export default function ExportPage() {
         const status = await resp.json();
 
         const elapsedSec = Math.round((Date.now() - renderStartTime) / 1000);
-        const elapsedMin = Math.floor(elapsedSec / 60);
-        const elapsedS = elapsedSec % 60;
-        const elapsedStr = elapsedMin > 0 ? `${elapsedMin}m ${elapsedS}s` : `${elapsedSec}s`;
 
         if (status.status === "rendering" || status.status === "waiting" || status.status === "planned") {
           // Animate progress 36–90% while rendering
-          const animPct = Math.min(90, 36 + Math.round((elapsedSec / 300) * 54));
+          const renderPct = Math.min(99, Math.round((elapsedSec / 300) * 100));
+          const animPct   = Math.min(90, 36 + Math.round((elapsedSec / 300) * 54));
+          const msg = RENDER_MESSAGES.find(m => renderPct < m.maxPct)?.text ?? "Almost done — finalizing...";
           setPct(animPct);
-          setStep(`Rendering on server... ${elapsedStr} elapsed`);
+          setStep(msg);
         } else if (status.status === "succeeded" && status.url) {
           if (creatomatePollRef.current) clearInterval(creatomatePollRef.current);
           setPct(100);
@@ -1991,7 +2020,7 @@ export default function ExportPage() {
               sb.from("processing_jobs").update({ reel_url: status.url }).eq("id", jobId).then(() => {});
             }
           } catch { /* non-fatal */ }
-          const builtTrack = musicTrackId;
+          const builtTrack = settingsMusicId || musicTrackId;
           setBuiltMusicTrackId(builtTrack);
           setSelectedMusicTrackId(builtTrack);
           setTimeout(() => {
@@ -2007,7 +2036,7 @@ export default function ExportPage() {
       } catch (pollErr) {
         console.warn("[Creatomate poll] error:", pollErr);
       }
-    }, 4000);
+    }, 3000);
   };
 
   const doBuild = async (forceSocial?: boolean) => {
@@ -2545,6 +2574,71 @@ export default function ExportPage() {
             </button>
           )}
 
+          {/* ── CONFIRM SCREEN ── */}
+          {phase === "confirm" && (
+            <div className="flex flex-col gap-4">
+              <div>
+                <p className="text-white font-bold text-sm mb-0.5">Confirm Your Settings</p>
+                <p className="text-[11px] text-slate-500">Review before rendering — takes 2–5 minutes</p>
+              </div>
+              <div className="flex flex-col divide-y divide-white/[0.05]">
+                {[
+                  {
+                    label: "Format",
+                    value: exportTypeSetting === "social" ? "9:16 Vertical" : "16:9 Landscape",
+                    sub:   exportTypeSetting === "social" ? "1080×1920 — Instagram & TikTok" : "1920×1080 — Coach email & Hudl",
+                  },
+                  {
+                    label: "Music",
+                    value: (selectedMusicTrackId && selectedMusicTrackId !== "no-music")
+                      ? (selectedMusicName || selectedMusicTrackId)
+                      : "None",
+                    sub: (selectedMusicTrackId && selectedMusicTrackId !== "no-music")
+                      ? "Baked into your MP4"
+                      : "Coaches prefer no music",
+                  },
+                  {
+                    label: "Clips",
+                    value: `${reel.files.length || clipCountSetting || storedClipCount || "?"} clips`,
+                    sub:   "Arranged in order from customize",
+                  },
+                  {
+                    label: "Spotlight",
+                    value: spotlightStyleSetting === "circle" ? "Circle overlay"
+                         : spotlightStyleSetting === "arrow"  ? "Arrow overlay"
+                         : "None",
+                    sub: spotlightStyleSetting !== "none" ? "Player identified in each clip" : "No player overlay",
+                  },
+                  {
+                    label: "Quality",
+                    value: "Maximum",
+                    sub:   "H.264 High · AAC Audio · 60fps",
+                  },
+                ].map(row => (
+                  <div key={row.label} className="flex items-center justify-between py-2.5">
+                    <div>
+                      <span className="text-xs text-slate-400">{row.label}</span>
+                      {row.sub && <p className="text-[10px] text-slate-600 mt-0.5">{row.sub}</p>}
+                    </div>
+                    <span className="text-xs font-bold text-white ml-4 text-right shrink-0">{row.value}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-3 pt-1">
+                <button type="button" onClick={() => router.push("/customize")}
+                  className="flex-1 py-3 rounded-xl font-semibold text-sm transition-all hover:opacity-80"
+                  style={{ background: "rgba(255,255,255,0.05)", color: "#94a3b8", border: "1px solid rgba(255,255,255,0.08)" }}>
+                  ← Change Settings
+                </button>
+                <button type="button" onClick={() => startActualBuild()}
+                  className="flex-1 py-3 rounded-xl font-bold text-sm transition-all hover:opacity-90 active:scale-[0.99]"
+                  style={{ background: accentHex, color: accentIsWhite ? "#050A14" : "#ffffff" }}>
+                  Build My Reel →
+                </button>
+              </div>
+            </div>
+          )}
+
           {phase === "uploading" && (
             <div className="flex flex-col gap-3">
               <div className="flex items-center gap-2 mb-1">
@@ -2577,7 +2671,7 @@ export default function ExportPage() {
                 <p className="text-xs font-bold tabular-nums shrink-0" style={{ color: accentHex }}>{Math.floor(pct)}%</p>
               </div>
               <div className="h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.08)" }}>
-                <div className="h-full rounded-full transition-all duration-150" style={{ width: `${pct}%`, background: accentHex }} />
+                <div className="h-full rounded-full" style={{ width: `${pct}%`, background: accentHex, transition: "width 2.8s ease-out" }} />
               </div>
               <p className="text-slate-600 text-[10px] text-center">
                 {isCreatomateRender ? "Server rendering in progress — safe to minimize this tab" : `Don't close this tab · ${Math.round(pct)}% complete`}
@@ -2602,110 +2696,77 @@ export default function ExportPage() {
           )}
 
           {phase === "done" && !clipsOnly && (blobUrl || renderUrl) && (compat || renderUrl) && (
-            <div className="flex flex-col gap-3">
-              {/* Creatomate server render badge */}
-              {renderUrl && (
-                <div className="flex items-center gap-2 text-[10px] font-bold rounded-lg px-3 py-2"
-                  style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)", color: "#22C55E" }}>
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
-                  Server rendered MP4 — plays everywhere with music baked in
-                </div>
-              )}
-
-              {/* ── Green success toast ── */}
-              {showSuccess && (
-                <div className="flex items-center gap-2 rounded-xl px-4 py-3"
-                  style={{ background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.3)" }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22C55E" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <div className="flex flex-col gap-4">
+              {/* ── Ready header ── */}
+              <div className="flex flex-col items-center gap-3 py-2">
+                <div className="w-16 h-16 rounded-full flex items-center justify-center"
+                  style={{ background: "rgba(34,197,94,0.12)", border: "2px solid rgba(34,197,94,0.4)" }}>
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#22C55E" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="20 6 9 17 4 12" />
                   </svg>
-                  <p className="text-sm font-bold text-green-400">Your reel is ready!</p>
                 </div>
-              )}
+                <div className="text-center">
+                  <p className="text-2xl font-black text-white">Your Reel Is Ready</p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {renderUrl
+                      ? `MP4 · Server Rendered · ${exportTypeSetting === "social" ? "9:16 Vertical" : "16:9 Landscape"}`
+                      : `${ext.toUpperCase()} · ${exportTypeSetting === "social" ? "9:16 Vertical" : "16:9 Landscape"}`}
+                    {builtMusicTrackId && builtMusicTrackId !== "no-music"
+                      ? ` · ♫ ${selectedMusicName || builtMusicTrackId}`
+                      : " · No Music"}
+                  </p>
+                </div>
+              </div>
 
-              {/* ── Button 1: Download Coach Reel ── */}
+              {/* ── Single download button ── */}
               <button type="button" onClick={handlePrimaryDownload}
-                className="w-full py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all hover:opacity-90 active:scale-[0.99]"
-                style={{ background: "#00A3FF", color: "#050A14" }}>
-                <DownloadIcon /> {renderUrl ? "Download Coach Reel (MP4)" : "Download Coach Reel"}
+                className="w-full py-4 rounded-xl font-bold text-base flex items-center justify-center gap-2 transition-all hover:opacity-90 active:scale-[0.99]"
+                style={{ background: "#22C55E", color: "#050A14" }}>
+                <DownloadIcon /> Download My Reel
               </button>
 
-              {/* WebM note for desktop non-Safari — only for canvas renders */}
+              {/* iOS hint for canvas renders */}
+              {device === "ios" && !renderUrl && (
+                <p className="text-[10px] text-slate-500 text-center -mt-2">Opens in Safari → tap Share → Save to Files</p>
+              )}
+
+              {/* WebM note — canvas desktop only */}
               {!renderUrl && device === "desktop" && !isSafari && ext === "webm" && (
-                <p className="text-[10px] leading-snug" style={{ color: "#475569" }}>
+                <p className="text-[10px] leading-snug -mt-2" style={{ color: "#475569" }}>
                   Downloaded as WebM · plays in Chrome &amp; Firefox.
-                  To convert to MP4: <a href="https://cloudconvert.com/webm-to-mp4" target="_blank" rel="noopener noreferrer" style={{ color: "#00A3FF" }}>cloudconvert.com</a> (free).
+                  Convert to MP4: <a href="https://cloudconvert.com/webm-to-mp4" target="_blank" rel="noopener noreferrer" style={{ color: "#00A3FF" }}>cloudconvert.com</a> (free).
                 </p>
               )}
 
-              {/* iOS save hint */}
-              {device === "ios" && (
-                <p className="text-[10px] text-slate-500 text-center">Opens in Safari → tap Share → Save to Files</p>
-              )}
-
-              {/* ── Button 2: Download Music Track ── */}
-              {builtMusicTrackId && builtMusicTrackId !== "no-music" && (
-                <button type="button" onClick={handleDownloadMusicTrack}
-                  className="w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all hover:opacity-90"
-                  style={{ background: "transparent", color: "#00A3FF", border: "1.5px solid #00A3FF40" }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
-                  </svg>
-                  Download Music · {MUSIC_TRACK_LABELS[builtMusicTrackId] ?? "Track"}
+              {/* ── Share Link button ── */}
+              {renderUrl && (
+                <button type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(renderUrl).catch(() => {});
+                    setCopiedShare("reel");
+                    if (shareTimer.current) clearTimeout(shareTimer.current);
+                    shareTimer.current = setTimeout(() => setCopiedShare(null), 2500);
+                  }}
+                  className="w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all hover:opacity-80"
+                  style={{ background: "rgba(255,255,255,0.05)", color: copiedShare === "reel" ? "#22C55E" : "#94a3b8", border: "1px solid rgba(255,255,255,0.08)" }}>
+                  {copiedShare === "reel" ? (
+                    <>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+                      Link Copied ✓
+                    </>
+                  ) : (
+                    <>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                      Copy Share Link
+                    </>
+                  )}
                 </button>
               )}
 
-              {/* ── iOS CapCut guide (post-download) ── */}
-              {device === "ios" && builtMusicTrackId && builtMusicTrackId !== "no-music" && (
-                <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(0,163,255,0.2)", background: "rgba(0,163,255,0.04)" }}>
-                  <button type="button" onClick={() => setShowCapcutGuide(o => !o)}
-                    className="w-full px-4 py-2.5 text-xs font-bold flex items-center justify-between"
-                    style={{ color: "#00A3FF" }}>
-                    <span>How to add music in CapCut</span>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
-                      style={{ transform: showCapcutGuide ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>
-                      <polyline points="6 9 12 15 18 9" />
-                    </svg>
-                  </button>
-                  {showCapcutGuide && (
-                    <div className="px-4 pb-4 flex flex-col gap-3">
-                      {[
-                        { n: "1", text: "Download your reel (button above) and the music track." },
-                        { n: "2", text: "Download your music track (button above)." },
-                        { n: "3", text: <>Open <strong className="text-white">CapCut</strong> → tap <strong className="text-white">New Project</strong> → select your reel → tap <strong className="text-white">Audio</strong> → <strong className="text-white">Music</strong> → <strong className="text-white">My Files</strong> → select the music file → trim to match reel length → <strong className="text-white">Export</strong>.</> },
-                      ].map(({ n, text }) => (
-                        <div key={n} className="flex items-start gap-3">
-                          <span className="text-lg font-black leading-none shrink-0" style={{ color: "#00A3FF" }}>{n}</span>
-                          <p className="text-[11px] leading-snug text-slate-400">{text}</p>
-                        </div>
-                      ))}
-                      <a href="https://apps.apple.com/app/capcut-video-editor/id1500855883" target="_blank" rel="noopener noreferrer"
-                        className="flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold mt-1"
-                        style={{ background: "rgba(0,163,255,0.15)", color: "#00A3FF", border: "1px solid rgba(0,163,255,0.3)" }}>
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
-                        Download CapCut — Free on App Store
-                      </a>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Other device buttons (small) */}
-              <div className="flex gap-2">
-                {(["ios", "android", "desktop"] as DeviceType[]).filter((d) => d !== device).map((d) => (
-                  <button key={d} type="button"
-                    onClick={() => { if (!blobUrl) return; d === "ios" ? iosOpen(blobUrl) : triggerDownload(blobUrl, `${baseName}-reel.${ext}`); }}
-                    className="flex-1 py-2 rounded-xl font-semibold text-[10px] transition-all hover:opacity-80"
-                    style={{ background: "rgba(255,255,255,0.05)", color: "#64748b", border: "1px solid rgba(255,255,255,0.08)" }}>
-                    {dIcon[d]} {dLabel[d]}
-                  </button>
-                ))}
-              </div>
-
-              {/* Rebuild */}
+              {/* ── Build Again ── */}
               <button type="button" onClick={() => { setPhase("idle"); setShowSuccess(false); setRenderUrl(null); setIsCreatomateRender(false); }}
-                className="text-xs text-slate-500 hover:text-slate-300 transition-colors self-center mt-1">
-                ↺ Build Again (change quality)
+                className="text-xs text-slate-500 hover:text-slate-300 transition-colors self-center">
+                ↺ Build Again
               </button>
             </div>
           )}

@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
     const music    = settings.music    ?? body.music    ?? null;
     const musicUrl = settings.musicUrl ?? body.musicUrl ?? null;
     const musicName = settings.musicName ?? body.musicName ?? null;
-    console.log("[render-reel] API ROUTE MUSIC:", music, musicUrl);
+    console.log("[render-reel] API RECEIVED MUSIC:", { music, musicUrl: musicUrl?.slice(0, 80) ?? null, musicName });
 
     reelInput = {
       // Athlete identity
@@ -149,6 +149,11 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    console.log("[render-reel] REEL INPUT MUSIC:", {
+      music: reelInput.music,
+      musicUrl: reelInput.musicUrl,
+      musicName: reelInput.musicName,
+    });
     console.log("[render-reel] Calling startRender with", {
       clipCount: reelInput.clips?.length ?? reelInput.clipUrls?.length,
       hasMusic: !!reelInput.musicUrl,
