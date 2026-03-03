@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useReel } from "../providers";
 import { SPORTS_CONFIG } from "../../lib/sportsConfig";
+import { TitleCardPreview } from "../../components/TitleCardPreview";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -15,7 +16,6 @@ interface ClipItem {
   duration: number;
   trimStart: number;
   trimEnd: number | undefined;
-  starRating: number;
   skillCategory: string;
   playType?: string;
   qualityScore?: number;
@@ -109,20 +109,14 @@ const COLOR_SWATCHES = [
 ];
 
 const MUSIC_TRACKS = [
-  { id: "no-music",  name: "No Music",       desc: "Coach version — 98% watch on mute",            url: null },
-  { id: "hype-1",    name: "Hype Mode",      desc: "High energy — pump-up anthem",                  url: "https://cdn.pixabay.com/audio/2023/06/19/audio_d1718ab8c5.mp3" },
-  { id: "hype-2",    name: "Game Time",      desc: "Cinematic build — builds intensity",            url: "https://cdn.pixabay.com/audio/2022/10/25/audio_73b75c0925.mp3" },
-  { id: "hype-3",    name: "Champion",       desc: "Motivational — perfect for scoring reels",      url: "https://cdn.pixabay.com/audio/2023/04/07/audio_c8f6e4aced.mp3" },
-  { id: "hype-4",    name: "Grind Season",   desc: "Hard-hitting beats — defense & physicality",    url: "https://cdn.pixabay.com/audio/2022/11/09/audio_3d5b4c73d9.mp3" },
-  { id: "hype-5",    name: "Beast Mode",     desc: "Aggressive energy — highlight reel vibes",      url: "https://cdn.pixabay.com/audio/2023/02/28/audio_99a0a8b8e8.mp3" },
-  { id: "upload",    name: "Upload My Own",  desc: "Use your own MP3/WAV track",                    url: null },
-];
-
-const US_STATES = [
-  "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
-  "KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ",
-  "NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT",
-  "VA","WA","WV","WI","WY","DC",
+  { id: "no-music", name: "No Music",       desc: "Clean — coach preferred",               url: null },
+  { id: "hype-1",   name: "Hype Mode",      desc: "Hard hitting sport energy",             url: "https://assets.mixkit.co/music/preview/mixkit-hip-hop-02-738.mp3" },
+  { id: "hype-2",   name: "Game Time",      desc: "Intense drums and bass",                url: "https://assets.mixkit.co/music/preview/mixkit-boxing-workout-625.mp3" },
+  { id: "hype-3",   name: "Champion",       desc: "Triumphant cinematic sport",            url: "https://assets.mixkit.co/music/preview/mixkit-sports-victory-623.mp3" },
+  { id: "hype-4",   name: "Grind Season",   desc: "Motivational hip hop",                  url: "https://assets.mixkit.co/music/preview/mixkit-rap-workout-668.mp3" },
+  { id: "hype-5",   name: "Beast Mode",     desc: "Dark trap instrumental",                url: "https://assets.mixkit.co/music/preview/mixkit-trap-hip-hop-intro-340.mp3" },
+  { id: "hype-6",   name: "Warm Up",        desc: "Smooth basketball vibes",               url: "https://assets.mixkit.co/music/preview/mixkit-basketball-hip-hop-498.mp3" },
+  { id: "custom",   name: "Upload My Own",  desc: "MP3, WAV or M4A up to 15MB",           url: null },
 ];
 
 const GRAD_YEARS = ["2025", "2026", "2027", "2028", "2029", "2030", "2031"];
@@ -150,15 +144,6 @@ const GripIcon = () => (
   </svg>
 );
 
-const StarIcon = ({ filled }: { filled: boolean }) => (
-  <svg width="15" height="15" viewBox="0 0 24 24"
-    fill={filled ? "#FFD700" : "none"}
-    stroke={filled ? "#FFD700" : "#475569"}
-    strokeWidth="2">
-    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-  </svg>
-);
-
 const CheckIcon = () => (
   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="20 6 9 17 4 12" />
@@ -178,70 +163,6 @@ const labelStyle = {
   textTransform: "uppercase" as const, letterSpacing: "0.06em", marginBottom: 6,
 };
 
-// ── Live Preview: Title Card ──────────────────────────────────────────────────
-
-interface TitleCardPreviewProps {
-  firstName: string; lastName: string; jerseyNumber: string;
-  position: string; sport: string; school: string; gradYear: string;
-  email: string; accentHex: string; socialHandle?: string; achievement?: string;
-}
-
-function TitleCardPreview({ firstName, lastName, jerseyNumber, position, sport, school, gradYear, email, accentHex, socialHandle, achievement }: TitleCardPreviewProps) {
-  const name    = [firstName, lastName].filter(Boolean).join(" ").toUpperCase() || "YOUR NAME";
-  const subLine = [position, sport].filter(Boolean).join("  ·  ").toUpperCase() || "POSITION · SPORT";
-  const isLight = accentHex === "#FFFFFF" || accentHex === "#C0C0C0";
-  const btnColor = isLight ? "#050A14" : "#FFFFFF";
-  return (
-    <div style={{ aspectRatio: "16/9", background: "#050A14", borderRadius: 10, overflow: "hidden", position: "relative", fontFamily: "Inter, sans-serif", border: `1px solid ${accentHex}25` }}>
-      {/* Top accent stripe */}
-      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "1%", background: accentHex }} />
-      {/* Faint sport watermark */}
-      {sport && (
-        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "clamp(30px,12vw,100px)", fontWeight: 900, color: "#FFFFFF", opacity: 0.03, pointerEvents: "none", userSelect: "none", fontFamily: "Oswald, sans-serif", textTransform: "uppercase" }}>
-          {sport}
-        </div>
-      )}
-      {/* Content */}
-      <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "4% 8%", gap: "2.5%" }}>
-        {achievement && (
-          <div style={{ fontSize: "clamp(5px, 1.1vw, 10px)", color: accentHex, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em" }}>
-            {achievement}
-          </div>
-        )}
-        <div style={{ fontSize: "clamp(11px, 2.8vw, 26px)", fontWeight: 900, color: "#FFFFFF", letterSpacing: "0.04em", textTransform: "uppercase", fontFamily: "Oswald, sans-serif", textAlign: "center" }}>
-          {name}
-        </div>
-        {jerseyNumber && (
-          <div style={{ fontSize: "clamp(14px, 3.5vw, 32px)", fontWeight: 900, color: accentHex, fontFamily: "Oswald, sans-serif", lineHeight: 1 }}>
-            #{jerseyNumber}
-          </div>
-        )}
-        {/* Divider */}
-        <div style={{ width: "60%", height: 1, background: accentHex, opacity: 0.3 }} />
-        <div style={{ fontSize: "clamp(5px, 1.3vw, 12px)", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.1em", textAlign: "center" }}>
-          {subLine}
-        </div>
-        {school && (
-          <div style={{ fontSize: "clamp(5px, 1.1vw, 10px)", color: "#FFFFFF", textTransform: "uppercase", letterSpacing: "0.06em", textAlign: "center" }}>
-            {school}{gradYear ? ` · Class of ${gradYear}` : ""}
-          </div>
-        )}
-        {/* Contact row */}
-        <div style={{ display: "flex", gap: "6%", flexWrap: "wrap", justifyContent: "center", marginTop: "1%" }}>
-          {email && <div style={{ fontSize: "clamp(4px, 0.9vw, 8px)", color: accentHex }}>{email}</div>}
-          {socialHandle && <div style={{ fontSize: "clamp(4px, 0.9vw, 8px)", color: accentHex }}>{socialHandle}</div>}
-        </div>
-      </div>
-      {/* CLIPT watermark */}
-      <div style={{ position: "absolute", bottom: "3%", right: "3%", fontSize: "clamp(4px,0.8vw,7px)", color: "#334155", fontWeight: 700, letterSpacing: "0.1em" }}>
-        CLIPT
-      </div>
-      {/* Suppress unused var warning */}
-      {void btnColor}
-    </div>
-  );
-}
-
 // ── Live Preview: Stats Card ──────────────────────────────────────────────────
 
 interface StatsCardPreviewProps {
@@ -255,7 +176,7 @@ function StatsCardPreview({ statsData, sport, position, accentHex }: StatsCardPr
     ? [...sportConfig.getStatFields(position).base, ...sportConfig.getStatFields(position).extra]
     : [];
   const filled = allFields.filter(f => statsData[f.key]?.trim());
-  const show   = filled.slice(0, 6);
+  const show   = filled.slice(0, 12); // show up to 12 (2 slides worth)
 
   return (
     <div style={{ aspectRatio: "16/9", background: "#050A14", borderRadius: 8, overflow: "hidden", position: "relative", fontFamily: "Inter, sans-serif" }}>
@@ -352,8 +273,7 @@ export default function CustomizePage() {
   const [coachName,    setCoachName]    = useState("");
   const [coachEmail,   setCoachEmail]   = useState("");
   const [clubTeam,     setClubTeam]     = useState("");
-  const [city,         setCity]         = useState("");
-  const [usState,      setUsState]      = useState("");
+  const [location,     setLocation]     = useState("");
   const [phone,        setPhone]        = useState("");
   const [heightFt,     setHeightFt]     = useState("");
   const [heightIn,     setHeightIn]     = useState("");
@@ -362,8 +282,7 @@ export default function CustomizePage() {
   const [achievement,  setAchievement]  = useState("");
 
   // ── Stats ───────────────────────────────────────────────────────────────────
-  const [statsData,     setStatsData]     = useState<Record<string, string>>({});
-  const [showMoreStats, setShowMoreStats] = useState(false);
+  const [statsData, setStatsData] = useState<Record<string, string>>({});
 
   // ── Color ───────────────────────────────────────────────────────────────────
   const [accentHex,   setAccentHex]   = useState("#00A3FF");
@@ -427,8 +346,8 @@ export default function CustomizePage() {
       if (tc.coachName)    setCoachName(tc.coachName);
       if (tc.coachEmail)   setCoachEmail(tc.coachEmail);
       if (tc.clubTeam)     setClubTeam(tc.clubTeam);
-      if (tc.city)         setCity(tc.city);
-      if (tc.state)        setUsState(tc.state);
+      if (tc.location)     setLocation(tc.location);
+      else if (tc.city || tc.state) setLocation([tc.city, tc.state].filter(Boolean).join(", ")); // migrate legacy
       if (tc.phone)        setPhone(tc.phone);
       if (tc.heightFt)     setHeightFt(tc.heightFt);
       if (tc.heightIn)     setHeightIn(tc.heightIn);
@@ -480,7 +399,6 @@ export default function CustomizePage() {
           duration:      c.duration,
           trimStart:     saved?.trimStart ?? 0,
           trimEnd:       saved?.trimEnd,
-          starRating:    saved?.starRating ?? 0,
           skillCategory: saved?.skillCategory ?? defaultCat,
           playType:      c.playType,
           qualityScore:  c.qualityScore,
@@ -502,7 +420,7 @@ export default function CustomizePage() {
     (firstName && lastName ? 20 : firstName ? 10 : 0) +
     (coachEmail ? 20 : coachName ? 10 : 0) +
     (filledStatCount >= 3 ? 20 : filledStatCount >= 1 ? 10 : 0) +
-    (clips.some(c => c.starRating > 0) ? 10 : 0)
+    (email ? 10 : 0)
   ));
   const healthColor = healthScore >= 80 ? "#22C55E" : healthScore >= 50 ? "#F59E0B" : "#EF4444";
 
@@ -529,9 +447,6 @@ export default function CustomizePage() {
   }
 
   // ── Clip mutations ───────────────────────────────────────────────────────────
-  function setClipRating(id: string, rating: number) {
-    setClips(prev => prev.map(c => c.id === id ? { ...c, starRating: c.starRating === rating ? 0 : rating } : c));
-  }
   function setClipCategory(id: string, cat: string) {
     setClips(prev => prev.map(c => c.id === id ? { ...c, skillCategory: cat } : c));
   }
@@ -558,8 +473,10 @@ export default function CustomizePage() {
         previewAudioRef.current = null;
       }
       const audio = new Audio(trackUrl);
+      audio.crossOrigin = "anonymous";
+      audio.volume = 0.7;
       previewAudioRef.current = audio;
-      audio.play().catch(() => {});
+      audio.play().catch(err => console.log("Preview failed:", err));
       audio.addEventListener("ended", () => setPreviewingTrack(null));
       setPreviewingTrack(trackId);
     }
@@ -570,8 +487,8 @@ export default function CustomizePage() {
       setSelectedMusic("no-music");
       setSelectedMusicUrl(null);
       setSelectedMusicName(null);
-    } else if (track.id === "upload") {
-      setSelectedMusic("upload");
+    } else if (track.id === "custom") {
+      setSelectedMusic("custom");
       // URL set when user picks file
     } else {
       setSelectedMusic(track.id);
@@ -619,7 +536,6 @@ export default function CustomizePage() {
         duration:      c.duration,
         trimStart:     c.trimStart,
         trimEnd:       c.trimEnd,
-        starRating:    c.starRating,
         skillCategory: c.skillCategory,
         playType:      c.playType,
         qualityScore:  c.qualityScore,
@@ -628,7 +544,7 @@ export default function CustomizePage() {
       })),
       titleCard: {
         firstName, lastName, jerseyNumber, position, sport, school, gradYear,
-        email, coachName, coachEmail, clubTeam, city, state: usState, phone,
+        email, coachName, coachEmail, clubTeam, location, phone,
         heightFt, heightIn, socialHandle, hometown, achievement,
       },
       stats: statsData,
@@ -828,15 +744,6 @@ export default function CustomizePage() {
                           {clip.playType && <span style={{ marginLeft: 6 }}>· {clip.playType}</span>}
                         </div>
                       </div>
-                      {/* Stars */}
-                      <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
-                        {[1, 2, 3, 4, 5].map(s => (
-                          <button key={s} type="button" onClick={() => setClipRating(clip.id, s)}
-                            style={{ background: "none", border: "none", cursor: "pointer", padding: 2, lineHeight: 0 }}>
-                            <StarIcon filled={s <= clip.starRating} />
-                          </button>
-                        ))}
-                      </div>
                       {/* Expand */}
                       <button type="button" onClick={() => setExpandedClip(isExpanded ? null : clip.id)}
                         style={{ background: "none", border: "none", cursor: "pointer", color: "#475569", padding: 4, lineHeight: 0 }}>
@@ -990,8 +897,11 @@ export default function CustomizePage() {
             <TitleCardPreview
               firstName={firstName} lastName={lastName} jerseyNumber={jerseyNumber}
               position={position} sport={sport} school={school} gradYear={gradYear}
-              email={email} accentHex={accentHex}
+              heightFt={heightFt} heightIn={heightIn} weight={""} gpa={""}
+              email={email} phone={phone} coachName={coachName} coachEmail={coachEmail}
+              clubTeam={clubTeam} location={location}
               socialHandle={socialHandle} achievement={achievement}
+              accentColor={accentHex}
             />
           </div>
 
@@ -1059,15 +969,8 @@ export default function CustomizePage() {
               <input style={inputStyle} type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="(555) 000-0000" />
             </div>
             <div>
-              <label style={labelStyle}>City</label>
-              <input style={inputStyle} value={city} onChange={e => setCity(e.target.value)} placeholder="e.g. Atlanta" />
-            </div>
-            <div>
-              <label style={labelStyle}>State</label>
-              <select style={{ ...inputStyle, appearance: "none" }} value={usState} onChange={e => setUsState(e.target.value)}>
-                <option value="">Select state</option>
-                {US_STATES.map(st => <option key={st} value={st}>{st}</option>)}
-              </select>
+              <label style={labelStyle}>Location</label>
+              <input style={inputStyle} value={location} onChange={e => setLocation(e.target.value)} placeholder="e.g. Dallas, TX" />
             </div>
             <div>
               <label style={labelStyle}>Height (ft)</label>
@@ -1122,9 +1025,9 @@ export default function CustomizePage() {
                 <StatsCardPreview statsData={statsData} sport={sport} position={position} accentHex={accentHex} />
               </div>
 
-              {/* Base stat fields */}
+              {/* All stat fields — base + extra always visible */}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
-                {statFields.base.map(f => (
+                {[...statFields.base, ...statFields.extra].map(f => (
                   <div key={f.key}>
                     <label style={labelStyle}>{f.label}</label>
                     <input style={inputStyle} value={statsData[f.key] || ""}
@@ -1133,28 +1036,6 @@ export default function CustomizePage() {
                   </div>
                 ))}
               </div>
-
-              {/* Extra stats toggle */}
-              {statFields.extra.length > 0 && (
-                <>
-                  <button type="button" onClick={() => setShowMoreStats(v => !v)}
-                    style={{ background: "none", border: "none", color: accentHex, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: "14px 0 0", display: "flex", alignItems: "center", gap: 4 }}>
-                    {showMoreStats ? "Show fewer stats ↑" : `Show ${statFields.extra.length} more stats ↓`}
-                  </button>
-                  {showMoreStats && (
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginTop: 12 }}>
-                      {statFields.extra.map(f => (
-                        <div key={f.key}>
-                          <label style={labelStyle}>{f.label}</label>
-                          <input style={inputStyle} value={statsData[f.key] || ""}
-                            onChange={e => setStatsData(prev => ({ ...prev, [f.key]: e.target.value }))}
-                            placeholder={f.placeholder} />
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </>
-              )}
             </>
           )}
         </SectionCard>
@@ -1277,7 +1158,7 @@ export default function CustomizePage() {
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {MUSIC_TRACKS.map(track => {
-                const isSelected   = selectedMusic === track.id || (track.id === "upload" && selectedMusic === "custom");
+                const isSelected   = selectedMusic === track.id;
                 const isPreviewing = previewingTrack === track.id;
                 return (
                   <div key={track.id}
@@ -1340,13 +1221,13 @@ export default function CustomizePage() {
                       {!track.url && track.id === "no-music" && (
                         <div style={{ width: 34, height: 34, borderRadius: "50%", flexShrink: 0, background: "#1E293B", border: "1.5px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15 }}>🔇</div>
                       )}
-                      {!track.url && track.id === "upload" && (
+                      {!track.url && track.id === "custom" && (
                         <div style={{ width: 34, height: 34, borderRadius: "50%", flexShrink: 0, background: "#1E293B", border: "1.5px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15 }}>📁</div>
                       )}
                     </div>
 
                     {/* Upload My Own — file picker */}
-                    {track.id === "upload" && isSelected && (
+                    {track.id === "custom" && isSelected && (
                       <div style={{ padding: "0 14px 14px" }}>
                         <label style={{ ...labelStyle, cursor: "pointer" }}>
                           <div style={{ padding: "10px 14px", borderRadius: 8, background: "#0A1628", border: "1px dashed rgba(255,255,255,0.15)", textAlign: "center", fontSize: 13, color: "#64748b", cursor: "pointer" }}>

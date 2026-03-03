@@ -34,6 +34,8 @@ export interface ReelRenderInput {
   weight?: string;       // body weight in lbs, e.g. "185"
   gpa?: string;          // GPA string, e.g. "3.8" — shown on title card only if >= 3.0
   clubTeam?: string;
+  location?: string; // e.g. "Dallas, TX" — replaces separate city/state fields
+  // legacy fields (still accepted for backward compat with old saved data)
   city?: string;
   state?: string;
 
@@ -155,6 +157,7 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
     weight       = "",
     gpa          = "",
     clubTeam     = "",
+    location     = "",
     city         = "",
     state        = "",
     coachName    = "",
@@ -193,7 +196,8 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
   // ── Derived strings ───────────────────────────────────────────────────────
   const fullName  = [firstName, lastName].filter(Boolean).join(" ").toUpperCase();
   const subLine   = [position, sport].filter(Boolean).join("  ·  ").toUpperCase();
-  const cityState = [city, state].filter(Boolean).join(", ");
+  // Prefer new `location` field; fall back to legacy city+state
+  const locationStr = location || [city, state].filter(Boolean).join(", ");
 
   const statsEntries = Object.entries(statsData)
     .filter(([, v]) => v?.trim())
@@ -369,18 +373,18 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
     });
   }
 
-  // City, state — 36px at y 56.9% (+20% from 30px)
-  if (cityState) {
+  // Location — 36px at y 56.9%
+  if (locationStr) {
     titleEls.push({
-      type: "text", text: cityState,
+      type: "text", text: locationStr,
       x: "50%", y: "56.9%", x_anchor: "50%", y_anchor: "50%",
       font_size: Math.round(36 * s), fill_color: "#64748b", font_family: "Inter",
       shadow_color: "rgba(0,0,0,0)", shadow_blur: 0,
     });
   }
 
-  // Hometown — 34px at y 59.5% (NEW, only if different from cityState)
-  if (hometown && hometown !== cityState) {
+  // Hometown — 34px at y 59.5% (only if different from locationStr)
+  if (hometown && hometown !== locationStr) {
     titleEls.push({
       type: "text", text: hometown,
       x: "50%", y: "59.5%", x_anchor: "50%", y_anchor: "50%",

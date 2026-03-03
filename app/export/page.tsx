@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useReel } from "../providers";
 import type { FontStyle, TitleCardTemplate, WatermarkStyle, ExportAspectRatio, ExportQuality } from "../providers";
 import QRCode from "qrcode";
+import { TitleCardPreview as SharedTitleCardPreview } from "../../components/TitleCardPreview";
 
 // ── Dimensions ─────────────────────────────────────────────────────────────────
 type Dim = { w: number; h: number };
@@ -47,14 +48,14 @@ const PLAYER_MS = 800;
 
 // ── Music track display name map ──────────────────────────────────────────────
 const MUSIC_TRACK_LABELS: Record<string, string> = {
-  // New Pixabay tracks (from customize page)
+  // Mixkit hype tracks (current)
+  "hype-1": "Hype Mode",    "hype-2": "Game Time",    "hype-3": "Champion",
+  "hype-4": "Grind Season", "hype-5": "Beast Mode",   "hype-6": "Warm Up",
+  // Custom upload
+  "custom":        "Your Track",
+  // Legacy Pixabay/Mixkit tracks (backward compat)
   "nba-warmup":    "NBA Warmup",      "epic-sport":   "Epic Sport",     "motivational":  "Motivational",
   "trap":          "Trap Instrumental","championship": "Championship",  "upload":        "Your Track",
-  "custom":        "Your Track",
-  // New tracks from customize page
-  "hype-1": "Hype Mode", "hype-2": "Game Time", "hype-3": "Champion",
-  "hype-4": "Grind Season", "hype-5": "Beast Mode",
-  // Legacy Mixkit tracks
   "playoff-mode":  "Playoff Mode",    "game-time":    "Game Time",      "court-vision":  "Court Vision",
   "espn-feature":  "ESPN Feature",    "rise-up":      "Rise Up",        "legacy":        "Legacy",
   "the-journey":   "The Journey",     "triumph":      "Triumph",        "trap-god":      "Trap God",
@@ -63,15 +64,16 @@ const MUSIC_TRACK_LABELS: Record<string, string> = {
   "smooth":        "Smooth",
 };
 
-// ── Music track URL map ────────────────────────────────────────────────────────
+// ── Music track URL map — Mixkit CDN allows hotlinking (no 403) ───────────────
 const MUSIC_TRACK_URLS: Record<string, string | undefined> = {
-  // New Pixabay tracks (from customize page)
-  "nba-warmup":    "https://cdn.pixabay.com/audio/2022/10/16/audio_127a8b04d5.mp3",
-  "epic-sport":    "https://cdn.pixabay.com/audio/2022/08/02/audio_884fe92c21.mp3",
-  "motivational":  "https://cdn.pixabay.com/audio/2022/11/22/audio_febc508520.mp3",
-  "trap":          "https://cdn.pixabay.com/audio/2023/01/10/audio_5b01f1f0be.mp3",
-  "championship":  "https://cdn.pixabay.com/audio/2022/09/14/audio_bf8d48e5bd.mp3",
-  // Legacy Mixkit tracks (backward compat)
+  // Current Mixkit tracks (matched to customize page)
+  "hype-1": "https://assets.mixkit.co/music/preview/mixkit-hip-hop-02-738.mp3",
+  "hype-2": "https://assets.mixkit.co/music/preview/mixkit-boxing-workout-625.mp3",
+  "hype-3": "https://assets.mixkit.co/music/preview/mixkit-sports-victory-623.mp3",
+  "hype-4": "https://assets.mixkit.co/music/preview/mixkit-rap-workout-668.mp3",
+  "hype-5": "https://assets.mixkit.co/music/preview/mixkit-trap-hip-hop-intro-340.mp3",
+  "hype-6": "https://assets.mixkit.co/music/preview/mixkit-basketball-hip-hop-498.mp3",
+  // Legacy Mixkit tracks (backward compat — keep working)
   "playoff-mode":  "https://assets.mixkit.co/music/601/601.mp3",
   "game-time":     "https://assets.mixkit.co/music/490/490.mp3",
   "court-vision":  "https://assets.mixkit.co/music/421/421.mp3",
@@ -88,12 +90,6 @@ const MUSIC_TRACK_URLS: Record<string, string | undefined> = {
   "focus":         "https://assets.mixkit.co/music/282/282.mp3",
   "late-night":    "https://assets.mixkit.co/music/297/297.mp3",
   "smooth":        "https://assets.mixkit.co/music/315/315.mp3",
-  // New Pixabay hype tracks
-  "hype-1": "https://cdn.pixabay.com/audio/2023/06/19/audio_d1718ab8c5.mp3",
-  "hype-2": "https://cdn.pixabay.com/audio/2022/10/25/audio_73b75c0925.mp3",
-  "hype-3": "https://cdn.pixabay.com/audio/2023/04/07/audio_c8f6e4aced.mp3",
-  "hype-4": "https://cdn.pixabay.com/audio/2022/11/09/audio_3d5b4c73d9.mp3",
-  "hype-5": "https://cdn.pixabay.com/audio/2023/02/28/audio_99a0a8b8e8.mp3",
 };
 
 // ── Canvas Font Map ────────────────────────────────────────────────────────────
@@ -469,10 +465,11 @@ const LinkIcon = () => (
 
 // ── Canvas types ───────────────────────────────────────────────────────────────
 interface TitleInfo {
-  firstName: string; jerseyNumber: string; sport: string; school: string;
+  firstName: string; lastName: string; jerseyNumber: string; sport: string; school: string;
   position: string; fontFamily: string; gradYear: string;
   heightFt: string; heightIn: string; weight: string; gpa: string;
-  email: string; coachName: string; coachEmail: string;
+  email: string; phone: string; coachName: string; coachEmail: string;
+  clubTeam: string; location: string; socialHandle: string; achievement: string;
   statsData: Record<string, string>;
   academicStatsData: Record<string, string>;
   measurablesData: Record<string, string>;
@@ -1501,23 +1498,7 @@ async function buildReel(cfg: BuildConfig): Promise<Blob> {
 
 // ── UI components ──────────────────────────────────────────────────────────────
 
-function TitleCardPreview({ info, accent, template }: { info: TitleInfo; accent: string; template: TitleCardTemplate }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    const canvas = canvasRef.current; if (!canvas) return;
-    const ctx = canvas.getContext("2d"); if (!ctx) return;
-    Promise.allSettled(["Inter","Oswald","Poppins","Bebas Neue"].map((f) => document.fonts.load(`bold 48px "${f}"`))).then(() => {
-      drawTitleFrame(ctx, info, accent, { w: 640, h: 360 }, template);
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [info.firstName, info.sport, info.position, info.school, info.gradYear, info.email, accent, template]);
-
-  return (
-    <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${accent}25` }}>
-      <canvas ref={canvasRef} width={640} height={360} style={{ width: "100%", display: "block" }} />
-    </div>
-  );
-}
+// TitleCardPreview is now the shared HTML div component imported from components/TitleCardPreview.tsx
 
 function ProgressBar({ active, accent }: { active: number; accent: string }) {
   return (
@@ -1758,14 +1739,27 @@ export default function ExportPage() {
         ? reel.statsData
         : {};
 
-    console.log("[buildInfo] merged:", { firstName: s("firstName",""), email: s("email",""), sport: s("sport",""), statsKeys: Object.keys(statsData) });
+    // Read from nested titleCard object in cliptSettings (new format)
+    const tc = (saved.titleCard && typeof saved.titleCard === "object") ? (saved.titleCard as Record<string, string>) : {};
+    const st = (key: string, fallback: string) => {
+      if (tc[key] && tc[key].trim()) return tc[key];
+      return s(key, fallback);
+    };
+
+    // location: prefer new field, fall back to city+state
+    const locationVal = st("location", "") || [st("city",""), st("state","")].filter(Boolean).join(", ");
+
+    console.log("[buildInfo] merged:", { firstName: st("firstName",""), email: st("email",""), sport: st("sport",""), statsKeys: Object.keys(statsData) });
     return {
-      firstName: s("firstName", ""), jerseyNumber: s("jerseyNumber", ""),
-      sport: s("sport", ""), school: s("school", ""), position: s("position", ""),
+      firstName: st("firstName", ""), lastName: st("lastName", ""), jerseyNumber: st("jerseyNumber", ""),
+      sport: st("sport", ""), school: st("school", ""), position: st("position", ""),
       fontFamily: CANVAS_FONT_MAP[(s("fontStyle","Modern") as FontStyle)] ?? "Arial",
-      gradYear: s("gradYear", ""), heightFt: s("heightFt", ""), heightIn: s("heightIn", ""),
-      weight: s("weight", ""), gpa: s("gpa", ""),
-      email: s("email", ""), coachName: s("coachName", ""), coachEmail: s("coachEmail", ""),
+      gradYear: st("gradYear", ""), heightFt: st("heightFt", ""), heightIn: st("heightIn", ""),
+      weight: st("weight", ""), gpa: st("gpa", ""),
+      email: st("email", ""), phone: st("phone", ""),
+      coachName: st("coachName", ""), coachEmail: st("coachEmail", ""),
+      clubTeam: st("clubTeam", ""), location: locationVal,
+      socialHandle: st("socialHandle", ""), achievement: st("achievement", ""),
       statsData,
       academicStatsData: (saved.academicStatsData as Record<string,string>) ?? reel.academicStatsData ?? {},
       measurablesData: (saved.measurablesData as Record<string,string>) ?? reel.measurablesData ?? {},
@@ -2386,22 +2380,30 @@ export default function ExportPage() {
           </p>
           <div className="grid grid-cols-2 gap-2">
             {(() => {
-              const musicLabel = selectedMusicTrackId && selectedMusicTrackId !== "no-music"
+              const hasMusic = selectedMusicTrackId && selectedMusicTrackId !== "no-music";
+              const musicName = hasMusic
                 ? (selectedMusicName || MUSIC_TRACK_LABELS[selectedMusicTrackId] || selectedMusicTrackId)
                 : null;
               return [
-                { label: "Transitions",       value: "Hard Cuts",  reason: "Coaches prefer no distractions" },
-                { label: "Player Spotlight",   value: "ON",         reason: "Circle identifies you in every clip", green: true },
-                { label: "Format",             value: exportTypeSetting === "social" ? "9:16 Vertical" : "1920×1080 16:9", reason: "Coach email & Hudl compatible" },
-                { label: "Quality",            value: "Maximum",    reason: "H.264 High · 60fps · 100 quality" },
-                ...(musicLabel ? [{ label: "Music", value: musicLabel, reason: "Selected track will be mixed in", green: true }] : []),
+                { label: "Transitions",     value: "Hard Cuts",  reason: "Coaches prefer no distractions", green: true },
+                { label: "Player Spotlight", value: "ON",         reason: "Circle identifies you in every clip", green: true },
+                { label: "Format",           value: exportTypeSetting === "social" ? "9:16 Vertical" : "1920×1080 16:9", reason: "Coach email & Hudl compatible", green: true },
+                { label: "Quality",          value: "Maximum",    reason: "H.264 High · 60fps · 100 quality", green: true },
+                {
+                  label: "Music",
+                  value: musicName ? `${musicName} — mixed in` : "None — coaches watch on mute",
+                  reason: musicName ? "Track will be mixed into your reel" : "98% of coaches watch on mute",
+                  green: !!musicName,
+                },
               ];
             })().map((row) => (
               <div key={row.label} className="flex items-start gap-2">
-                <span className="text-xs font-bold mt-0.5" style={{ color: "#22C55E" }}>✓</span>
+                <span className="text-xs font-bold mt-0.5" style={{ color: row.green ? "#22C55E" : "#64748b" }}>
+                  {row.green ? "✓" : "—"}
+                </span>
                 <div>
                   <span className="text-xs font-semibold text-white">{row.label}: </span>
-                  <span className="text-xs font-bold" style={{ color: "#22C55E" }}>{row.value}</span>
+                  <span className="text-xs font-bold" style={{ color: row.green ? "#22C55E" : "#64748b" }}>{row.value}</span>
                   <p className="text-[10px] text-slate-500 mt-0.5">{row.reason}</p>
                 </div>
               </div>
@@ -2991,7 +2993,20 @@ export default function ExportPage() {
         <div className="rounded-2xl p-5" style={cardBase}>
           <p className="text-sm font-bold text-white mb-1">Title Card Preview</p>
           <p className="text-xs text-slate-500 mb-3">Verify your opening card before exporting</p>
-          <TitleCardPreview info={buildInfo()} accent={accentHex} template={reel.titleCardTemplate || "espn-classic"} />
+          {(() => {
+            const info = buildInfo();
+            return (
+              <SharedTitleCardPreview
+                firstName={info.firstName} lastName={info.lastName} jerseyNumber={info.jerseyNumber}
+                position={info.position} sport={info.sport} school={info.school} gradYear={info.gradYear}
+                heightFt={info.heightFt} heightIn={info.heightIn} weight={info.weight} gpa={info.gpa}
+                email={info.email} phone={info.phone} coachName={info.coachName} coachEmail={info.coachEmail}
+                clubTeam={info.clubTeam} location={info.location}
+                socialHandle={info.socialHandle} achievement={info.achievement}
+                accentColor={accentHex}
+              />
+            );
+          })()}
         </div>
 
         {/* ── Quick downloads ── */}
