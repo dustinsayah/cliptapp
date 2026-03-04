@@ -545,7 +545,7 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
         width: "28%", height: "12%",
         x_anchor: "50%", y_anchor: "100%",
         font_family: "Oswald", font_size: Math.round(58 * s), font_weight: "700",
-        fill_color: accentHex, x_alignment: "center%",
+        fill_color: accentHex, x_alignment: 0.5,
         shadow_color: "rgba(0,0,0,0)", shadow_blur: 0,
       });
       // Stat label (below the value)
@@ -555,7 +555,7 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
         width: "28%", height: "8%",
         x_anchor: "50%", y_anchor: "0%",
         font_family: "Montserrat", font_size: Math.round(22 * s), font_weight: "600",
-        fill_color: "#9CA3AF", x_alignment: "center%", letter_spacing: "6%",
+        fill_color: "#9CA3AF", x_alignment: 0.5, letter_spacing: "6%",
         shadow_color: "rgba(0,0,0,0)", shadow_blur: 0,
       });
     });

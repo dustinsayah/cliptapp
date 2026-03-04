@@ -1618,7 +1618,6 @@ export default function ExportPage() {
   const [creatomatAvailable, setCreatomatAvailable] = useState(false);
   const [isCreatomateRender, setIsCreatomateRender] = useState(false);
   const [renderUrl, setRenderUrl] = useState<string | null>(null);
-  const [lastReelUrl, setLastReelUrl] = useState<string | null>(null);
   const creatomatePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const abortRef  = useRef(false);
@@ -1705,11 +1704,6 @@ export default function ExportPage() {
       const sp = s.spotlightStyle as string | undefined;
       setSpotlightStyleSetting(sp || "none");
       if (Array.isArray(s.clips)) setClipCountSetting(s.clips.length);
-    } catch {}
-    // Load last Creatomate render URL for "Previous Reels" section
-    try {
-      const lastUrl = localStorage.getItem("lastReelUrl");
-      if (lastUrl?.startsWith("http")) setLastReelUrl(lastUrl);
     } catch {}
     // Check if Creatomate server rendering is configured
     fetch("/api/render-reel")
@@ -2005,9 +1999,6 @@ export default function ExportPage() {
           if (creatomatePollRef.current) clearInterval(creatomatePollRef.current);
           setPct(100);
           setRenderUrl(status.url);
-          // Save for "Previous Reels" section
-          try { localStorage.setItem("lastReelUrl", status.url); } catch {}
-          setLastReelUrl(status.url);
           // Optional Supabase save — if there's an AI job in progress, update it
           try {
             const jobId = localStorage.getItem("currentJobId");
@@ -2780,36 +2771,6 @@ export default function ExportPage() {
             </div>
           )}
         </div>
-
-        {/* ── YOUR PREVIOUS REELS ── */}
-        {lastReelUrl && lastReelUrl.startsWith("http") && (
-          <div className="rounded-2xl p-5" style={{ background: "#0A1628", border: "1px solid rgba(255,255,255,0.08)" }}>
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <p className="text-sm font-bold text-white">Your Previous Reel</p>
-                <p className="text-xs text-slate-500 mt-0.5">Last server-rendered MP4 — still available for download</p>
-              </div>
-              <span className="text-[9px] font-black tracking-widest px-2 py-1 rounded-full"
-                style={{ background: "rgba(0,163,255,0.1)", color: "#00A3FF", border: "1px solid rgba(0,163,255,0.2)" }}>
-                MP4
-              </span>
-            </div>
-            <div className="flex gap-2">
-              <button type="button"
-                onClick={() => triggerDownload(lastReelUrl, `${baseName}-reel-previous.mp4`)}
-                className="flex-1 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all hover:opacity-90"
-                style={{ background: `${accentHex}14`, color: accentHex, border: `1px solid ${accentHex}30` }}>
-                <DownloadIcon /> Download Previous Reel
-              </button>
-              <button type="button"
-                onClick={() => { try { localStorage.removeItem("lastReelUrl"); } catch {} setLastReelUrl(null); }}
-                className="px-3 py-2.5 rounded-xl text-xs transition-all"
-                style={{ background: "rgba(255,255,255,0.04)", color: "#475569", border: "1px solid rgba(255,255,255,0.06)" }}>
-                ✕
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* ── REEL ANALYSIS ── */}
         {qualityData && (() => {
