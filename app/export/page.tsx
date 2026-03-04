@@ -1716,7 +1716,7 @@ export default function ExportPage() {
       if (copyTimer.current) clearTimeout(copyTimer.current);
       if (shareTimer.current) clearTimeout(shareTimer.current);
       if (successTimer.current) clearTimeout(successTimer.current);
-      if (creatomatePollRef.current) clearInterval(creatomatePollRef.current);
+      if (creatomatePollRef.current) clearTimeout(creatomatePollRef.current as unknown as ReturnType<typeof setTimeout>);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1973,13 +1973,20 @@ export default function ExportPage() {
       { maxPct: 100, text: "Almost done — finalizing..." },
     ];
 
-    // Poll for render completion every 3 seconds
+    // Poll for render completion — 4s initially, 8s after 2 minutes
     setStep("Starting render job...");
     const renderStartTime = Date.now();
+    let slowPoll = false;
 
-    creatomatePollRef.current = setInterval(async () => {
+    const schedulePoll = () => {
+      const elapsed = Date.now() - renderStartTime;
+      const interval = (!slowPoll && elapsed > 120_000) ? (() => { slowPoll = true; return 8000; })() : slowPoll ? 8000 : 4000;
+      creatomatePollRef.current = setTimeout(runPoll, interval) as unknown as ReturnType<typeof setInterval>;
+    };
+
+    const runPoll = async () => {
       if (abortRef.current) {
-        if (creatomatePollRef.current) clearInterval(creatomatePollRef.current);
+        if (creatomatePollRef.current) clearTimeout(creatomatePollRef.current as unknown as ReturnType<typeof setTimeout>);
         setPhase("idle"); setIsCreatomateRender(false); return;
       }
       try {
@@ -1995,8 +2002,9 @@ export default function ExportPage() {
           const msg = RENDER_MESSAGES.find(m => renderPct < m.maxPct)?.text ?? "Almost done — finalizing...";
           setPct(animPct);
           setStep(msg);
+          schedulePoll(); // reschedule next check
         } else if (status.status === "succeeded" && status.url) {
-          if (creatomatePollRef.current) clearInterval(creatomatePollRef.current);
+          if (creatomatePollRef.current) clearTimeout(creatomatePollRef.current as unknown as ReturnType<typeof setTimeout>);
           setPct(100);
           setRenderUrl(status.url);
           // Optional Supabase save — if there's an AI job in progress, update it
@@ -2020,14 +2028,19 @@ export default function ExportPage() {
             successTimer.current = setTimeout(() => setShowSuccess(false), 4000);
           }, 400);
         } else if (status.status === "failed") {
-          if (creatomatePollRef.current) clearInterval(creatomatePollRef.current);
+          if (creatomatePollRef.current) clearTimeout(creatomatePollRef.current as unknown as ReturnType<typeof setTimeout>);
           setErrMsg(status.error_message || "Server render failed — try again");
           setPhase("error"); setIsCreatomateRender(false);
+        } else {
+          schedulePoll(); // unknown status — keep polling
         }
       } catch (pollErr) {
         console.warn("[Creatomate poll] error:", pollErr);
+        schedulePoll(); // retry on network error
       }
-    }, 3000);
+    };
+
+    schedulePoll(); // start first poll
   };
 
   const doBuild = async (forceSocial?: boolean) => {
@@ -2644,7 +2657,7 @@ export default function ExportPage() {
                 <div className="h-full rounded-full transition-all duration-300" style={{ width: `${pct}%`, background: accentHex }} />
               </div>
               <p className="text-slate-600 text-[10px] text-center">Uploading for server rendering — don&apos;t close this tab</p>
-              <button type="button" onClick={() => { abortRef.current = true; setPhase("idle"); setIsCreatomateRender(false); if (creatomatePollRef.current) clearInterval(creatomatePollRef.current); }}
+              <button type="button" onClick={() => { abortRef.current = true; setPhase("idle"); setIsCreatomateRender(false); if (creatomatePollRef.current) clearTimeout(creatomatePollRef.current as unknown as ReturnType<typeof setTimeout>); }}
                 className="text-xs text-slate-500 hover:text-slate-300 transition-colors self-center">Cancel</button>
             </div>
           )}
@@ -2667,7 +2680,7 @@ export default function ExportPage() {
               <p className="text-slate-600 text-[10px] text-center">
                 {isCreatomateRender ? "Server rendering in progress — safe to minimize this tab" : `Don't close this tab · ${Math.round(pct)}% complete`}
               </p>
-              <button type="button" onClick={() => { abortRef.current = true; setPhase("idle"); setIsCreatomateRender(false); if (creatomatePollRef.current) clearInterval(creatomatePollRef.current); }}
+              <button type="button" onClick={() => { abortRef.current = true; setPhase("idle"); setIsCreatomateRender(false); if (creatomatePollRef.current) clearTimeout(creatomatePollRef.current as unknown as ReturnType<typeof setTimeout>); }}
                 className="text-xs text-slate-500 hover:text-slate-300 transition-colors self-center">Cancel</button>
             </div>
           )}

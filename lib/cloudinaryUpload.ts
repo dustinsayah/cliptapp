@@ -29,9 +29,6 @@
 // Save the preset. This stops Cloudinary from compressing or re-encoding uploads.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const CLOUD_NAME = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME ?? "";
-const UPLOAD_PRESET = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET ?? "clipt_unsigned";
-
 export interface CloudinaryUploadResult {
   secure_url: string;
   public_id: string;
@@ -40,7 +37,7 @@ export interface CloudinaryUploadResult {
 }
 
 /**
- * Upload a File object or blob URL to Cloudinary.
+ * Upload a File object or blob URL to Cloudinary with retry logic.
  * @param source     File object or blob:// URL
  * @param onProgress Called with 0–100 as upload bytes are transferred
  * @returns          The permanent public URL (https://res.cloudinary.com/...)
@@ -49,13 +46,16 @@ export async function uploadToCloudinary(
   source: File | string,
   onProgress?: (pct: number) => void
 ): Promise<string> {
+  const CLOUD_NAME    = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
+  const UPLOAD_PRESET = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET ?? "clipt_unsigned";
+
   if (!CLOUD_NAME) {
     throw new Error("NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME is not configured");
   }
 
+  // Resolve blob URL → Blob if a string was passed
   let blob: Blob;
   if (typeof source === "string") {
-    // Fetch blob URL → Blob
     const response = await fetch(source);
     blob = await response.blob();
   } else {
@@ -67,42 +67,73 @@ export async function uploadToCloudinary(
   formData.append("upload_preset", UPLOAD_PRESET);
   formData.append("resource_type", "video");
   // quality: 100 tells Cloudinary not to apply lossy compression.
-  // No transformation params — let the clean preset handle encoding.
   formData.append("quality", "100");
   formData.append("audio_codec", "aac");
 
   const uploadUrl = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/video/upload`;
 
-  return new Promise<string>((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", uploadUrl);
+  const MAX_RETRIES = 3;
+  let lastError: Error | null = null;
 
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable && onProgress) {
-        onProgress(Math.round((e.loaded / e.total) * 100));
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      console.log(`[Cloudinary] Upload attempt ${attempt}/${MAX_RETRIES}`);
+
+      const result = await new Promise<string>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+
+        xhr.upload.addEventListener("progress", (e) => {
+          if (e.lengthComputable && onProgress) {
+            onProgress(Math.round((e.loaded / e.total) * 100));
+          }
+        });
+
+        xhr.addEventListener("load", () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const data: CloudinaryUploadResult = JSON.parse(xhr.responseText);
+              if (data.secure_url) {
+                resolve(data.secure_url);
+              } else {
+                const msg = (JSON.parse(xhr.responseText) as { error?: { message?: string } })?.error?.message;
+                reject(new Error(`Cloudinary error: ${msg || "No URL returned"}`));
+              }
+            } catch {
+              reject(new Error("Failed to parse Cloudinary response"));
+            }
+          } else {
+            reject(new Error(`Cloudinary HTTP ${xhr.status}: ${xhr.responseText.slice(0, 200)}`));
+          }
+        });
+
+        xhr.addEventListener("error", () => {
+          reject(new Error("Network error during upload — check internet connection"));
+        });
+
+        xhr.addEventListener("timeout", () => {
+          reject(new Error("Upload timed out — file may be too large"));
+        });
+
+        // 10 minute timeout for large video files
+        xhr.timeout = 10 * 60 * 1000;
+        xhr.open("POST", uploadUrl);
+        xhr.send(formData);
+      });
+
+      return result;
+
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      console.error(`[Cloudinary] Upload attempt ${attempt} failed:`, lastError.message);
+
+      if (attempt < MAX_RETRIES) {
+        // Exponential backoff: 2s, 4s
+        await new Promise(r => setTimeout(r, attempt * 2000));
       }
-    };
+    }
+  }
 
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        try {
-          const result: CloudinaryUploadResult = JSON.parse(xhr.responseText);
-          resolve(result.secure_url);
-        } catch {
-          reject(new Error("Cloudinary upload response parse failed"));
-        }
-      } else {
-        reject(new Error(`Cloudinary upload failed: ${xhr.status} ${xhr.responseText.slice(0, 200)}`));
-      }
-    };
-
-    xhr.onerror = () => reject(new Error("Cloudinary upload network error"));
-    xhr.ontimeout = () => reject(new Error("Cloudinary upload timed out"));
-
-    // 10 minute timeout for large video files
-    xhr.timeout = 10 * 60 * 1000;
-    xhr.send(formData);
-  });
+  throw new Error(`Upload failed after ${MAX_RETRIES} attempts: ${lastError?.message}`);
 }
 
 /**

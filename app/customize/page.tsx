@@ -255,6 +255,10 @@ export default function CustomizePage() {
   const router     = useRouter();
   const { update: reelUpdate } = useReel();
 
+  // ── Mount guard — prevents layout shift from localStorage reads ─────────────
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   // ── Open section ────────────────────────────────────────────────────────────
   const [openSection, setOpenSection] = useState<number>(1);
 
@@ -504,12 +508,18 @@ export default function CustomizePage() {
     setFrameLoading(true);
     setSpotlightFrameUrl(null);
     extractFrame(spotlightClipUrl).then(url => {
-      if (!cancelled) { setSpotlightFrameUrl(url); setFrameLoading(false); }
+      if (!cancelled) {
+        setSpotlightFrameUrl(url);
+        setFrameLoading(false);
+        // Prefetch next clip frame in the background after current loads
+        const nextUrl = clips[spotlightStep + 1]?.blobUrl;
+        if (nextUrl) extractFrame(nextUrl).catch(() => {});
+      }
     }).catch(() => {
       if (!cancelled) setFrameLoading(false);
     });
     return () => { cancelled = true; };
-  }, [openSection, spotlightStep, spotlightClipUrl, extractFrame, spotlightDone, spotlightStyle]);
+  }, [openSection, spotlightStep, spotlightClipUrl, extractFrame, spotlightDone, spotlightStyle, clips]);
 
   function handleSpotlightTap(e: React.MouseEvent<HTMLDivElement>) {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -651,6 +661,8 @@ export default function CustomizePage() {
   };
 
   // ── Render ────────────────────────────────────────────────────────────────────
+
+  if (!mounted) return <div className="min-h-screen bg-[#050A14]" />;
 
   return (
     <div style={{ minHeight: "100vh", background: "#050A14", color: "#FFFFFF", fontFamily: "Inter, sans-serif" }}>

@@ -196,8 +196,10 @@ export default function UploadPage() {
   const [classifyingSet, setClassifyingSet] = useState<Set<number>>(new Set());
   const [dragging, setDragging]       = useState(false);
   const [isMobile, setIsMobile]       = useState(false);
+  const [mounted,  setMounted]        = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     setIsMobile(window.innerWidth < 768 || navigator.maxTouchPoints > 0);
   }, []);
 
@@ -240,14 +242,13 @@ export default function UploadPage() {
 
   // Generate thumbnails + classifications when files added
   const processNewFiles = useCallback(async (newFiles: File[], startIndex: number, currentSport: string, currentPosition: string) => {
-    const metas = await Promise.all(newFiles.map(generateClipMeta));
-    setClipMeta(prev => [...prev, ...metas]);
-
-    // Classify each clip (estimated for blob URLs, real AI for public URLs)
+    // Load clips one at a time so the first clip appears immediately
     const cloudinaryCloud = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
-    newFiles.forEach((_, localIdx) => {
+
+    for (let localIdx = 0; localIdx < newFiles.length; localIdx++) {
       const globalIdx = startIndex + localIdx;
-      const meta = metas[localIdx];
+      const meta = await generateClipMeta(newFiles[localIdx]);
+      setClipMeta(prev => [...prev, meta]);
 
       setClassifyingSet(prev => { const n = new Set(prev); n.add(globalIdx); return n; });
 
@@ -272,7 +273,7 @@ export default function UploadPage() {
       };
 
       classify();
-    });
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -368,6 +369,22 @@ export default function UploadPage() {
   };
 
   const totalDuration = clipMeta.reduce((sum, m) => sum + (m?.duration || 0), 0);
+
+  if (!mounted) return (
+    <div className="min-h-screen bg-[#050A14] text-white">
+      <nav className="flex items-center px-6 py-5 max-w-3xl mx-auto">
+        <div className="w-5 h-5 bg-[#0A1628] rounded animate-pulse mr-6" />
+        <span className="text-2xl font-black tracking-widest" style={{ color: "#00A3FF" }}>CLIPT</span>
+      </nav>
+      <div className="max-w-3xl mx-auto px-6 space-y-4 pt-2">
+        <div className="h-8 w-48 bg-[#0A1628] rounded-lg animate-pulse" />
+        <div className="h-48 bg-[#0A1628] rounded-2xl animate-pulse" />
+        {[1, 2, 3].map(i => (
+          <div key={i} className="h-20 bg-[#0A1628] rounded-2xl animate-pulse" />
+        ))}
+      </div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-[#050A14] text-white">
