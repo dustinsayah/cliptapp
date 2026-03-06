@@ -335,11 +335,11 @@ export default function CustomizePage() {
 
   // ── Spotlight ───────────────────────────────────────────────────────────────
   const [spotlightStyle, setSpotlightStyle] = useState<"arrow" | "circle" | "none">("arrow");
-  const [spotlightStep,     setSpotlightStep]     = useState(0);
-  const [spotlightFrameUrl, setSpotlightFrameUrl] = useState<string | null>(null);
-  const [frameLoading,      setFrameLoading]      = useState(false);
-  const [spotlightDone,     setSpotlightDone]     = useState(false);
-  const frameCache = useRef<Record<string, string>>({});
+  const [spotlightStep,  setSpotlightStep]  = useState(0);
+  const [spotlightDone,  setSpotlightDone]  = useState(false);
+  const [showConfirm,    setShowConfirm]    = useState(false);
+  const [markedClips,    setMarkedClips]    = useState<Record<number, { x: number; y: number }>>({});
+  const frameVideoRef = useRef<HTMLVideoElement>(null);
 
   // ── Export ──────────────────────────────────────────────────────────────────
   const [exportType,    setExportType]    = useState<"landscape" | "social">("landscape");
@@ -514,56 +514,35 @@ export default function CustomizePage() {
     setClips(prev => prev.map(c => c.id === id ? { ...c, markX: x, markY: y } : c));
   }
 
-  // ── Frame extractor for spotlight slideshow ──────────────────────────────────
-  const extractFrame = useCallback(async (clipUrl: string): Promise<string> => {
-    if (frameCache.current[clipUrl]) return frameCache.current[clipUrl];
-    return new Promise((resolve, reject) => {
-      const video = document.createElement("video");
-      video.muted = true; video.playsInline = true; video.src = clipUrl;
-      video.addEventListener("seeked", () => {
-        const canvas = document.createElement("canvas");
-        canvas.width = video.videoWidth || 1920; canvas.height = video.videoHeight || 1080;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) { reject(new Error("no ctx")); return; }
-        ctx.drawImage(video, 0, 0);
-        const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
-        frameCache.current[clipUrl] = dataUrl;
-        resolve(dataUrl);
-      }, { once: true });
-      video.addEventListener("loadedmetadata", () => { video.currentTime = 0.1; }, { once: true });
-      video.addEventListener("error", () => reject(new Error("video error")), { once: true });
-      video.load();
-    });
-  }, []);
-
-  // ── Spotlight frame loader ────────────────────────────────────────────────────
-  const spotlightClipUrl = clips[spotlightStep]?.blobUrl ?? null;
+  // ── Spotlight: seek video to first frame when step changes ───────────────────
   useEffect(() => {
-    if (openSection !== 2 || spotlightDone || !spotlightClipUrl || spotlightStyle === "none") return;
-    let cancelled = false;
-    setFrameLoading(true);
-    setSpotlightFrameUrl(null);
-    extractFrame(spotlightClipUrl).then(url => {
-      if (!cancelled) {
-        setSpotlightFrameUrl(url);
-        setFrameLoading(false);
-        // Prefetch next clip frame in the background after current loads
-        const nextUrl = clips[spotlightStep + 1]?.blobUrl;
-        if (nextUrl) extractFrame(nextUrl).catch(() => {});
-      }
-    }).catch(() => {
-      if (!cancelled) setFrameLoading(false);
-    });
-    return () => { cancelled = true; };
-  }, [openSection, spotlightStep, spotlightClipUrl, extractFrame, spotlightDone, spotlightStyle, clips]);
+    if (frameVideoRef.current) {
+      frameVideoRef.current.currentTime = 0.1;
+      frameVideoRef.current.pause();
+    }
+  }, [spotlightStep]);
 
   function handleSpotlightTap(e: React.MouseEvent<HTMLDivElement>) {
     const rect = e.currentTarget.getBoundingClientRect();
-    const x = Math.round(((e.clientX - rect.left) / rect.width) * 100);
-    const y = Math.round(((e.clientY - rect.top) / rect.height) * 100);
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
     const clip = clips[spotlightStep];
     if (!clip) return;
+
+    // Save the mark to clips state and to markedClips
     setClipMark(clip.id, x, y);
+    setMarkedClips(prev => ({ ...prev, [spotlightStep]: { x, y } }));
+
+    // Show green confirmation then auto-advance
+    setShowConfirm(true);
+    setTimeout(() => {
+      setShowConfirm(false);
+      if (spotlightStep < clips.length - 1) {
+        setSpotlightStep(prev => prev + 1);
+      } else {
+        setSpotlightDone(true);
+      }
+    }, 600);
   }
 
   function removeClip(id: string) {
@@ -981,13 +960,10 @@ export default function CustomizePage() {
             ) : (
               <div>
                 {/* Header */}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "#FFFFFF" }}>Tap where you are in the frame</div>
-                    <div style={{ fontSize: 11, color: "#64748b" }}>Clip {spotlightStep + 1} of {clips.length}</div>
-                  </div>
-                  <div style={{ fontSize: 11, color: "#475569" }}>
-                    {clips.filter(c => c.markX !== undefined).length}/{clips.length} marked
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ color: "white", fontSize: 18, fontWeight: 700 }}>Tap yourself in the clip</div>
+                  <div style={{ color: "#9CA3AF", fontSize: 14, marginTop: 4 }}>
+                    Clip {spotlightStep + 1} of {clips.length} — tap where you are on screen
                   </div>
                 </div>
 
@@ -1000,35 +976,61 @@ export default function CustomizePage() {
                     cursor: "crosshair", marginBottom: 14,
                     border: `2px solid ${accentHex}40`,
                   }}>
-                  {frameLoading && (
-                    <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#475569", fontSize: 12 }}>
-                      Loading frame...
-                    </div>
-                  )}
-                  {spotlightFrameUrl && (
-                    <img src={spotlightFrameUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block", pointerEvents: "none" }} />
-                  )}
+                  <video
+                    key={clips[spotlightStep]?.blobUrl}
+                    src={clips[spotlightStep]?.blobUrl}
+                    className="w-full h-full object-cover"
+                    muted
+                    playsInline
+                    preload="metadata"
+                    ref={frameVideoRef}
+                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", pointerEvents: "none" }}
+                  />
                   {/* Circle at tapped position */}
-                  {clips[spotlightStep]?.markX !== undefined && (
+                  {markedClips[spotlightStep] && (
                     <div style={{
                       position: "absolute",
-                      left: `${clips[spotlightStep].markX}%`,
-                      top: `${clips[spotlightStep].markY ?? 50}%`,
-                      width: 48, height: 48, borderRadius: "50%",
-                      border: `3px solid ${accentHex}`,
+                      left: `${markedClips[spotlightStep].x}%`,
+                      top: `${markedClips[spotlightStep].y}%`,
+                      width: 60, height: 60, borderRadius: "50%",
+                      border: "3px solid white",
                       transform: "translate(-50%, -50%)",
                       pointerEvents: "none",
-                      boxShadow: "0 0 0 2px rgba(0,0,0,0.5), 0 0 12px rgba(0,0,0,0.8)",
                     }} />
                   )}
                   {/* Prompt when not yet tapped */}
-                  {clips[spotlightStep]?.markX === undefined && !frameLoading && (
+                  {!markedClips[spotlightStep] && (
                     <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
                       <div style={{ background: "rgba(0,0,0,0.72)", borderRadius: 8, padding: "8px 14px", fontSize: 12, color: "#94a3b8" }}>
                         Tap where you are
                       </div>
                     </div>
                   )}
+                  {/* Green confirmation flash */}
+                  {showConfirm && (
+                    <div style={{
+                      position: "absolute", inset: 0,
+                      background: "rgba(34,197,94,0.15)", borderRadius: 8,
+                      pointerEvents: "none", display: "flex",
+                      alignItems: "center", justifyContent: "center",
+                    }}>
+                      <div style={{ color: "#22C55E", fontSize: 48 }}>✓</div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Progress dots */}
+                <div style={{ display: "flex", gap: 8, justifyContent: "center", marginBottom: 14 }}>
+                  {clips.map((_, i) => (
+                    <div
+                      key={i}
+                      onClick={() => setSpotlightStep(i)}
+                      style={{
+                        width: 10, height: 10, borderRadius: "50%", cursor: "pointer",
+                        background: markedClips[i] ? "#22C55E" : i === spotlightStep ? "white" : "#374151",
+                      }}
+                    />
+                  ))}
                 </div>
 
                 {/* Navigation */}
@@ -1037,13 +1039,7 @@ export default function CustomizePage() {
                     style={{ width: 36, height: 36, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.1)", background: spotlightStep === 0 ? "transparent" : "#0D1F38", color: spotlightStep === 0 ? "#1E293B" : "#94a3b8", cursor: spotlightStep === 0 ? "default" : "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>
                     ←
                   </button>
-                  <div style={{ flex: 1, display: "flex", gap: 5, justifyContent: "center" }}>
-                    {clips.map((c, i) => (
-                      <button key={c.id} type="button" onClick={() => setSpotlightStep(i)}
-                        style={{ width: i === spotlightStep ? 20 : 6, height: 6, borderRadius: 3, border: "none", cursor: "pointer", padding: 0, transition: "all 0.2s",
-                          background: c.markX !== undefined ? "#22C55E" : i === spotlightStep ? accentHex : "#334155" }} />
-                    ))}
-                  </div>
+                  <div style={{ flex: 1 }} />
                   {spotlightStep < clips.length - 1 ? (
                     <button type="button" onClick={() => setSpotlightStep(s => s + 1)}
                       style={{ padding: "8px 16px", borderRadius: 8, border: "none", cursor: "pointer", background: accentHex, color: isLightAccent ? "#050A14" : "#FFFFFF", fontSize: 12, fontWeight: 700 }}>
