@@ -21,7 +21,19 @@ export interface TitleCardPreviewProps {
   achievement?: string;
   socialHandle?: string;
   accentColor: string;
+  // Up to 4 stats shown on right side (2×2 grid)
+  statsData?: Record<string, string>;
 }
+
+// ── TitleCardPreview ──────────────────────────────────────────────────────────
+//
+// Pixel-for-pixel match of the Creatomate title card layout.
+// All positions are expressed as percentage of the 16:9 container — matching
+// the exact x/y/width values used in buildReelSource().
+//
+// Left half (0–50%): athlete identity, left-anchored at x 8%
+// Right half (52–100%): SEASON STATS + 2×2 stat grid
+// Vertical divider: x 52%, y 25%–92%
 
 export function TitleCardPreview({
   firstName,
@@ -37,21 +49,40 @@ export function TitleCardPreview({
   gpa,
   email,
   phone,
-  coachName,
-  coachEmail,
-  clubTeam,
-  location,
-  achievement,
-  socialHandle,
   accentColor,
+  statsData,
 }: TitleCardPreviewProps) {
   const name = [firstName, lastName].filter(Boolean).join(" ").toUpperCase() || "YOUR NAME";
   const subLine = [position, sport].filter(Boolean).join("  ·  ").toUpperCase() || "POSITION · SPORT";
+
   const heightStr = heightFt ? `${heightFt}'${heightIn || "0"}"` : "";
   const weightStr = weight ? `${weight} lbs` : "";
-  const heightWeight = [heightStr, weightStr].filter(Boolean).join(" · ");
+  const heightWeight = [heightStr, weightStr].filter(Boolean).join(" — ");
+
   const gpaNum = parseFloat(gpa || "");
   const showGpa = gpa && !isNaN(gpaNum) && gpaNum >= 3.0;
+
+  const gradGpaLine = [
+    gradYear ? `Class of ${gradYear}` : null,
+    showGpa  ? `GPA ${gpa}`           : null,
+  ].filter(Boolean).join("  ·  ");
+
+  // Up to 4 filled stats for the right-side 2×2 grid
+  const statEntries = statsData
+    ? Object.entries(statsData).filter(([, v]) => v?.trim()).slice(0, 4)
+    : [];
+
+  // Stat positions match Creatomate exactly (% of full 1920×1080 frame):
+  //   Top-left  value: x 63%, y 45%  — label: y 53%
+  //   Top-right value: x 83%, y 45%  — label: y 53%
+  //   Bot-left  value: x 63%, y 65%  — label: y 73%
+  //   Bot-right value: x 83%, y 65%  — label: y 73%
+  const statPositions = [
+    { left: "63%", valTop: "45%", lblTop: "53%" },
+    { left: "83%", valTop: "45%", lblTop: "53%" },
+    { left: "63%", valTop: "65%", lblTop: "73%" },
+    { left: "83%", valTop: "65%", lblTop: "73%" },
+  ];
 
   return (
     <div style={{
@@ -63,107 +94,244 @@ export function TitleCardPreview({
       fontFamily: "Inter, sans-serif",
       border: `1px solid ${accentColor}25`,
     }}>
-      {/* Top accent stripe — 1.5% */}
-      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "1.5%", background: accentColor }} />
-      {/* Bottom accent stripe — 1.5% */}
-      <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: "1.5%", background: accentColor }} />
+      {/* Top accent bar — matches Creatomate 20px / 1080 ≈ 1.85% */}
+      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "1.85%", background: accentColor }} />
+      {/* Bottom accent bar */}
+      <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: "1.85%", background: accentColor }} />
 
-      {/* Jersey # watermark — faint large background (falls back to sport text) */}
-      {(jerseyNumber || sport) && (
+      {/* Vertical divider — x 52%, spanning y 25%–92% */}
+      <div style={{
+        position: "absolute",
+        left: "52%",
+        top: "25%",
+        bottom: "8%",          // 100% − 92% = 8% from bottom
+        width: 1,
+        background: "#1E2530",
+      }} />
+
+      {/* ── LEFT HALF: athlete identity ────────────────────────────────────── */}
+
+      {/* Jersey # decoration — faint texture, x 8%, y 35%, opacity 0.15 */}
+      {jerseyNumber && (
         <div style={{
-          position: "absolute", inset: 0,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: jerseyNumber ? "clamp(40px,18vw,160px)" : "clamp(30px,12vw,100px)", fontWeight: 900,
-          color: "#FFFFFF", opacity: 0.03,
-          pointerEvents: "none", userSelect: "none" as const,
+          position: "absolute",
+          left: "8%",
+          top: "35%",
+          transform: "translateY(-50%)",
+          fontSize: "clamp(18px, 9vw, 78px)",
+          fontWeight: 900,
+          color: accentColor,
+          opacity: 0.15,
           fontFamily: "Oswald, sans-serif",
+          lineHeight: 1,
+          pointerEvents: "none",
+          userSelect: "none" as const,
         }}>
-          {jerseyNumber ? `#${jerseyNumber}` : sport.toUpperCase()}
+          #{jerseyNumber}
         </div>
       )}
 
-      {/* Content — vertical stack */}
+      {/* Athlete full name — x 8%, y 38%, Oswald bold white */}
       <div style={{
-        position: "absolute", inset: "4% 8%",
-        display: "flex", flexDirection: "column" as const,
-        alignItems: "center", justifyContent: "center",
-        gap: "1.5%", overflow: "hidden",
+        position: "absolute",
+        left: "8%",
+        top: "38%",
+        transform: "translateY(-50%)",
+        width: "44%",
+        fontSize: "clamp(7px, 2vw, 18px)",
+        fontWeight: 900,
+        color: "#FFFFFF",
+        fontFamily: "Oswald, sans-serif",
+        lineHeight: 1.1,
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
       }}>
-        {achievement && (
-          <div style={{ fontSize: "clamp(4px, 1vw, 9px)", color: accentColor, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.1em", textAlign: "center" as const }}>
-            {achievement}
-          </div>
-        )}
-
-        <div style={{ fontSize: "clamp(12px, 3vw, 28px)", fontWeight: 900, color: "#FFFFFF", letterSpacing: "0.02em", textTransform: "uppercase" as const, fontFamily: "Oswald, sans-serif", textAlign: "center" as const }}>
-          {name}
-        </div>
-
-        {jerseyNumber && (
-          <div style={{ fontSize: "clamp(12px, 3vw, 28px)", fontWeight: 900, color: accentColor, fontFamily: "Oswald, sans-serif", lineHeight: 1 }}>
-            #{jerseyNumber}
-          </div>
-        )}
-
-        <div style={{ width: "50%", height: 1, background: accentColor, opacity: 0.3 }} />
-
-        <div style={{ fontSize: "clamp(5px, 1.2vw, 11px)", color: "#94a3b8", textTransform: "uppercase" as const, letterSpacing: "0.08em", textAlign: "center" as const }}>
-          {subLine}
-        </div>
-
-        {school && (
-          <div style={{ fontSize: "clamp(4px, 1vw, 9px)", color: "#FFFFFF", textTransform: "uppercase" as const, letterSpacing: "0.06em", textAlign: "center" as const }}>
-            {school}{gradYear ? ` · Class of ${gradYear}` : ""}
-          </div>
-        )}
-
-        {clubTeam && (
-          <div style={{ fontSize: "clamp(4px, 0.9vw, 8px)", color: "#64748b", textAlign: "center" as const }}>
-            {clubTeam}
-          </div>
-        )}
-
-        {location && (
-          <div style={{ fontSize: "clamp(4px, 0.9vw, 8px)", color: "#64748b", textAlign: "center" as const }}>
-            {location}
-          </div>
-        )}
-
-        {heightWeight && (
-          <div style={{ fontSize: "clamp(4px, 0.9vw, 8px)", color: "#94a3b8", textAlign: "center" as const }}>
-            {heightWeight}
-          </div>
-        )}
-
-        {showGpa && (
-          <div style={{ fontSize: "clamp(4px, 0.9vw, 8px)", color: "#FFFFFF", textAlign: "center" as const }}>
-            GPA {gpa}
-          </div>
-        )}
-
-        {(email || socialHandle) && (
-          <div style={{ display: "flex", gap: "4%", flexWrap: "wrap" as const, justifyContent: "center" as const }}>
-            {email && <div style={{ fontSize: "clamp(3px, 0.8vw, 7px)", color: accentColor }}>{email}</div>}
-            {socialHandle && <div style={{ fontSize: "clamp(3px, 0.8vw, 7px)", color: accentColor }}>{socialHandle}</div>}
-          </div>
-        )}
-
-        {phone && (
-          <div style={{ fontSize: "clamp(3px, 0.8vw, 7px)", color: "#64748b", textAlign: "center" as const }}>
-            {phone}
-          </div>
-        )}
-
-        {(coachName || coachEmail) && (
-          <div style={{ fontSize: "clamp(3px, 0.8vw, 7px)", color: "#64748b", textAlign: "center" as const }}>
-            Coach: {[coachName, coachEmail].filter(Boolean).join(" · ")}
-          </div>
-        )}
+        {name}
       </div>
 
-      {/* CLIPT watermark */}
-      <div style={{ position: "absolute", bottom: "3%", right: "3%", fontSize: "clamp(4px,0.8vw,7px)", color: "#334155", fontWeight: 700, letterSpacing: "0.1em" }}>
-        CLIPT
+      {/* Position · Sport — x 8%, y 52%, Montserrat, accentColor, uppercase */}
+      <div style={{
+        position: "absolute",
+        left: "8%",
+        top: "52%",
+        transform: "translateY(-50%)",
+        width: "44%",
+        fontSize: "clamp(4px, 1vw, 9px)",
+        color: accentColor,
+        fontFamily: "Montserrat, Inter, sans-serif",
+        textTransform: "uppercase" as const,
+        letterSpacing: "0.08em",
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+      }}>
+        {subLine}
+      </div>
+
+      {/* School — x 8%, y 61%, Montserrat, white */}
+      {school && (
+        <div style={{
+          position: "absolute",
+          left: "8%",
+          top: "61%",
+          transform: "translateY(-50%)",
+          width: "44%",
+          fontSize: "clamp(4px, 0.9vw, 8px)",
+          color: "#FFFFFF",
+          fontFamily: "Montserrat, Inter, sans-serif",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }}>
+          {school}
+        </div>
+      )}
+
+      {/* Grad year + GPA — x 8%, y 69%, #9CA3AF */}
+      {gradGpaLine && (
+        <div style={{
+          position: "absolute",
+          left: "8%",
+          top: "69%",
+          transform: "translateY(-50%)",
+          width: "44%",
+          fontSize: "clamp(3px, 0.8vw, 7px)",
+          color: "#9CA3AF",
+          fontFamily: "Montserrat, Inter, sans-serif",
+        }}>
+          {gradGpaLine}
+        </div>
+      )}
+
+      {/* Height + Weight — x 8%, y 76%, #9CA3AF */}
+      {heightWeight && (
+        <div style={{
+          position: "absolute",
+          left: "8%",
+          top: "76%",
+          transform: "translateY(-50%)",
+          width: "44%",
+          fontSize: "clamp(3px, 0.8vw, 7px)",
+          color: "#9CA3AF",
+          fontFamily: "Montserrat, Inter, sans-serif",
+        }}>
+          {heightWeight}
+        </div>
+      )}
+
+      {/* Email — x 8%, y 84%, accentColor */}
+      {email && (
+        <div style={{
+          position: "absolute",
+          left: "8%",
+          top: "84%",
+          transform: "translateY(-50%)",
+          width: "44%",
+          fontSize: "clamp(3px, 0.75vw, 7px)",
+          color: accentColor,
+          fontFamily: "Montserrat, Inter, sans-serif",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }}>
+          {email}
+        </div>
+      )}
+
+      {/* Phone — x 8%, y 91%, white */}
+      {phone && (
+        <div style={{
+          position: "absolute",
+          left: "8%",
+          top: "91%",
+          transform: "translateY(-50%)",
+          width: "44%",
+          fontSize: "clamp(3px, 0.75vw, 7px)",
+          color: "#FFFFFF",
+          fontFamily: "Montserrat, Inter, sans-serif",
+        }}>
+          {phone}
+        </div>
+      )}
+
+      {/* ── RIGHT HALF: season stats ────────────────────────────────────────── */}
+      {statEntries.length > 0 && (
+        <>
+          {/* SEASON STATS label — x 74% (centered), y 32% */}
+          <div style={{
+            position: "absolute",
+            left: "74%",
+            top: "32%",
+            transform: "translate(-50%, -50%)",
+            textAlign: "center" as const,
+            fontSize: "clamp(3px, 0.7vw, 6px)",
+            color: accentColor,
+            fontFamily: "Montserrat, Inter, sans-serif",
+            letterSpacing: "0.12em",
+            textTransform: "uppercase" as const,
+            fontWeight: 700,
+            whiteSpace: "nowrap",
+          }}>
+            SEASON STATS
+          </div>
+
+          {/* Stat cells — positioned at Creatomate x/y coordinates */}
+          {statEntries.map(([label, value], idx) => {
+            const pos = statPositions[idx];
+            if (!pos) return null;
+            return (
+              <div key={label}>
+                {/* Stat value — Oswald bold, accentColor */}
+                <div style={{
+                  position: "absolute",
+                  left: pos.left,
+                  top: pos.valTop,
+                  transform: "translate(-50%, -50%)",
+                  textAlign: "center" as const,
+                  fontSize: "clamp(5px, 1.5vw, 13px)",
+                  fontWeight: 900,
+                  color: accentColor,
+                  fontFamily: "Oswald, sans-serif",
+                  lineHeight: 1,
+                }}>
+                  {value}
+                </div>
+                {/* Stat label — Montserrat, #9CA3AF, uppercase */}
+                <div style={{
+                  position: "absolute",
+                  left: pos.left,
+                  top: pos.lblTop,
+                  transform: "translate(-50%, -50%)",
+                  textAlign: "center" as const,
+                  fontSize: "clamp(2.5px, 0.6vw, 5px)",
+                  color: "#9CA3AF",
+                  fontFamily: "Montserrat, Inter, sans-serif",
+                  textTransform: "uppercase" as const,
+                  letterSpacing: "0.06em",
+                  whiteSpace: "nowrap",
+                }}>
+                  {label}
+                </div>
+              </div>
+            );
+          })}
+        </>
+      )}
+
+      {/* CLIPT watermark — centered at bottom */}
+      <div style={{
+        position: "absolute",
+        bottom: "3%",
+        left: "50%",
+        transform: "translateX(-50%)",
+        fontSize: "clamp(3px, 0.6vw, 5px)",
+        color: "#334155",
+        fontWeight: 700,
+        letterSpacing: "0.1em",
+        whiteSpace: "nowrap",
+      }}>
+        POWERED BY CLIPT
       </div>
     </div>
   );

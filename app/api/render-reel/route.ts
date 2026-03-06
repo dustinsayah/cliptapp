@@ -47,6 +47,11 @@ export async function POST(req: NextRequest) {
       stats,
       settings,
     }, null, 2));
+    console.log("CLIPS WITH MARKS:", clips?.map((c: ClipInput) => ({
+      url: c.url?.slice(0, 60),
+      markX: c.markX,
+      markY: c.markY,
+    })));
 
     if (!Array.isArray(clips) || clips.length === 0) {
       return NextResponse.json({ error: "No clips provided" }, { status: 400 });
@@ -92,6 +97,8 @@ export async function POST(req: NextRequest) {
         trimStart:     c.trimStart     ?? 0,
         trimEnd:       c.trimEnd       ?? undefined,
         skillCategory: c.skillCategory ?? undefined,
+        markX:         c.markX        ?? undefined,
+        markY:         c.markY        ?? undefined,
       })),
       music:           music    || undefined,
       musicUrl:        musicUrl || undefined,

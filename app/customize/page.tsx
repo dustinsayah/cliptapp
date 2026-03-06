@@ -155,53 +155,89 @@ const labelStyle = {
 };
 
 // ── Live Preview: Stats Card ──────────────────────────────────────────────────
+// Matches Creatomate layout: 3×3 grid, x 18%/50%/82%, values y 40%/60%/80%, labels y 47%/67%/87%
 
 interface StatsCardPreviewProps {
   statsData: Record<string, string>;
   sport: string; position: string; accentHex: string;
+  firstName?: string; lastName?: string;
 }
 
-function StatsCardPreview({ statsData, sport, position, accentHex }: StatsCardPreviewProps) {
+function StatsCardPreview({ statsData, sport, position, accentHex, firstName, lastName }: StatsCardPreviewProps) {
   const sportConfig = SPORTS_CONFIG[sport];
   const allFields = sportConfig
     ? [...sportConfig.getStatFields(position).base, ...sportConfig.getStatFields(position).extra]
     : [];
   const filled = allFields.filter(f => statsData[f.key]?.trim());
-  const show   = filled.slice(0, 9); // max 9 stats (3×3 grid)
+  const show   = filled.slice(0, 9); // max 9 (3×3 grid)
+  const fullName = [firstName, lastName].filter(Boolean).join(" ").toUpperCase() || "ATHLETE NAME";
 
-  // 3×3 grid positions matching Creatomate layout
-  const gridPositions = [
-    { col: 0 }, { col: 1 }, { col: 2 },
-    { col: 0 }, { col: 1 }, { col: 2 },
-    { col: 0 }, { col: 1 }, { col: 2 },
-  ];
+  // 3 columns × 3 rows matching Creatomate x 18%/50%/82%, value y 40%/60%/80%
+  const colPositions = ["18%", "50%", "82%"];
+  const rowValPositions = ["40%", "60%", "80%"];
+  const rowLblPositions = ["47%", "67%", "87%"];
 
   return (
     <div style={{ aspectRatio: "16/9", background: "#050A14", borderRadius: 8, overflow: "hidden", position: "relative", fontFamily: "Inter, sans-serif" }}>
-      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 4, background: accentHex }} />
-      <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 4, background: accentHex }} />
-      <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", padding: "4% 5% 5%" }}>
-        <div style={{ fontSize: "clamp(5px, 1.2vw, 10px)", color: accentHex, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "1%" }}>
-          Season Stats
+      {/* Accent bars */}
+      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "1.5%", background: accentHex }} />
+      <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: "1.5%", background: accentHex }} />
+
+      {/* Header — y 14% matches Creatomate */}
+      <div style={{ position: "absolute", top: "14%", left: "50%", transform: "translate(-50%, -50%)", textAlign: "center" as const, width: "90%" }}>
+        <div style={{ fontSize: "clamp(5px, 1.2vw, 10px)", color: accentHex, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.1em" }}>
+          SEASON STATS
         </div>
-        {show.length === 0 ? (
-          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#334155", fontSize: "clamp(5px, 1.2vw, 11px)" }}>
-            Fill in your stats above to see a preview
-          </div>
-        ) : (
-          <div style={{ flex: 1, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gridTemplateRows: "repeat(3, 1fr)", gap: "3%", alignItems: "center", justifyItems: "center" }}>
-            {Array.from({ length: 9 }).map((_, idx) => {
-              const f = show[idx];
-              if (!f) return <div key={idx} />;
-              return (
-                <div key={f.key} style={{ textAlign: "center", width: "100%" }}>
-                  <div style={{ fontSize: "clamp(8px, 2.2vw, 18px)", fontWeight: 800, color: accentHex }}>{statsData[f.key]}</div>
-                  <div style={{ fontSize: "clamp(4px, 0.9vw, 8px)", color: "#9CA3AF", textTransform: "uppercase", letterSpacing: "0.06em", marginTop: "4%" }}>{f.label}</div>
+      </div>
+      {/* Athlete name — y 24% matches Creatomate */}
+      <div style={{ position: "absolute", top: "24%", left: "50%", transform: "translate(-50%, -50%)", textAlign: "center" as const, width: "90%" }}>
+        <div style={{ fontSize: "clamp(6px, 1.8vw, 16px)", fontWeight: 900, color: "#FFFFFF", fontFamily: "Oswald, sans-serif" }}>
+          {fullName}
+        </div>
+      </div>
+
+      {show.length === 0 ? (
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#334155", fontSize: "clamp(5px, 1.2vw, 11px)" }}>
+          Fill in your stats above to see a preview
+        </div>
+      ) : (
+        <>
+          {show.map((f, idx) => {
+            const col = idx % 3;
+            const row = Math.floor(idx / 3);
+            return (
+              <div key={f.key}>
+                {/* Stat value */}
+                <div style={{
+                  position: "absolute",
+                  left: colPositions[col], top: rowValPositions[row],
+                  transform: "translate(-50%, -50%)",
+                  textAlign: "center" as const,
+                  fontSize: "clamp(8px, 2.2vw, 20px)",
+                  fontWeight: 900, color: accentHex, fontFamily: "Oswald, sans-serif",
+                }}>
+                  {statsData[f.key]}
                 </div>
-              );
-            })}
-          </div>
-        )}
+                {/* Stat label */}
+                <div style={{
+                  position: "absolute",
+                  left: colPositions[col], top: rowLblPositions[row],
+                  transform: "translate(-50%, -50%)",
+                  textAlign: "center" as const, width: "28%",
+                  fontSize: "clamp(3px, 0.85vw, 7px)",
+                  color: "#9CA3AF", textTransform: "uppercase" as const, letterSpacing: "0.06em",
+                }}>
+                  {f.label}
+                </div>
+              </div>
+            );
+          })}
+        </>
+      )}
+
+      {/* Watermark */}
+      <div style={{ position: "absolute", bottom: "3%", left: "50%", transform: "translateX(-50%)", fontSize: "clamp(3px,0.6vw,5px)", color: "#334155", fontWeight: 700, whiteSpace: "nowrap" }}>
+        POWERED BY CLIPT
       </div>
     </div>
   );
@@ -1056,6 +1092,7 @@ export default function CustomizePage() {
               clubTeam={clubTeam} location={location}
               socialHandle={socialHandle} achievement={achievement}
               accentColor={accentHex}
+              statsData={statsData}
             />
           </div>
 
@@ -1169,7 +1206,7 @@ export default function CustomizePage() {
               {/* Live preview */}
               <div style={{ marginBottom: 24 }}>
                 <label style={labelStyle}>Live Preview</label>
-                <StatsCardPreview statsData={statsData} sport={sport} position={position} accentHex={accentHex} />
+                <StatsCardPreview statsData={statsData} sport={sport} position={position} accentHex={accentHex} firstName={firstName} lastName={lastName} />
               </div>
 
               {/* All stat fields — base + extra always visible */}

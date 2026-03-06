@@ -1805,10 +1805,11 @@ export default function ExportPage() {
     setRenderUrl(null);
     setBuiltMusicTrackId("");
 
-    // Read per-clip data (trim, duration, blob URLs) from cliptSettings
+    // Read per-clip data (trim, duration, blob URLs, spotlight marks) from cliptSettings
     let settingsClips: Array<{
       blobUrl?: string; trimStart?: number; trimEnd?: number;
       duration?: number; textOverlay?: string; starred?: boolean;
+      markX?: number; markY?: number; skillCategory?: string;
     }> = [];
     try {
       const raw = localStorage.getItem("cliptSettings");
@@ -1864,13 +1865,15 @@ export default function ExportPage() {
     // Read music ID from legacy field for backward compat
     const musicTrackId = sGet("musicTrackId", reel.musicTrackId || "no-music") as string;
 
-    // Build clips array with trim + category data
+    // Build clips array with trim + category + spotlight mark data
     const clipsWithTrim = publicUrls.map((url, i) => ({
       url,
       duration:      settingsClips[i]?.duration      ?? undefined,
       trimStart:     settingsClips[i]?.trimStart      ?? 0,
       trimEnd:       settingsClips[i]?.trimEnd        ?? undefined,
-      skillCategory: (settingsClips[i] as { skillCategory?: string })?.skillCategory ?? undefined,
+      skillCategory: settingsClips[i]?.skillCategory ?? undefined,
+      markX:         settingsClips[i]?.markX         ?? undefined,
+      markY:         settingsClips[i]?.markY         ?? undefined,
     }));
 
     // Read new cliptSettings fields (titleCard object saved by new customize page)
@@ -1927,15 +1930,21 @@ export default function ExportPage() {
       preserveQuality: true,
     };
 
-    // Debug logs — music + dimensions
+    // Debug logs — music + dimensions + spotlight marks
     console.log("PRE-RENDER MUSIC CHECK:", { settingsMusicId, resolvedMusicUrl, resolvedMusicName, isSocial });
-    console.log("RENDER PAYLOAD:", JSON.stringify({
-      clipCount: renderPayload.clips.length,
+    console.log("FULL RENDER PAYLOAD:", JSON.stringify({
+      clipCount: renderPayload.clips?.length,
+      clips: renderPayload.clips?.map((c: { url: string; markX?: number; markY?: number; trimStart?: number; trimEnd?: number }) => ({
+        url: c.url,
+        markX: c.markX,
+        markY: c.markY,
+        trimStart: c.trimStart,
+        trimDuration: c.trimEnd,
+      })),
       music: renderPayload.settings.music,
       musicUrl: renderPayload.settings.musicUrl,
-      musicName: renderPayload.settings.musicName,
-      social: renderPayload.social,
-      aspectRatio: renderPayload.aspectRatio,
+      exportType: renderPayload.settings.spotlightStyle,
+      athleteName: `${renderPayload.titleCard?.firstName || ""} ${renderPayload.titleCard?.lastName || ""}`.trim(),
     }, null, 2));
 
     // Start Creatomate render
