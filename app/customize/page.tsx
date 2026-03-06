@@ -523,11 +523,52 @@ export default function CustomizePage() {
   }, [spotlightStep]);
 
   function handleSpotlightTap(e: React.MouseEvent<HTMLDivElement>) {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
     const clip = clips[spotlightStep];
     if (!clip) return;
+
+    const container = e.currentTarget;
+    const video = frameVideoRef.current;
+    const containerRect = container.getBoundingClientRect();
+
+    let x: number;
+    let y: number;
+
+    if (video && video.videoWidth && video.videoHeight) {
+      const videoAspect = video.videoWidth / video.videoHeight;
+      const containerAspect = containerRect.width / containerRect.height;
+
+      let videoRenderWidth: number;
+      let videoRenderHeight: number;
+      let videoOffsetX: number;
+      let videoOffsetY: number;
+
+      if (videoAspect > containerAspect) {
+        // Wider than container — letterboxed top/bottom
+        videoRenderWidth = containerRect.width;
+        videoRenderHeight = containerRect.width / videoAspect;
+        videoOffsetX = 0;
+        videoOffsetY = (containerRect.height - videoRenderHeight) / 2;
+      } else {
+        // Taller than container — letterboxed left/right
+        videoRenderHeight = containerRect.height;
+        videoRenderWidth = containerRect.height * videoAspect;
+        videoOffsetX = (containerRect.width - videoRenderWidth) / 2;
+        videoOffsetY = 0;
+      }
+
+      const tapX = e.clientX - containerRect.left - videoOffsetX;
+      const tapY = e.clientY - containerRect.top - videoOffsetY;
+
+      // Ignore taps outside the actual video frame
+      if (tapX < 0 || tapY < 0 || tapX > videoRenderWidth || tapY > videoRenderHeight) return;
+
+      x = (tapX / videoRenderWidth) * 100;
+      y = (tapY / videoRenderHeight) * 100;
+    } else {
+      // Fallback if video dimensions not available
+      x = ((e.clientX - containerRect.left) / containerRect.width) * 100;
+      y = ((e.clientY - containerRect.top) / containerRect.height) * 100;
+    }
 
     // Save the mark to clips state and to markedClips
     setClipMark(clip.id, x, y);
@@ -971,7 +1012,8 @@ export default function CustomizePage() {
                 <div
                   onClick={handleSpotlightTap}
                   style={{
-                    position: "relative", width: "100%", aspectRatio: "16/9",
+                    position: "relative", width: "100%",
+                    height: 400, display: "flex", alignItems: "center", justifyContent: "center",
                     background: "#000", borderRadius: 10, overflow: "hidden",
                     cursor: "crosshair", marginBottom: 14,
                     border: `2px solid ${accentHex}40`,
@@ -979,12 +1021,11 @@ export default function CustomizePage() {
                   <video
                     key={clips[spotlightStep]?.blobUrl}
                     src={clips[spotlightStep]?.blobUrl}
-                    className="w-full h-full object-cover"
                     muted
                     playsInline
                     preload="metadata"
                     ref={frameVideoRef}
-                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", pointerEvents: "none" }}
+                    style={{ maxWidth: "100%", maxHeight: "100%", width: "auto", height: "auto", objectFit: "contain", display: "block", pointerEvents: "none" }}
                   />
                   {/* Circle at tapped position */}
                   {markedClips[spotlightStep] && (
@@ -992,8 +1033,9 @@ export default function CustomizePage() {
                       position: "absolute",
                       left: `${markedClips[spotlightStep].x}%`,
                       top: `${markedClips[spotlightStep].y}%`,
-                      width: 60, height: 60, borderRadius: "50%",
+                      width: 56, height: 56, borderRadius: "50%",
                       border: "3px solid white",
+                      boxShadow: "0 0 0 2px rgba(0,0,0,0.5)",
                       transform: "translate(-50%, -50%)",
                       pointerEvents: "none",
                     }} />

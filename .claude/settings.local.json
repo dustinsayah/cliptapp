@@ -16,7 +16,9 @@
       "Bash(npx next:*)",
       "Bash(rm:*)",
       "Bash(python3:*)",
-      "WebFetch(domain:creatomate.com)"
+      "WebFetch(domain:creatomate.com)",
+      "Bash(railway:*)",
+      "Bash(powershell.exe:*)"
     ]
   }
 }
