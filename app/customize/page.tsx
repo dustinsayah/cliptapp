@@ -695,6 +695,12 @@ export default function CustomizePage() {
       console.warn("Failed to save cliptSettings:", e);
     }
 
+    console.log("CLIPS SAVED TO SETTINGS:", cliptSettings.clips.map((c) => ({
+      blobUrl: c.blobUrl?.substring(0, 50),
+      markX: c.markX,
+      markY: c.markY,
+    })));
+
     // Update provider for canvas export fallback
     reelUpdate({
       firstName, jerseyNumber, sport, school, position, gradYear,

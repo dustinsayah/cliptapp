@@ -26,6 +26,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
+  console.log("API RECEIVED CLIPS:", body.clips?.map((c: Record<string, unknown>) => ({
+    url: typeof c.url === "string" ? c.url.substring(0, 50) : c.url,
+    markX: c.markX,
+    markY: c.markY,
+  })));
+  console.log("API RECEIVED SETTINGS CLIPS:", (body.settings?.clips as Array<Record<string, unknown>> | undefined)?.map((c) => ({
+    url: typeof c.url === "string" ? c.url.substring(0, 50) : c.url,
+    markX: c.markX,
+    markY: c.markY,
+  })));
+
   console.log("[render-reel] Request received:", {
     format: body.clips ? "new" : "legacy",
     clipCount: body.clips?.length ?? body.reelInput?.clipUrls?.length ?? body.reelInput?.clips?.length ?? 0,

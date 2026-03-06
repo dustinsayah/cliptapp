@@ -1872,9 +1872,20 @@ export default function ExportPage() {
       trimStart:     settingsClips[i]?.trimStart      ?? 0,
       trimEnd:       settingsClips[i]?.trimEnd        ?? undefined,
       skillCategory: settingsClips[i]?.skillCategory ?? undefined,
-      markX:         settingsClips[i]?.markX         ?? undefined,
-      markY:         settingsClips[i]?.markY         ?? undefined,
+      markX:         settingsClips[i]?.markX         ?? 50,
+      markY:         settingsClips[i]?.markY         ?? 38,
     }));
+
+    console.log("CLIPS IN RENDER PAYLOAD:", clipsWithTrim.map((c) => ({
+      url: c.url?.substring(0, 50),
+      markX: c.markX,
+      markY: c.markY,
+    })));
+    console.log("SETTINGS CLIPS (from localStorage):", settingsClips.map((c) => ({
+      blobUrl: c.blobUrl?.substring(0, 50),
+      markX: c.markX,
+      markY: c.markY,
+    })));
 
     // Read new cliptSettings fields (titleCard object saved by new customize page)
     const tc = (settings.titleCard as Record<string, string> | undefined) ?? {};
@@ -1924,6 +1935,7 @@ export default function ExportPage() {
         statsEnabled:    sGet("statsEnabled", sGet("includeStatsCard", reel.includeStatsCard ?? true)) as boolean,
         jerseyOverlay:   sGet("jerseyOverlay", sGet("showJerseyOverlay", reel.showJerseyOverlay ?? true)) as boolean,
         spotlightStyle:  sGet("spotlightStyle", "none") as string,
+        clips:           clipsWithTrim,         // backup — API reads body.clips first
       },
       social: isSocial,
       aspectRatio: isSocial ? "9:16" : "16:9",

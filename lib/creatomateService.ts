@@ -96,6 +96,12 @@ export async function startRender(input: ReelRenderInput): Promise<string> {
   const source    = buildReelSource(input);
   const clipCount = input.clips?.length ?? input.clipUrls?.length ?? 0;
   console.log(`[Creatomate] Starting render — ${clipCount} clips, source ${JSON.stringify(source).length} bytes`);
+
+  // Log first clip's elements to verify circle is included
+  const rootElements = source.elements as Array<Record<string, unknown>> | undefined;
+  const firstClipEl = rootElements?.[1]; // index 0 = title card, index 1 = first clip (or stats card)
+  console.log("FIRST CLIP ELEMENTS (index 1):", JSON.stringify(firstClipEl?.elements ?? firstClipEl, null, 2));
+
   console.log("FULL SOURCE BEING SENT TO CREATOMATE:", JSON.stringify(source, null, 2));
 
   const response = await fetch(`${CREATOMATE_API}/renders`, {
@@ -144,6 +150,11 @@ export async function getRenderStatus(renderId: string): Promise<RenderStatus> {
 // ── Composition Builder ───────────────────────────────────────────────────────
 
 function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
+  console.log("CREATOMATE RECEIVED CLIPS:", input.clips?.map((c) => ({
+    url: c.url?.substring(0, 50),
+    markX: c.markX,
+    markY: c.markY,
+  })));
   console.log("CREATOMATE MUSIC INPUT:", input.musicUrl, input.music);
 
   const {
@@ -705,7 +716,7 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
           duration:   1.5,
           source:     clip.url,
           trim_start: 0,
-          trim_end:   0.1,
+          trim_end:   0.08,
           volume:     "0%",
           fit:        videoFit,
           fill_color: "#000000",
@@ -718,21 +729,21 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
           type:         "shape",
           track:        3,
           time:         0,
-          duration:     1.5,
+          duration:     1.2,
           shape:        "ellipse",
           x:            `${markXPct}%`,
           y:            `${markYPct}%`,
           width:        "8%",
-          height:       "14.2%",
-          x_anchor:     "50%",
-          y_anchor:     "50%",
+          height:       "14%",
+          x_anchor:     0.5,
+          y_anchor:     0.5,
           fill_color:   "rgba(0,0,0,0)",
           stroke_color: "#FFFFFF",
           stroke_width: 4,
           animations: [
             {
               time:        0,
-              duration:    0.35,
+              duration:    0.3,
               easing:      "ease-out",
               type:        "scale",
               fade:        false,
@@ -740,8 +751,8 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
               end_scale:   "100%",
             },
             {
-              time:     1.1,
-              duration: 0.4,
+              time:     0.9,
+              duration: 0.3,
               easing:   "ease-in",
               type:     "fade",
               fade:     true,
