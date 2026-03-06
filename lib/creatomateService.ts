@@ -96,6 +96,7 @@ export async function startRender(input: ReelRenderInput): Promise<string> {
   const source    = buildReelSource(input);
   const clipCount = input.clips?.length ?? input.clipUrls?.length ?? 0;
   console.log(`[Creatomate] Starting render — ${clipCount} clips, source ${JSON.stringify(source).length} bytes`);
+  console.log("FULL SOURCE BEING SENT TO CREATOMATE:", JSON.stringify(source, null, 2));
 
   const response = await fetch(`${CREATOMATE_API}/renders`, {
     method: "POST",
@@ -247,186 +248,262 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
   const heightWeight = [
     heightFt ? `${heightFt}'${heightIn || "0"}"` : null,
     weight   ? `${weight} lbs`                   : null,
-  ].filter(Boolean).join(" — ");
+  ].filter(Boolean).join("  ·  ");
 
   const gpaNum  = parseFloat(gpa || "");
   const showGpa = gpa && !isNaN(gpaNum) && gpaNum >= 3.0;
 
-  // Up to 4 stats shown on right side of title card
-  const titleCardStats = statsEntries.slice(0, 4);
-
-  const titleEls: unknown[] = [
-    // Full background
-    {
-      type: "shape", shape: "rectangle",
-      x: "50%", y: "50%", x_anchor: "50%", y_anchor: "50%",
-      width: "100%", height: "100%", fill_color: "#050A14",
-    },
-    // Top accent bar — 20px
-    {
-      type: "shape", shape: "rectangle",
-      x: "0%", y: "0%", x_anchor: "0%", y_anchor: "0%",
-      width: "100%", height: `${Math.round(20 * s)}px`, fill_color: accentHex,
-    },
-    // Bottom accent bar — 20px
-    {
-      type: "shape", shape: "rectangle",
-      x: "0%", y: "100%", x_anchor: "0%", y_anchor: "100%",
-      width: "100%", height: `${Math.round(20 * s)}px`, fill_color: accentHex,
-    },
-    // Vertical divider line — x 52%, spans y 25%–92% (center 58.5%, height 67%)
-    {
-      type: "shape", shape: "rectangle",
-      x: "52%", y: "58.5%", x_anchor: "50%", y_anchor: "50%",
-      width: `${Math.max(1, Math.round(2 * s))}px`, height: "67%",
-      fill_color: "#1E2530",
-    },
-  ];
-
-  // Jersey # decoration — massive faint texture behind athlete name (left side)
-  if (jerseyNumber) {
-    titleEls.push({
-      type: "text", text: `#${jerseyNumber}`,
-      x: "8%", y: "35%", x_anchor: "0%", y_anchor: "50%",
-      font_size: Math.round(280 * s), font_weight: "900",
-      fill_color: accentHex, font_family: "Oswald", opacity: 0.15,
-      shadow_color: "rgba(0,0,0,0)", shadow_blur: 0,
-    });
-  }
-
-  // Athlete full name — x 8%, y 38%, font_size 88, Oswald bold, white, left-aligned
-  titleEls.push({
-    type: "text", text: fullName,
-    x: "8%", y: "38%", x_anchor: "0%", y_anchor: "50%", width: "44%",
-    font_size: Math.round(88 * s), font_weight: "900", fill_color: "#FFFFFF",
-    font_family: "Oswald", x_alignment: 0,
-    shadow_color: "rgba(0,0,0,0)", shadow_blur: 0,
-  });
-
-  // Position + Sport — x 8%, y 52%, Montserrat, accentColor, uppercase
-  if (subLine) {
-    titleEls.push({
-      type: "text", text: subLine,
-      x: "8%", y: "52%", x_anchor: "0%", y_anchor: "50%", width: "44%",
-      font_size: Math.round(42 * s), fill_color: accentHex,
-      font_family: "Montserrat", x_alignment: 0, letter_spacing: "8%",
-      shadow_color: "rgba(0,0,0,0)", shadow_blur: 0,
-    });
-  }
-
-  // School — x 8%, y 61%, Montserrat, white
-  if (school) {
-    titleEls.push({
-      type: "text", text: school,
-      x: "8%", y: "61%", x_anchor: "0%", y_anchor: "50%", width: "44%",
-      font_size: Math.round(38 * s), fill_color: "#FFFFFF",
-      font_family: "Montserrat", x_alignment: 0,
-      shadow_color: "rgba(0,0,0,0)", shadow_blur: 0,
-    });
-  }
-
-  // Grad year + GPA — x 8%, y 69%, font_size 30, #9CA3AF — only if values exist
   const gradGpaLine = [
     gradYear ? `Class of ${gradYear}` : null,
     showGpa  ? `GPA ${gpa}`           : null,
   ].filter(Boolean).join("  ·  ");
-  if (gradGpaLine) {
-    titleEls.push({
-      type: "text", text: gradGpaLine,
-      x: "8%", y: "69%", x_anchor: "0%", y_anchor: "50%", width: "44%",
-      font_size: Math.round(30 * s), fill_color: "#9CA3AF",
-      font_family: "Montserrat", x_alignment: 0,
-      shadow_color: "rgba(0,0,0,0)", shadow_blur: 0,
-    });
-  }
 
-  // Height + Weight — x 8%, y 76%, font_size 30, #9CA3AF — only if values exist
-  if (heightWeight) {
-    titleEls.push({
-      type: "text", text: heightWeight,
-      x: "8%", y: "76%", x_anchor: "0%", y_anchor: "50%", width: "44%",
-      font_size: Math.round(30 * s), fill_color: "#9CA3AF",
-      font_family: "Montserrat", x_alignment: 0,
-      shadow_color: "rgba(0,0,0,0)", shadow_blur: 0,
-    });
-  }
+  // Up to 4 stats shown on right side of title card (convert to {label, value} objects)
+  const titleCardStats = statsEntries.slice(0, 4).map(([label, value]) => ({ label, value }));
 
-  // Email — x 8%, y 84%, font_size 28, accentColor — only if exists
-  if (email) {
-    titleEls.push({
-      type: "text", text: email,
-      x: "8%", y: "84%", x_anchor: "0%", y_anchor: "50%", width: "44%",
-      font_size: Math.round(28 * s), fill_color: accentHex,
-      font_family: "Montserrat", x_alignment: 0,
-      shadow_color: "rgba(0,0,0,0)", shadow_blur: 0,
-    });
-  }
+  const titleCard = {
+    type: "composition",
+    track: 1,
+    time: currentTime,
+    duration: TITLE_DUR,
+    elements: [
+      // Background
+      {
+        type: "shape",
+        shape: "rectangle",
+        track: 1,
+        width: "100%",
+        height: "100%",
+        x: "50%",
+        y: "50%",
+        fill_color: "#050A14",
+      },
+      // Top accent bar
+      {
+        type: "shape",
+        shape: "rectangle",
+        track: 2,
+        width: "100%",
+        height: 20,
+        x: "50%",
+        y: 10,
+        fill_color: accentHex,
+      },
+      // Bottom accent bar
+      {
+        type: "shape",
+        shape: "rectangle",
+        track: 3,
+        width: "100%",
+        height: 20,
+        x: "50%",
+        y: isVertical ? 1910 : 1070,
+        fill_color: accentHex,
+      },
+      // Jersey number background watermark
+      ...(jerseyNumber ? [{
+        type: "text",
+        track: 4,
+        text: `#${jerseyNumber}`,
+        x: "8%",
+        y: "35%",
+        font_family: "Oswald",
+        font_size: 280,
+        font_weight: "700",
+        fill_color: accentHex,
+        opacity: 0.12,
+        x_anchor: "0%",
+        y_anchor: "50%",
+      }] : []),
+      // Athlete name
+      {
+        type: "text",
+        track: 5,
+        text: fullName,
+        x: "8%",
+        y: "38%",
+        width: "42%",
+        font_family: "Oswald",
+        font_size: 80,
+        font_weight: "700",
+        fill_color: "#FFFFFF",
+        x_anchor: "0%",
+        y_anchor: "50%",
+      },
+      // Position + Sport
+      {
+        type: "text",
+        track: 6,
+        text: [position, sport].filter(Boolean).join(" · ").toUpperCase(),
+        x: "8%",
+        y: "52%",
+        width: "42%",
+        font_family: "Montserrat",
+        font_size: 38,
+        font_weight: "600",
+        fill_color: accentHex,
+        letter_spacing: "8%",
+        x_anchor: "0%",
+        y_anchor: "50%",
+      },
+      // School
+      ...(school ? [{
+        type: "text",
+        track: 7,
+        text: school,
+        x: "8%",
+        y: "61%",
+        width: "42%",
+        font_family: "Montserrat",
+        font_size: 34,
+        font_weight: "500",
+        fill_color: "#FFFFFF",
+        x_anchor: "0%",
+        y_anchor: "50%",
+      }] : []),
+      // Grad year + GPA
+      ...(gradGpaLine ? [{
+        type: "text",
+        track: 8,
+        text: gradGpaLine,
+        x: "8%",
+        y: "69%",
+        width: "42%",
+        font_family: "Montserrat",
+        font_size: 28,
+        fill_color: "#9CA3AF",
+        x_anchor: "0%",
+        y_anchor: "50%",
+      }] : []),
+      // Height + Weight
+      ...(heightWeight ? [{
+        type: "text",
+        track: 9,
+        text: heightWeight,
+        x: "8%",
+        y: "76%",
+        width: "42%",
+        font_family: "Montserrat",
+        font_size: 28,
+        fill_color: "#9CA3AF",
+        x_anchor: "0%",
+        y_anchor: "50%",
+      }] : []),
+      // Email
+      ...(email ? [{
+        type: "text",
+        track: 10,
+        text: email,
+        x: "8%",
+        y: "84%",
+        width: "42%",
+        font_family: "Montserrat",
+        font_size: 26,
+        fill_color: accentHex,
+        x_anchor: "0%",
+        y_anchor: "50%",
+      }] : []),
+      // Phone
+      ...(phone ? [{
+        type: "text",
+        track: 11,
+        text: phone,
+        x: "8%",
+        y: "91%",
+        width: "42%",
+        font_family: "Montserrat",
+        font_size: 26,
+        fill_color: "#FFFFFF",
+        x_anchor: "0%",
+        y_anchor: "50%",
+      }] : []),
+      // Vertical divider line
+      {
+        type: "shape",
+        shape: "rectangle",
+        track: 12,
+        width: 2,
+        height: "67%",
+        x: "52%",
+        y: "58%",
+        fill_color: "#1E2530",
+      },
+      // SEASON STATS label
+      {
+        type: "text",
+        track: 13,
+        text: "SEASON STATS",
+        x: "74%",
+        y: "32%",
+        font_family: "Montserrat",
+        font_size: 22,
+        font_weight: "600",
+        fill_color: accentHex,
+        letter_spacing: "12%",
+        x_anchor: "50%",
+        y_anchor: "50%",
+      },
+      // 4 stats in 2x2 grid — only show stats that exist
+      ...titleCardStats.flatMap((stat, i) => {
+        const positions = [
+          { x: "63%", y: "45%" },
+          { x: "83%", y: "45%" },
+          { x: "63%", y: "65%" },
+          { x: "83%", y: "65%" },
+        ];
+        const pos = positions[i];
+        if (!pos || !stat.value) return [];
+        return [
+          {
+            type: "text",
+            track: 14 + (i * 2),
+            text: stat.value,
+            x: pos.x,
+            y: pos.y,
+            font_family: "Oswald",
+            font_size: 60,
+            font_weight: "700",
+            fill_color: accentHex,
+            x_anchor: "50%",
+            y_anchor: "50%",
+          },
+          {
+            type: "text",
+            track: 15 + (i * 2),
+            text: stat.label.toUpperCase(),
+            x: pos.x,
+            y: `${parseFloat(pos.y) + 8}%`,
+            font_family: "Montserrat",
+            font_size: 20,
+            font_weight: "600",
+            fill_color: "#9CA3AF",
+            letter_spacing: "6%",
+            x_anchor: "50%",
+            y_anchor: "0%",
+          },
+        ];
+      }),
+      // CLIPT watermark
+      {
+        type: "text",
+        track: 23,
+        text: "POWERED BY CLIPT",
+        x: "50%",
+        y: "96.3%",
+        font_family: "Inter",
+        font_size: 22,
+        font_weight: "700",
+        fill_color: "#334155",
+        x_anchor: "50%",
+        y_anchor: "50%",
+      },
+    ],
+    animations: [
+      { time: 0, duration: 0.5, type: "fade", fade: true },
+    ],
+  };
 
-  // Phone — x 8%, y 91%, font_size 28, white — only if exists
-  if (phone) {
-    titleEls.push({
-      type: "text", text: phone,
-      x: "8%", y: "91%", x_anchor: "0%", y_anchor: "50%", width: "44%",
-      font_size: Math.round(28 * s), fill_color: "#FFFFFF",
-      font_family: "Montserrat", x_alignment: 0,
-      shadow_color: "rgba(0,0,0,0)", shadow_blur: 0,
-    });
-  }
-
-  // Right half: SEASON STATS + up to 4 stats in 2×2 grid
-  if (titleCardStats.length > 0) {
-    titleEls.push({
-      type: "text", text: "SEASON STATS",
-      x: "74%", y: "32%", x_anchor: "50%", y_anchor: "50%",
-      font_size: Math.round(24 * s), fill_color: accentHex,
-      font_family: "Montserrat", x_alignment: 0.5, letter_spacing: "12%",
-      shadow_color: "rgba(0,0,0,0)", shadow_blur: 0,
-    });
-
-    // 2×2 stat positions: top-left, top-right, bottom-left, bottom-right
-    const tcStatPos = [
-      { x: "63%", y: "45%" },
-      { x: "83%", y: "45%" },
-      { x: "63%", y: "65%" },
-      { x: "83%", y: "65%" },
-    ];
-
-    titleCardStats.forEach(([label, value], idx) => {
-      const pos = tcStatPos[idx];
-      if (!pos || !value?.trim()) return;
-      const labelY = parseFloat(pos.y) + 8;
-      // Stat value
-      titleEls.push({
-        type: "text", text: value,
-        x: pos.x, y: pos.y, x_anchor: "50%", y_anchor: "50%",
-        font_size: Math.round(64 * s), font_weight: "900",
-        fill_color: accentHex, font_family: "Oswald", x_alignment: 0.5,
-        shadow_color: "rgba(0,0,0,0)", shadow_blur: 0,
-      });
-      // Stat label — 8% below value
-      titleEls.push({
-        type: "text", text: label.toUpperCase(),
-        x: pos.x, y: `${labelY}%`, x_anchor: "50%", y_anchor: "50%",
-        font_size: Math.round(22 * s), fill_color: "#9CA3AF",
-        font_family: "Montserrat", x_alignment: 0.5,
-        shadow_color: "rgba(0,0,0,0)", shadow_blur: 0,
-      });
-    });
-  }
-
-  // CLIPT wordmark
-  titleEls.push({
-    type: "text", text: "POWERED BY CLIPT",
-    x: "50%", y: "96.3%", x_anchor: "50%", y_anchor: "50%",
-    font_size: Math.round(24 * s), font_weight: "700", fill_color: "#334155",
-    font_family: "Inter", shadow_color: "rgba(0,0,0,0)", shadow_blur: 0,
-  });
-
-  elements.push({
-    type: "composition", track: 1, time: currentTime, duration: TITLE_DUR,
-    animations: [{ time: 0, duration: 0.5, type: "fade", fade: false }],
-    elements: titleEls,
-  });
+  elements.push(titleCard);
   currentTime += TITLE_DUR;
 
   // ── 2. STATS CARD (5s) — 3×3 grid, one page, max 9 stats ────────────────────
@@ -434,96 +511,139 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
   // x positions: 18%, 50%, 82%
   // y positions for values:  40%, 60%, 80%
   // y positions for labels:  47%, 67%, 87%
-  // Stat value: font_size 72, Oswald bold, accentColor
-  // Stat label: font_size 26, Montserrat, #9CA3AF, uppercase, letter_spacing 6%
-  // Header "SEASON STATS": x 50%, y 14%, font_size 32, letter_spacing 10%, accentColor
-  // Athlete name: x 50%, y 24%, font_size 52, Oswald bold, white
-
-  function buildStatsCardEls(): unknown[] {
-    // QB passer rating auto-calculation (Quarterback + Football only)
-    // Requires: completions, attempts, yards, touchdowns, interceptions — all non-zero
-    let displayStats = [...statsEntries];
-    if (position === "Quarterback" && sport === "Football") {
-      const comp  = parseFloat(statsData.completions   || "");
-      const att   = parseFloat(statsData.attempts      || "");
-      const yds   = parseFloat(statsData.yards         || "");
-      const tds   = parseFloat(statsData.touchdowns    || "");
-      const ints  = parseFloat(statsData.interceptions || "");
-      const hasAllQBFields =
-        !isNaN(comp) && comp > 0 &&
-        !isNaN(att)  && att  > 0 &&
-        !isNaN(yds)  && yds  >= 0 &&
-        !isNaN(tds)  && tds  >= 0 &&
-        !isNaN(ints) && ints >= 0;
-      if (hasAllQBFields) {
-        const a = Math.min(Math.max(((comp / att) - 0.3) / 0.2, 0), 2.375);
-        const b = Math.min(Math.max((yds / att - 3) / 4, 0), 2.375);
-        const c = Math.min(Math.max((tds / att) / 0.05, 0), 2.375);
-        const d = Math.min(Math.max(0.095 - (ints / att) / 0.04, 0), 2.375);
-        const passerRating = Math.round(((a + b + c + d) / 6) * 100 * 10) / 10;
-        // Remove any existing raw rating field, then append calculated QB RATING
-        displayStats = displayStats.filter(([key]) =>
-          !["rating", "passer_rating", "passerRating", "qb_rating", "qbRating", "overall_rating", "overallRating"].includes(key)
-        );
-        displayStats.push(["QB RATING", passerRating.toString()]);
-      }
-    }
-
-    // Cap at 9 stats (3×3 grid), filter empties
-    const statsToShow = displayStats.filter(([, v]) => v?.trim()).slice(0, 9);
-
-    const statPositions = [
-      { xPct: 18, yValPct: 40, yLblPct: 47 },
-      { xPct: 50, yValPct: 40, yLblPct: 47 },
-      { xPct: 82, yValPct: 40, yLblPct: 47 },
-      { xPct: 18, yValPct: 60, yLblPct: 67 },
-      { xPct: 50, yValPct: 60, yLblPct: 67 },
-      { xPct: 82, yValPct: 60, yLblPct: 67 },
-      { xPct: 18, yValPct: 80, yLblPct: 87 },
-      { xPct: 50, yValPct: 80, yLblPct: 87 },
-      { xPct: 82, yValPct: 80, yLblPct: 87 },
-    ];
-    const els: unknown[] = [
-      // Background
-      { type: "shape", shape: "rectangle", x: "50%", y: "50%", x_anchor: "50%", y_anchor: "50%", width: "100%", height: "100%", fill_color: "#050A14" },
-      // Top accent stripe 16px
-      { type: "shape", shape: "rectangle", x: "0%", y: "0%", x_anchor: "0%", y_anchor: "0%", width: "100%", height: `${Math.round(16 * s)}px`, fill_color: accentHex },
-      // Bottom accent stripe 16px
-      { type: "shape", shape: "rectangle", x: "0%", y: "100%", x_anchor: "0%", y_anchor: "100%", width: "100%", height: `${Math.round(16 * s)}px`, fill_color: accentHex },
-      // "SEASON STATS" header
-      { type: "text", text: "SEASON STATS", x: "50%", y: "14%", x_anchor: "50%", y_anchor: "50%", width: "90%", font_size: Math.round(32 * s), font_weight: "700", fill_color: accentHex, font_family: "Montserrat", letter_spacing: "10%", x_alignment: 0.5, shadow_color: "rgba(0,0,0,0)", shadow_blur: 0 },
-      // Athlete name
-      { type: "text", text: fullName, x: "50%", y: "24%", x_anchor: "50%", y_anchor: "50%", width: "90%", font_size: Math.round(52 * s), font_weight: "900", fill_color: "#FFFFFF", font_family: "Oswald", x_alignment: 0.5, shadow_color: "rgba(0,0,0,0)", shadow_blur: 0 },
-      // POWERED BY CLIPT
-      { type: "text", text: "POWERED BY CLIPT", x: "50%", y: "94%", x_anchor: "50%", y_anchor: "50%", font_size: Math.round(22 * s), font_weight: "700", fill_color: "#334155", font_family: "Inter", shadow_color: "rgba(0,0,0,0)", shadow_blur: 0 },
-    ];
-    statsToShow.forEach(([label, value], idx) => {
-      const pos = statPositions[idx];
-      if (!pos) return;
-      // Stat value
-      els.push({
-        type: "text", text: value,
-        x: `${pos.xPct}%`, y: `${pos.yValPct}%`,
-        x_anchor: "50%", y_anchor: "50%", width: "28%",
-        font_family: "Oswald", font_size: Math.round(72 * s), font_weight: "700",
-        fill_color: accentHex, x_alignment: 0.5,
-        shadow_color: "rgba(0,0,0,0)", shadow_blur: 0,
-      });
-      // Stat label
-      els.push({
-        type: "text", text: label.toUpperCase(),
-        x: `${pos.xPct}%`, y: `${pos.yLblPct}%`,
-        x_anchor: "50%", y_anchor: "50%", width: "28%",
-        font_family: "Montserrat", font_size: Math.round(26 * s), font_weight: "600",
-        fill_color: "#9CA3AF", x_alignment: 0.5, letter_spacing: "6%",
-        shadow_color: "rgba(0,0,0,0)", shadow_blur: 0,
-      });
-    });
-    return els;
-  }
 
   if (showStatsCard) {
-    elements.push({ type: "composition", track: 1, time: currentTime, duration: STATS_DUR, elements: buildStatsCardEls() });
+    const validStats = statsEntries
+      .filter(([, v]) => v && v !== "0")
+      .slice(0, 9)
+      .map(([label, value]) => ({ label, value }));
+
+    const statPositions = [
+      { x: "18%", y: "40%" }, { x: "50%", y: "40%" }, { x: "82%", y: "40%" },
+      { x: "18%", y: "60%" }, { x: "50%", y: "60%" }, { x: "82%", y: "60%" },
+      { x: "18%", y: "80%" }, { x: "50%", y: "80%" }, { x: "82%", y: "80%" },
+    ];
+
+    const statsCard = {
+      type: "composition",
+      track: 1,
+      time: currentTime,
+      duration: STATS_DUR,
+      elements: [
+        // Background
+        {
+          type: "shape",
+          shape: "rectangle",
+          track: 1,
+          width: "100%",
+          height: "100%",
+          x: "50%",
+          y: "50%",
+          fill_color: "#050A14",
+        },
+        // Top accent bar
+        {
+          type: "shape",
+          shape: "rectangle",
+          track: 2,
+          width: "100%",
+          height: 16,
+          x: "50%",
+          y: 8,
+          fill_color: accentHex,
+        },
+        // Bottom accent bar
+        {
+          type: "shape",
+          shape: "rectangle",
+          track: 3,
+          width: "100%",
+          height: 16,
+          x: "50%",
+          y: isVertical ? 1912 : 1072,
+          fill_color: accentHex,
+        },
+        // SEASON STATS header
+        {
+          type: "text",
+          track: 4,
+          text: "SEASON STATS",
+          x: "50%",
+          y: "14%",
+          font_family: "Montserrat",
+          font_size: 28,
+          font_weight: "700",
+          fill_color: accentHex,
+          letter_spacing: "10%",
+          x_anchor: "50%",
+          y_anchor: "50%",
+        },
+        // Athlete name
+        {
+          type: "text",
+          track: 5,
+          text: fullName,
+          x: "50%",
+          y: "24%",
+          font_family: "Oswald",
+          font_size: 48,
+          font_weight: "700",
+          fill_color: "#FFFFFF",
+          x_anchor: "50%",
+          y_anchor: "50%",
+        },
+        // Stats grid
+        ...validStats.flatMap((stat, i) => {
+          const pos = statPositions[i];
+          if (!pos) return [];
+          return [
+            {
+              type: "text",
+              track: 6 + (i * 2),
+              text: stat.value,
+              x: pos.x,
+              y: pos.y,
+              font_family: "Oswald",
+              font_size: 72,
+              font_weight: "700",
+              fill_color: accentHex,
+              x_anchor: "50%",
+              y_anchor: "50%",
+            },
+            {
+              type: "text",
+              track: 7 + (i * 2),
+              text: stat.label.toUpperCase(),
+              x: pos.x,
+              y: `${parseFloat(pos.y) + 7}%`,
+              font_family: "Montserrat",
+              font_size: 22,
+              font_weight: "600",
+              fill_color: "#9CA3AF",
+              letter_spacing: "6%",
+              x_anchor: "50%",
+              y_anchor: "0%",
+            },
+          ];
+        }),
+        // POWERED BY CLIPT
+        {
+          type: "text",
+          track: 25,
+          text: "POWERED BY CLIPT",
+          x: "50%",
+          y: "94%",
+          font_family: "Inter",
+          font_size: 22,
+          font_weight: "700",
+          fill_color: "#334155",
+          x_anchor: "50%",
+          y_anchor: "50%",
+        },
+      ],
+    };
+
+    elements.push(statsCard);
     currentTime += STATS_DUR;
   }
 
@@ -557,60 +677,74 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
       const markXPct = clip.markX ?? 50;
       const markYPct = clip.markY ?? 38;
 
+      console.log(`BUILDING CLIP ${idx}:`, {
+        url: clip.url,
+        markX: clip.markX,
+        markY: clip.markY,
+        trimStart,
+        trimDuration,
+      });
+
       const innerEls: unknown[] = [
-        // Layer 1 — main video (track 1)
+        // Layer 1 — actual video
         {
-          type:          "video",
-          track:         1,
-          time:          0,
-          source:        clip.url,
-          trim_start:    trimStart,
-          trim_duration: trimDuration,
-          volume:        "0%",
-          fit:           videoFit,
-          fill_color:    "#000000",
+          type:       "video",
+          track:      1,
+          time:       0,
+          source:     clip.url,
+          trim_start: trimStart,
+          volume:     "0%",
+          fit:        videoFit,
+          fill_color: "#000000",
         },
-        // Layer 2 — freeze frame (track 2): shows first 1.5s with looped 0.1s clip, then fades
+        // Layer 2 — freeze frame on top for first 1.5s
         {
-          type:          "video",
-          track:         2,
-          time:          0,
-          duration:      1.5,
-          source:        clip.url,
-          trim_start:    0,
-          trim_duration: 0.1,
-          volume:        "0%",
-          fit:           videoFit,
-          fill_color:    "#000000",
+          type:       "video",
+          track:      2,
+          time:       0,
+          duration:   1.5,
+          source:     clip.url,
+          trim_start: 0,
+          trim_end:   0.1,
+          volume:     "0%",
+          fit:        videoFit,
+          fill_color: "#000000",
           animations: [
-            { time: 1.2, duration: 0.3, type: "fade", fade: false },
+            { time: 1.2, duration: 0.3, easing: "ease-in", type: "fade", fade: false },
           ],
         },
-        // Layer 3 — circle overlay composition (track 3): centered at markX/markY
+        // Layer 3 — white circle overlay (direct shape element, NOT nested composition)
         {
-          type:     "composition",
-          track:    3,
-          time:     0,
-          duration: 1.5,
-          x:        `${markXPct}%`,
-          y:        `${markYPct}%`,
-          width:    "9%",
-          height:   "14.2%",
-          elements: [
+          type:         "shape",
+          track:        3,
+          time:         0,
+          duration:     1.5,
+          shape:        "ellipse",
+          x:            `${markXPct}%`,
+          y:            `${markYPct}%`,
+          width:        "8%",
+          height:       "14.2%",
+          x_anchor:     "50%",
+          y_anchor:     "50%",
+          fill_color:   "rgba(0,0,0,0)",
+          stroke_color: "#FFFFFF",
+          stroke_width: 4,
+          animations: [
             {
-              type:         "shape",
-              shape:        "ellipse",
-              fill_color:   "rgba(0,0,0,0)",
-              stroke_color: "#FFFFFF",
-              stroke_width: 5,
-              width:        "100%",
-              height:       "100%",
-              x_anchor:     "50%",
-              y_anchor:     "50%",
-              animations: [
-                { time: 0,   duration: 0.4, easing: "ease-out", type: "scale", fade: false, start_scale: "160%", end_scale: "100%" },
-                { time: 1.1, duration: 0.4, easing: "ease-in",  type: "fade",  fade: true  },
-              ],
+              time:        0,
+              duration:    0.35,
+              easing:      "ease-out",
+              type:        "scale",
+              fade:        false,
+              start_scale: "150%",
+              end_scale:   "100%",
+            },
+            {
+              time:     1.1,
+              duration: 0.4,
+              easing:   "ease-in",
+              type:     "fade",
+              fade:     true,
             },
           ],
         },

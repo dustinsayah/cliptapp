@@ -53,7 +53,7 @@ export function TitleCardPreview({
   statsData,
 }: TitleCardPreviewProps) {
   const name = [firstName, lastName].filter(Boolean).join(" ").toUpperCase() || "YOUR NAME";
-  const subLine = [position, sport].filter(Boolean).join("  ·  ").toUpperCase() || "POSITION · SPORT";
+  const subLine = [position, sport].filter(Boolean).join(" · ").toUpperCase() || "POSITION · SPORT";
 
   const heightStr = heightFt ? `${heightFt}'${heightIn || "0"}"` : "";
   const weightStr = weight ? `${weight} lbs` : "";
@@ -139,7 +139,7 @@ export function TitleCardPreview({
         transform: "translateY(-50%)",
         width: "44%",
         fontSize: "clamp(7px, 2vw, 18px)",
-        fontWeight: 900,
+        fontWeight: 700,
         color: "#FFFFFF",
         fontFamily: "Oswald, sans-serif",
         lineHeight: 1.1,

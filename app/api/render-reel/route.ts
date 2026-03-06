@@ -161,6 +161,20 @@ export async function POST(req: NextRequest) {
       musicUrl: reelInput.musicUrl,
       musicName: reelInput.musicName,
     });
+    console.log("RENDER INPUT STATS:", JSON.stringify(reelInput.statsData, null, 2));
+    console.log("RENDER INPUT TITLE FIELDS:", {
+      athleteName: [reelInput.firstName, reelInput.lastName].filter(Boolean).join(" "),
+      jerseyNumber: reelInput.jerseyNumber,
+      position: reelInput.position,
+      sport: reelInput.sport,
+      school: reelInput.school,
+      gradYear: reelInput.gradYear,
+      gpa: reelInput.gpa,
+      height: reelInput.heightFt ? `${reelInput.heightFt}'${reelInput.heightIn || "0"}"` : "",
+      weight: reelInput.weight,
+      email: reelInput.email,
+      phone: reelInput.phone,
+    });
     console.log("[render-reel] Calling startRender with", {
       clipCount: reelInput.clips?.length ?? reelInput.clipUrls?.length,
       hasMusic: !!reelInput.musicUrl,

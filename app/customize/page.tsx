@@ -191,7 +191,7 @@ function StatsCardPreview({ statsData, sport, position, accentHex, firstName, la
       </div>
       {/* Athlete name — y 24% matches Creatomate */}
       <div style={{ position: "absolute", top: "24%", left: "50%", transform: "translate(-50%, -50%)", textAlign: "center" as const, width: "90%" }}>
-        <div style={{ fontSize: "clamp(6px, 1.8vw, 16px)", fontWeight: 900, color: "#FFFFFF", fontFamily: "Oswald, sans-serif" }}>
+        <div style={{ fontSize: "clamp(6px, 1.8vw, 16px)", fontWeight: 700, color: "#FFFFFF", fontFamily: "Oswald, sans-serif" }}>
           {fullName}
         </div>
       </div>
@@ -214,7 +214,7 @@ function StatsCardPreview({ statsData, sport, position, accentHex, firstName, la
                   transform: "translate(-50%, -50%)",
                   textAlign: "center" as const,
                   fontSize: "clamp(8px, 2.2vw, 20px)",
-                  fontWeight: 900, color: accentHex, fontFamily: "Oswald, sans-serif",
+                  fontWeight: 700, color: accentHex, fontFamily: "Oswald, sans-serif",
                 }}>
                   {statsData[f.key]}
                 </div>
