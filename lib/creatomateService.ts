@@ -71,7 +71,7 @@ export interface ReelRenderInput {
   statsEnabled?: boolean;    // include season stats card
 
   // Creative options
-  spotlightStyle?: "arrow" | "circle" | "none"; // text overlay on first 2s of each clip
+  spotlightStyle?: "circle" | "none"; // text overlay on first 2s of each clip
   exportType?: "coach" | "social" | "landscape"; // informational; dimensions driven by width/height
 }
 
@@ -97,10 +97,13 @@ export async function startRender(input: ReelRenderInput): Promise<string> {
   const clipCount = input.clips?.length ?? input.clipUrls?.length ?? 0;
   console.log(`[Creatomate] Starting render — ${clipCount} clips, source ${JSON.stringify(source).length} bytes`);
 
-  // Log first clip's elements to verify circle is included
-  const rootElements = source.elements as Array<Record<string, unknown>> | undefined;
-  const firstClipEl = rootElements?.[1]; // index 0 = title card, index 1 = first clip (or stats card)
-  console.log("FIRST CLIP ELEMENTS (index 1):", JSON.stringify(firstClipEl?.elements ?? firstClipEl, null, 2));
+  // Log first clip composition to verify circle is included
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const firstClipComp = (source.elements as any[])?.find(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (el: any) => el.type === "composition" && el.elements?.some((e: any) => e.type === "video")
+  );
+  console.log("CREATOMATE SOURCE FIRST CLIP:", JSON.stringify(firstClipComp, null, 2));
 
   console.log("FULL SOURCE BEING SENT TO CREATOMATE:", JSON.stringify(source, null, 2));
 
@@ -150,10 +153,11 @@ export async function getRenderStatus(renderId: string): Promise<RenderStatus> {
 // ── Composition Builder ───────────────────────────────────────────────────────
 
 function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
-  console.log("CREATOMATE RECEIVED CLIPS:", input.clips?.map((c) => ({
-    url: c.url?.substring(0, 50),
+  console.log("INPUT CLIPS TO CREATOMATE:", input.clips?.map(c => ({
+    url: c.url?.slice(-30),
     markX: c.markX,
     markY: c.markY,
+    type: typeof c.markX,
   })));
   console.log("CREATOMATE MUSIC INPUT:", input.musicUrl, input.music);
 
@@ -197,6 +201,7 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
   // ── Diagnostics ────────────────────────────────────────────────────────────
   const s          = height / 1080; // scale factor — all sizes are 1080p references
   const isVertical = width === 1080 && height === 1920;
+  const isSocial   = isVertical; // social = vertical (9:16) format
   console.log("CREATOMATE DIMENSIONS:", width, "x", height, "| vertical:", isVertical);
   console.log("MUSIC URL AT BUILD START:", musicUrl ?? "null", "| music id:", music ?? "undefined");
 
@@ -668,47 +673,33 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
   // When spotlightStyle === "none": flat video or composition (legacy behavior)
 
   clips.forEach((clip, idx) => {
-    // ── Diagnostic log ────────────────────────────────────────────────────────
-    console.log(`CLIP ${idx} MARK COORDINATES:`, {
-      markX: clip.markX,
-      markY: clip.markY,
-      clipUrl: clip.url,
-      hasCoordinates: clip.markX !== undefined && clip.markY !== undefined,
-    });
-
     const trimStart    = clip.trimStart != null && clip.trimStart > 0 ? clip.trimStart : 0;
     const clipDur      = clip.duration || 10;
     const rawEnd       = clip.trimEnd  != null && clip.trimEnd  > 0 ? clip.trimEnd  : clipDur;
     const trimDuration = Math.max(rawEnd - trimStart, 1);
     const sectionStart = currentTime;
-    const videoFit     = isVertical ? "cover" : "contain";
+    const videoFit     = isSocial ? "cover" : "contain";
 
     if (spotlightStyle !== "none") {
       // ── 3-layer spotlight composition ─────────────────────────────────────
-      const markXPct = clip.markX ?? 50;
-      const markYPct = clip.markY ?? 38;
+      const markX = typeof clip.markX === "number" ? clip.markX : 50;
+      const markY = typeof clip.markY === "number" ? clip.markY : 38;
 
-      console.log(`BUILDING CLIP ${idx}:`, {
-        url: clip.url,
-        markX: clip.markX,
-        markY: clip.markY,
-        trimStart,
-        trimDuration,
-      });
+      console.log(`CLIP ${idx} CIRCLE POSITION: x=${markX}% y=${markY}%`);
 
       const innerEls: unknown[] = [
-        // Layer 1 — actual video
+        // Layer 1 — main video
         {
           type:       "video",
           track:      1,
           time:       0,
           source:     clip.url,
           trim_start: trimStart,
-          volume:     "0%",
+          volume:     "100%",
           fit:        videoFit,
           fill_color: "#000000",
         },
-        // Layer 2 — freeze frame on top for first 1.5s
+        // Layer 2 — freeze frame (short clip looped for 1.5s to look frozen)
         {
           type:       "video",
           track:      2,
@@ -716,7 +707,7 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
           duration:   1.5,
           source:     clip.url,
           trim_start: 0,
-          trim_end:   0.08,
+          trim_end:   0.1,
           volume:     "0%",
           fit:        videoFit,
           fill_color: "#000000",
@@ -724,17 +715,17 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
             { time: 1.2, duration: 0.3, easing: "ease-in", type: "fade", fade: false },
           ],
         },
-        // Layer 3 — white circle overlay (direct shape element, NOT nested composition)
+        // Layer 3 — white circle overlay
         {
           type:         "shape",
           track:        3,
           time:         0,
           duration:     1.2,
           shape:        "ellipse",
-          x:            `${markXPct}%`,
-          y:            `${markYPct}%`,
+          x:            `${markX}%`,
+          y:            `${markY}%`,
           width:        "8%",
-          height:       "14%",
+          height:       "14.22%",
           x_anchor:     0.5,
           y_anchor:     0.5,
           fill_color:   "rgba(0,0,0,0)",
