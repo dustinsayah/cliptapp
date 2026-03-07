@@ -334,12 +334,14 @@ export default function CustomizePage() {
   const [jerseyColor, setJerseyColor] = useState<string | null>(null);
 
   // ── Spotlight ───────────────────────────────────────────────────────────────
-  const [spotlightStyle, setSpotlightStyle] = useState<"arrow" | "circle" | "none">("arrow");
+  const [spotlightStyle, setSpotlightStyle] = useState<"circle" | "none">("circle");
   const [spotlightStep,  setSpotlightStep]  = useState(0);
   const [spotlightDone,  setSpotlightDone]  = useState(false);
   const [showConfirm,    setShowConfirm]    = useState(false);
   const [markedClips,    setMarkedClips]    = useState<Record<number, { x: number; y: number }>>({});
+  const [videoMetaLoaded, setVideoMetaLoaded] = useState(0);
   const frameVideoRef = useRef<HTMLVideoElement>(null);
+  const spotlightContainerRef = useRef<HTMLDivElement>(null);
 
   // ── Export ──────────────────────────────────────────────────────────────────
   const [exportType,    setExportType]    = useState<"landscape" | "social">("landscape");
@@ -406,8 +408,10 @@ export default function CustomizePage() {
 
     if (prev.settings?.colorAccent) setAccentHex(prev.settings.colorAccent);
 
-    if (prev.spotlightStyle === "arrow" || prev.spotlightStyle === "circle" || prev.spotlightStyle === "none") {
+    if (prev.spotlightStyle === "circle" || prev.spotlightStyle === "none") {
       setSpotlightStyle(prev.spotlightStyle);
+    } else if (prev.spotlightStyle === "arrow") {
+      setSpotlightStyle("circle");
     }
     if (prev.exportType === "landscape" || prev.exportType === "social") {
       setExportType(prev.exportType);
@@ -510,10 +514,6 @@ export default function CustomizePage() {
     const num = parseFloat(val);
     setClips(prev => prev.map(c => c.id === id ? { ...c, [field]: isNaN(num) ? undefined : num } : c));
   }
-  function setClipMark(id: string, x: number, y: number) {
-    setClips(prev => prev.map(c => c.id === id ? { ...c, markX: x, markY: y } : c));
-  }
-
   // ── Spotlight: seek video to first frame when step changes ───────────────────
   useEffect(() => {
     if (frameVideoRef.current) {
@@ -522,59 +522,108 @@ export default function CustomizePage() {
     }
   }, [spotlightStep]);
 
-  function handleSpotlightTap(e: React.MouseEvent<HTMLDivElement>) {
-    const clip = clips[spotlightStep];
-    if (!clip) return;
-
-    const container = e.currentTarget;
+  function getVideoRenderArea() {
     const video = frameVideoRef.current;
-    const containerRect = container.getBoundingClientRect();
+    const container = spotlightContainerRef.current;
+    if (!video || !container) return null;
 
-    let x: number;
-    let y: number;
+    const videoW = video.videoWidth;
+    const videoH = video.videoHeight;
+    if (!videoW || !videoH) return null;
 
-    if (video && video.videoWidth && video.videoHeight) {
-      const videoAspect = video.videoWidth / video.videoHeight;
-      const containerAspect = containerRect.width / containerRect.height;
+    const containerW = container.offsetWidth;
+    const containerH = container.offsetHeight;
+    const videoAspect = videoW / videoH;
+    const containerAspect = containerW / containerH;
 
-      let videoRenderWidth: number;
-      let videoRenderHeight: number;
-      let videoOffsetX: number;
-      let videoOffsetY: number;
+    let renderW: number;
+    let renderH: number;
+    let offsetX: number;
+    let offsetY: number;
 
-      if (videoAspect > containerAspect) {
-        // Wider than container — letterboxed top/bottom
-        videoRenderWidth = containerRect.width;
-        videoRenderHeight = containerRect.width / videoAspect;
-        videoOffsetX = 0;
-        videoOffsetY = (containerRect.height - videoRenderHeight) / 2;
-      } else {
-        // Taller than container — letterboxed left/right
-        videoRenderHeight = containerRect.height;
-        videoRenderWidth = containerRect.height * videoAspect;
-        videoOffsetX = (containerRect.width - videoRenderWidth) / 2;
-        videoOffsetY = 0;
-      }
-
-      const tapX = e.clientX - containerRect.left - videoOffsetX;
-      const tapY = e.clientY - containerRect.top - videoOffsetY;
-
-      // Ignore taps outside the actual video frame
-      if (tapX < 0 || tapY < 0 || tapX > videoRenderWidth || tapY > videoRenderHeight) return;
-
-      x = (tapX / videoRenderWidth) * 100;
-      y = (tapY / videoRenderHeight) * 100;
+    if (videoAspect > containerAspect) {
+      // Wider than container — pillarbox top and bottom (landscape video in landscape container)
+      renderW = containerW;
+      renderH = containerW / videoAspect;
+      offsetX = 0;
+      offsetY = (containerH - renderH) / 2;
     } else {
-      // Fallback if video dimensions not available
-      x = ((e.clientX - containerRect.left) / containerRect.width) * 100;
-      y = ((e.clientY - containerRect.top) / containerRect.height) * 100;
+      // Taller than container — letterbox left and right (portrait video in landscape container)
+      renderH = containerH;
+      renderW = containerH * videoAspect;
+      offsetX = (containerW - renderW) / 2;
+      offsetY = 0;
     }
 
-    // Save the mark to clips state and to markedClips
-    setClipMark(clip.id, x, y);
+    return { renderW, renderH, offsetX, offsetY, containerW, containerH };
+  }
+
+  function handleTap(e: React.MouseEvent<HTMLDivElement>) {
+    const container = e.currentTarget;
+    const video = frameVideoRef.current;
+    if (!video) return;
+
+    const containerRect = container.getBoundingClientRect();
+    const videoW = video.videoWidth;
+    const videoH = video.videoHeight;
+
+    if (!videoW || !videoH) {
+      // Fallback if dimensions not loaded yet — use raw container percentage
+      const x = ((e.clientX - containerRect.left) / containerRect.width) * 100;
+      const y = ((e.clientY - containerRect.top) / containerRect.height) * 100;
+      saveMark(x, y);
+      return;
+    }
+
+    const containerW = containerRect.width;
+    const containerH = containerRect.height;
+    const videoAspect = videoW / videoH;
+    const containerAspect = containerW / containerH;
+
+    let renderW: number;
+    let renderH: number;
+    let offsetX: number;
+    let offsetY: number;
+
+    if (videoAspect > containerAspect) {
+      renderW = containerW;
+      renderH = containerW / videoAspect;
+      offsetX = 0;
+      offsetY = (containerH - renderH) / 2;
+    } else {
+      renderH = containerH;
+      renderW = containerH * videoAspect;
+      offsetX = (containerW - renderW) / 2;
+      offsetY = 0;
+    }
+
+    const tapX = e.clientX - containerRect.left;
+    const tapY = e.clientY - containerRect.top;
+
+    // Ignore taps in the black bars
+    if (tapX < offsetX || tapX > offsetX + renderW || tapY < offsetY || tapY > offsetY + renderH) return;
+
+    const x = ((tapX - offsetX) / renderW) * 100;
+    const y = ((tapY - offsetY) / renderH) * 100;
+
+    console.log("TAP DEBUG:", {
+      videoW, videoH, videoAspect,
+      containerW, containerH, containerAspect,
+      renderW, renderH, offsetX, offsetY,
+      tapX, tapY, finalX: x, finalY: y,
+    });
+
+    saveMark(x, y);
+  }
+
+  function saveMark(x: number, y: number) {
+    const updatedClips = [...clips];
+    updatedClips[spotlightStep] = { ...updatedClips[spotlightStep], markX: x, markY: y };
+    setClips(updatedClips);
     setMarkedClips(prev => ({ ...prev, [spotlightStep]: { x, y } }));
 
-    // Show green confirmation then auto-advance
+    console.log("SAVED MARK:", { x, y, clipIndex: spotlightStep });
+
     setShowConfirm(true);
     setTimeout(() => {
       setShowConfirm(false);
@@ -973,7 +1022,7 @@ export default function CustomizePage() {
         >
           {/* Style selector */}
           <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
-            {(["arrow", "circle", "none"] as const).map(s => (
+            {(["circle", "none"] as const).map(s => (
               <button key={s} type="button" onClick={() => setSpotlightStyle(s)}
                 style={{
                   flex: 1, padding: "10px 8px", borderRadius: 10, border: "2px solid",
@@ -983,7 +1032,7 @@ export default function CustomizePage() {
                   background:  spotlightStyle === s ? `${accentHex}20` : "#0D1F38",
                   color: spotlightStyle === s ? "#FFFFFF" : "#64748b",
                 }}>
-                {s === "arrow" ? "⬇ Arrow" : s === "circle" ? "○ Circle" : "✂ None"}
+                {s === "circle" ? "○ Circle" : "✂ None"}
               </button>
             ))}
           </div>
@@ -1016,7 +1065,8 @@ export default function CustomizePage() {
 
                 {/* Frame + tap area */}
                 <div
-                  onClick={handleSpotlightTap}
+                  ref={spotlightContainerRef}
+                  onClick={handleTap}
                   style={{
                     position: "relative", width: "100%",
                     height: 400, display: "flex", alignItems: "center", justifyContent: "center",
@@ -1031,21 +1081,34 @@ export default function CustomizePage() {
                     playsInline
                     preload="metadata"
                     ref={frameVideoRef}
+                    onLoadedMetadata={() => {
+                      if (frameVideoRef.current) {
+                        frameVideoRef.current.currentTime = 0.1;
+                        frameVideoRef.current.pause();
+                      }
+                      setVideoMetaLoaded(v => v + 1);
+                    }}
                     style={{ maxWidth: "100%", maxHeight: "100%", width: "auto", height: "auto", objectFit: "contain", display: "block", pointerEvents: "none" }}
                   />
-                  {/* Circle at tapped position */}
-                  {markedClips[spotlightStep] && (
-                    <div style={{
-                      position: "absolute",
-                      left: `${markedClips[spotlightStep].x}%`,
-                      top: `${markedClips[spotlightStep].y}%`,
-                      width: 56, height: 56, borderRadius: "50%",
-                      border: "3px solid white",
-                      boxShadow: "0 0 0 2px rgba(0,0,0,0.5)",
-                      transform: "translate(-50%, -50%)",
-                      pointerEvents: "none",
-                    }} />
-                  )}
+                  {/* Circle at tapped position — computed to account for letterbox offset */}
+                  {markedClips[spotlightStep] && (() => {
+                    const area = getVideoRenderArea();
+                    if (!area) return null;
+                    const circleX = area.offsetX + (markedClips[spotlightStep].x / 100) * area.renderW;
+                    const circleY = area.offsetY + (markedClips[spotlightStep].y / 100) * area.renderH;
+                    return (
+                      <div style={{
+                        position: "absolute",
+                        left: circleX,
+                        top: circleY,
+                        transform: "translate(-50%, -50%)",
+                        width: 56, height: 56, borderRadius: "50%",
+                        border: "3px solid white",
+                        boxShadow: "0 0 0 2px rgba(0,0,0,0.5)",
+                        pointerEvents: "none",
+                      }} />
+                    );
+                  })()}
                   {/* Prompt when not yet tapped */}
                   {!markedClips[spotlightStep] && (
                     <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>

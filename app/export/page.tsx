@@ -2629,9 +2629,7 @@ export default function ExportPage() {
                   },
                   {
                     label: "Spotlight",
-                    value: spotlightStyleSetting === "circle" ? "Circle overlay"
-                         : spotlightStyleSetting === "arrow"  ? "Arrow overlay"
-                         : "None",
+                    value: spotlightStyleSetting === "circle" ? "Circle overlay" : "None",
                     sub: spotlightStyleSetting !== "none" ? "Player identified in each clip" : "No player overlay",
                   },
                   {
