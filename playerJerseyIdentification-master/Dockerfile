@@ -25,22 +25,16 @@ ENV DENO_DIR=/tmp/deno
 WORKDIR /app
 
 COPY requirements.txt /app/requirements.txt
-RUN python -m pip install --upgrade pip && pip install -r /app/requirements.txt
+RUN python -m pip install --upgrade pip \
+    && pip install --no-cache-dir torch==2.1.0+cpu torchvision==0.16.0+cpu --index-url https://download.pytorch.org/whl/cpu \
+    && pip install --no-cache-dir -r /app/requirements.txt
 
-# bundle models so they don't download at runtime
-# person seg: download standard yolov8n-seg and store under the expected filename
-RUN python -c "from ultralytics import YOLO; YOLO('yolov8n-seg.pt')" \
+# bundle the person seg model so it doesn't download at runtime
+RUN python -c "from ultralytics import YOLO; YOLO('yolo26n-seg.pt')" \
     && mkdir -p /app/app/model \
-    && mv yolov8n-seg.pt /app/app/model/yolo26n-seg.pt
-
-# jersey number model: download yolo11m as base; replace with trained weights at build time
-# if app/model/jersey_number_yolo11m.pt exists it will be copied in the COPY step below
-RUN python -c "from ultralytics import YOLO; YOLO('yolo11m.pt')" \
-    && mv yolo11m.pt /app/app/model/jersey_number_yolo11m.pt
+    && mv yolo26n-seg.pt /app/app/model/yolo26n-seg.pt
 
 COPY app /app/app
-# if a trained jersey number model was supplied in app/model/, it overwrites the placeholder
-RUN ls -lh /app/app/model/
 COPY asgi.py /app/asgi.py
 
 EXPOSE 8000
