@@ -161,10 +161,17 @@ export default function TestDetectionPage() {
     const startTime = Date.now();
 
     try {
-      const response = await fetch(`${apiBaseUrl}/detect`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody),
+      const response = await fetch('/api/detect-proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apiBaseUrl,
+          videoUrl,
+          jerseyNumber: Number(jerseyNumber),
+          jerseyColor,
+          sport,
+          position: position || undefined
+        })
       });
 
       const data: unknown = await response.json();
@@ -263,6 +270,9 @@ export default function TestDetectionPage() {
               onChange={(e) => setVideoUrl(e.target.value)}
               placeholder="Paste Cloudinary URL or direct video URL"
             />
+            <p style={{ color: "#6B7280", fontSize: 12, margin: "6px 0 0" }}>
+              Use a direct video URL (Cloudinary, MP4 link) — YouTube URLs are not supported
+            </p>
           </div>
 
           {/* Jersey Number + Jersey Color */}
