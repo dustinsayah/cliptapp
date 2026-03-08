@@ -712,11 +712,11 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
       console.log(`CLIP ${idx} at timeline time ${sectionStart}, circle at x:${markX}% y:${markY}%`);
 
       const innerEls: unknown[] = [
-        // Layer 1 — main video
+        // Layer 1 — main video (delayed 2s so freeze frame shows first)
         {
           type:       "video",
           track:      1,
-          time:       0,
+          time:       2,
           source:     clip.url,
           trim_start: trimStart,
           volume:     "100%",
@@ -746,7 +746,7 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
         type:     "composition",
         track:    1,
         time:     sectionStart,
-        duration: trimDuration,
+        duration: trimDuration + 2,
         elements: innerEls,
       };
       if (idx > 0) clipEl.transition = clipTransition;
@@ -772,8 +772,7 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
         height:       "14.22%",
         x_anchor:     "50%",
         y_anchor:     "50%",
-        fill_color:   "#000000",
-        opacity:      0,
+        fill_color:   "transparent",
         stroke_color: "#FF0000",
         stroke_width: 10,
         animations: [
@@ -849,7 +848,7 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
       elements.push(clipEl);
     }
 
-    currentTime = sectionStart + trimDuration;
+    currentTime = sectionStart + trimDuration + (spotlightStyle !== "none" ? 2 : 0);
   });
 
   // ── 4. END CARD (5s) — rebuilt layout ────────────────────────────────────
