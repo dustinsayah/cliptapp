@@ -681,11 +681,11 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
     const videoFit     = isSocial ? "cover" : "contain";
 
     if (spotlightStyle !== "none") {
-      // ── 3-layer spotlight composition ─────────────────────────────────────
+      // ── Spotlight composition — video and freeze frame ONLY ────────────────
       const markX = typeof clip.markX === "number" ? clip.markX : 50;
       const markY = typeof clip.markY === "number" ? clip.markY : 38;
 
-      console.log(`CLIP ${idx} CIRCLE POSITION: x=${markX}% y=${markY}%`);
+      console.log(`CLIP ${idx} at timeline time ${sectionStart}, circle at x:${markX}% y:${markY}%`);
 
       const innerEls: unknown[] = [
         // Layer 1 — main video
@@ -715,64 +715,7 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
             { time: 1.2, duration: 0.3, easing: "ease-in", type: "fade", fade: false },
           ],
         },
-        // Layer 3 — white circle overlay
-        {
-          type:         "shape",
-          track:        3,
-          time:         0,
-          duration:     1.2,
-          shape:        "ellipse",
-          x:            `${markX}%`,
-          y:            `${markY}%`,
-          width:        "8%",
-          height:       "14.22%",
-          x_anchor:     0.5,
-          y_anchor:     0.5,
-          fill_color:   "rgba(0,0,0,0)",
-          stroke_color: "#FFFFFF",
-          stroke_width: 4,
-          animations: [
-            {
-              time:        0,
-              duration:    0.3,
-              easing:      "ease-out",
-              type:        "scale",
-              fade:        false,
-              start_scale: "150%",
-              end_scale:   "100%",
-            },
-            {
-              time:     0.9,
-              duration: 0.3,
-              easing:   "ease-in",
-              type:     "fade",
-              fade:     true,
-            },
-          ],
-        },
       ];
-
-      // Optional jersey overlay (track 4)
-      if (jerseyOverlay && jerseyNumber) {
-        innerEls.push({
-          type:                 "text",
-          track:                4,
-          text:                 `#${jerseyNumber}`,
-          font_family:          "Oswald",
-          font_size:            Math.round(48 * s),
-          font_weight:          "700",
-          fill_color:           accentHex,
-          background_color:     "rgba(0,0,0,0.6)",
-          background_x_padding: "3%",
-          background_y_padding: "2%",
-          x:            "5%",
-          y:            "90%",
-          x_anchor:     "0%",
-          y_anchor:     "50%",
-          shadow_color: "rgba(0,0,0,0)",
-          shadow_blur:  0,
-        });
-      }
 
       const clipEl: Record<string, unknown> = {
         type:     "composition",
@@ -783,6 +726,49 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
       };
       if (idx > 0) clipEl.transition = clipTransition;
       elements.push(clipEl);
+
+      // Circle — ROOT LEVEL element timed to match this clip
+      console.log("CIRCLE IS ROOT LEVEL:", {
+        clipIndex: idx,
+        time: sectionStart,
+        x: markX,
+        y: markY,
+        track: 5,
+      });
+      elements.push({
+        type:         "shape",
+        track:        5,
+        time:         sectionStart,
+        duration:     1.2,
+        shape:        "ellipse",
+        x:            `${markX}%`,
+        y:            `${markY}%`,
+        width:        "8%",
+        height:       "14.22%",
+        x_anchor:     0.5,
+        y_anchor:     0.5,
+        fill_color:   "rgba(0,0,0,0)",
+        stroke_color: "#FFFFFF",
+        stroke_width: 4,
+        animations: [
+          {
+            time:        0,
+            duration:    0.3,
+            easing:      "ease-out",
+            type:        "scale",
+            fade:        false,
+            start_scale: "150%",
+            end_scale:   "100%",
+          },
+          {
+            time:     0.9,
+            duration: 0.3,
+            easing:   "ease-in",
+            type:     "fade",
+            fade:     true,
+          },
+        ],
+      });
 
     } else {
       // ── Legacy path: no spotlight ─────────────────────────────────────────
