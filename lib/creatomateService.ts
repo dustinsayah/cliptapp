@@ -733,11 +733,11 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
         time: sectionStart,
         x: markX,
         y: markY,
-        track: 0,
+        track: 999,
       });
       elements.push({
         type:         "shape",
-        track:        0,
+        track:        999,
         time:         sectionStart,
         duration:     1.2,
         shape:        "ellipse",
