@@ -107,6 +107,30 @@ export async function startRender(input: ReelRenderInput): Promise<string> {
 
   console.log("FULL SOURCE BEING SENT TO CREATOMATE:", JSON.stringify(source, null, 2));
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const firstCircle = (source.elements as any[])?.find((el: any) => el.shape === "ellipse");
+  console.log("CIRCLE VERIFICATION:", {
+    fill_color:   firstCircle?.fill_color,
+    opacity:      firstCircle?.opacity,
+    x_anchor:     firstCircle?.x_anchor,
+    stroke_color: firstCircle?.stroke_color,
+    stroke_width: firstCircle?.stroke_width,
+  });
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const firstClipElements = (source.elements as any[])?.find(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (el: any) => el.type === "composition" && el.elements?.some((e: any) => e.type === "video")
+  )?.elements;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const freezeFrame = firstClipElements?.find((e: any) => e.track === 2 && e.type === "video");
+  console.log("FREEZE FRAME VERIFICATION:", {
+    player_speed:  freezeFrame?.player_speed,
+    trim_end:      freezeFrame?.trim_end,
+    trim_duration: freezeFrame?.trim_duration,
+    duration:      freezeFrame?.duration,
+  });
+
   const response = await fetch(`${CREATOMATE_API}/renders`, {
     method: "POST",
     headers: {
@@ -699,20 +723,21 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
           fit:        videoFit,
           fill_color: "#000000",
         },
-        // Layer 2 — freeze frame (short clip looped for 1.5s to look frozen)
+        // Layer 2 — freeze frame (held at first frame for 2s, then fades out)
         {
-          type:       "video",
-          track:      2,
-          time:       0,
-          duration:   1.5,
-          source:     clip.url,
-          trim_start: 0,
-          trim_end:   0.1,
-          volume:     "0%",
-          fit:        videoFit,
-          fill_color: "#000000",
+          type:          "video",
+          track:         2,
+          time:          0,
+          duration:      2,
+          source:        clip.url,
+          trim_start:    0,
+          trim_duration: 0.1,
+          volume:        "0%",
+          fit:           videoFit,
+          fill_color:    "#000000",
+          player_speed:  0,
           animations: [
-            { time: 1.2, duration: 0.3, easing: "ease-in", type: "fade", fade: false },
+            { time: 1.7, duration: 0.3, easing: "ease-in", type: "fade", fade: false },
           ],
         },
       ];
@@ -739,17 +764,18 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
         type:         "shape",
         track:        999,
         time:         sectionStart,
-        duration:     1.2,
+        duration:     1.8,
         shape:        "ellipse",
         x:            `${markX}%`,
         y:            `${markY}%`,
         width:        "8%",
         height:       "14.22%",
-        x_anchor:     0.5,
-        y_anchor:     0.5,
-        fill_color:   "rgba(0,0,0,0)",
-        stroke_color: "#FFFFFF",
-        stroke_width: 4,
+        x_anchor:     "50%",
+        y_anchor:     "50%",
+        fill_color:   "#000000",
+        opacity:      0,
+        stroke_color: "#FF0000",
+        stroke_width: 10,
         animations: [
           {
             time:        0,
@@ -761,8 +787,8 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
             end_scale:   "100%",
           },
           {
-            time:     0.9,
-            duration: 0.3,
+            time:     1.4,
+            duration: 0.4,
             easing:   "ease-in",
             type:     "fade",
             fade:     true,
