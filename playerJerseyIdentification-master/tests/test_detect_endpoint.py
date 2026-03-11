@@ -26,7 +26,7 @@ class TestDetectSuccess:
         assert isinstance(data, list)
         assert len(data) > 0
 
-    def test_each_detection_has_timestamp_and_confidence(
+    def test_each_detection_has_timestamp_confidence_and_bbox(
         self, client: TestClient, basketball_payload: dict[str, Any]
     ) -> None:
         response = client.post("/detect", json=basketball_payload)
@@ -37,15 +37,18 @@ class TestDetectSuccess:
             assert isinstance(item["timestamp"], (int, float))
             assert isinstance(item["confidence"], (int, float))
             assert 0.0 <= item["confidence"] <= 1.0
+            assert set(item["bbox"].keys()) == {
+                "x1", "y1", "x2", "y2", "x1_pct", "y1_pct", "x2_pct", "y2_pct"
+            }
 
-    def test_detection_output_matches_integration_guide_format(
+    def test_detection_output_matches_response_schema(
         self, client: TestClient, basketball_payload: dict[str, Any]
     ) -> None:
-        """Output must be exactly [{ timestamp, confidence }] — nothing extra."""
+        """Output must match the detection schema including bbox percentages."""
         response = client.post("/detect", json=basketball_payload)
         data = response.json()
         for item in data:
-            assert set(item.keys()) == {"timestamp", "confidence"}
+            assert set(item.keys()) == {"timestamp", "confidence", "bbox"}
 
     def test_snake_case_request_works(
         self, client: TestClient, snake_case_payload: dict[str, Any]
@@ -181,7 +184,7 @@ class TestIntegrationGuideExamples:
         assert isinstance(data, list)
         # Each item must match DetectedFrame shape
         for item in data:
-            assert set(item.keys()) == {"timestamp", "confidence"}
+            assert set(item.keys()) == {"timestamp", "confidence", "bbox"}
 
     def test_guide_readme_example_payload(self, client: TestClient) -> None:
         """From README.md example."""

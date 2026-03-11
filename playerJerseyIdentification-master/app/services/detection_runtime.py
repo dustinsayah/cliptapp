@@ -174,8 +174,13 @@ class DetectedFrame:
     y1: float = 0.0
     x2: float = 0.0
     y2: float = 0.0
+    frame_w: float = 0.0
+    frame_h: float = 0.0
 
     def to_dict(self) -> dict:
+        # Calculate percentage coordinates (0-100%)
+        def pct(val, dim):
+            return round(100.0 * val / dim, 2) if dim else 0.0
         return {
             "timestamp": float(self.timestamp),
             "confidence": float(self.confidence),
@@ -184,6 +189,10 @@ class DetectedFrame:
                 "y1": round(self.y1),
                 "x2": round(self.x2),
                 "y2": round(self.y2),
+                "x1_pct": pct(self.x1, self.frame_w),
+                "y1_pct": pct(self.y1, self.frame_h),
+                "x2_pct": pct(self.x2, self.frame_w),
+                "y2_pct": pct(self.y2, self.frame_h),
             },
         }
 
@@ -219,10 +228,6 @@ class PipelineSettings:
     position_prior_weight: float = field(
         default_factory=lambda: _env_float("POSITION_PRIOR_WEIGHT", 0.10)
     )
-    strong_prior_threshold: float = field(
-        default_factory=lambda: _env_float("STRONG_PRIOR_THRESHOLD", 0.85)
-    )
-
     hsv_tolerance_h: int = field(default_factory=lambda: _env_int("HSV_TOLERANCE_H", 20))
     hsv_tolerance_sv: int = field(default_factory=lambda: _env_int("HSV_TOLERANCE_SV", 60))
     roi_min_area: int = field(default_factory=lambda: _env_int("ROI_MIN_AREA", 350))
@@ -271,8 +276,8 @@ class PipelineSettings:
     yt_dlp_js_runtimes: str = field(
         default_factory=lambda: _env_optional_str("YT_DLP_JS_RUNTIMES", "deno") or "deno"
     )
-    youtube_clip_seconds: int = field(
-        default_factory=lambda: _env_int("YOUTUBE_CLIP_SECONDS", 120)
+    youtube_clip_seconds: int | None = field(
+        default_factory=lambda: _env_optional_int("YOUTUBE_CLIP_SECONDS")
     )
 
     pipeline_workers: int = field(
@@ -281,14 +286,8 @@ class PipelineSettings:
     skip_similarity_threshold: float = field(
         default_factory=lambda: _env_float("SKIP_SIMILARITY_THRESHOLD", 0.97)
     )
-    adaptive_fps_enabled: bool = field(
-        default_factory=lambda: _env_bool("ADAPTIVE_FPS_ENABLED", True)
-    )
-    adaptive_fps_multiplier: int = field(
-        default_factory=lambda: _env_int("ADAPTIVE_FPS_MULTIPLIER", 4)
-    )
     early_exit_consecutive: int = field(
-        default_factory=lambda: _env_int("EARLY_EXIT_CONSECUTIVE", 10)
+        default_factory=lambda: _env_int("EARLY_EXIT_CONSECUTIVE", 0)
     )
     detection_strategy: str = field(
         default_factory=lambda: _env_optional_str("DETECTION_STRATEGY", "detection_first")
@@ -324,3 +323,7 @@ class PipelineSettings:
             raise ValueError("MAX_ROIS_PER_FRAME must be greater than 0.")
         if not (0.0 < self.roi_max_area_ratio <= 1.0):
             raise ValueError("ROI_MAX_AREA_RATIO must be in (0, 1].")
+        if self.youtube_clip_seconds is not None and self.youtube_clip_seconds <= 0:
+            raise ValueError("YOUTUBE_CLIP_SECONDS must be greater than 0 when set.")
+        if self.early_exit_consecutive < 0:
+            raise ValueError("EARLY_EXIT_CONSECUTIVE cannot be negative.")

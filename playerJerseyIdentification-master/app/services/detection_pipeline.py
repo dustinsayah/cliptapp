@@ -127,14 +127,24 @@ def _download_youtube_video(
 ) -> Path:
     output_template = str(work_dir / "youtube_input.%(ext)s")
     normalized_url = _normalize_youtube_url(video_url)
-    clip_seconds = int(settings.youtube_clip_seconds)
-
+    clip_seconds = settings.youtube_clip_seconds
     command = [
         settings.yt_dlp_binary,
         "--js-runtimes",
         settings.yt_dlp_js_runtimes,
-        "--download-sections",
-        f"*0-{clip_seconds}",
+    ]
+    if clip_seconds is not None:
+        command.extend([
+            "--download-sections",
+            f"*0-{clip_seconds}",
+        ])
+    command.extend([
+        "--retries",
+        "3",
+        "--fragment-retries",
+        "3",
+        "--concurrent-fragments",
+        "4",
         "--ffmpeg-location",
         settings.ffmpeg_binary,
         "-f",
@@ -144,11 +154,11 @@ def _download_youtube_video(
         "-o",
         output_template,
         normalized_url,
-    ]
+    ])
     LOGGER.info("yt-dlp command: %s", " ".join(command))
 
-    # yt-dlp can be slow on HLS streams
-    timeout_seconds = max(600, clip_seconds * 10)
+    # yt-dlp can be slow on HLS streams, especially for full games.
+    timeout_seconds = max(600, (clip_seconds * 10) if clip_seconds is not None else 3600)
     try:
         result = subprocess.run(
             command, capture_output=True, text=True, check=False,
@@ -196,9 +206,7 @@ def _resolve_video_source(
         source = Path(video_path).expanduser().resolve()
         if not source.exists():
             raise FileNotFoundError(f"video_path does not exist: {source}")
-        target = work_dir / f"input_local{_safe_extension(source.name)}"
-        shutil.copy2(source, target)
-        return target
+        return source
 
     if not video_url:
         raise ValueError("One of video_url, video_path, or video_bytes must be provided.")
@@ -216,9 +224,7 @@ def _resolve_video_source(
     source = Path(video_url).expanduser().resolve()
     if not source.exists():
         raise FileNotFoundError(f"video_url path does not exist: {source}")
-    target = work_dir / f"input_local{_safe_extension(source.name)}"
-    shutil.copy2(source, target)
-    return target
+    return source
 
 
 def _get_video_duration_seconds(video_path: Path, settings: PipelineSettings) -> float:
@@ -649,6 +655,30 @@ def _filter_persons_by_color(
     return filtered
 
 
+def _color_filter_persons_for_frame(
+    frame_bgr: np.ndarray,
+    persons: list[PersonBox],
+    jersey_color: str,
+    settings: PipelineSettings,
+    min_person_crop_height: int,
+) -> tuple[list[PersonBox], dict[int, float]]:
+    filtered_persons = [
+        person for person in persons if (person.y2 - person.y1) >= min_person_crop_height
+    ]
+    if not filtered_persons:
+        return [], {}
+
+    color_ratios = {
+        idx: _compute_color_ratio_in_box(frame_bgr, person, jersey_color, settings)
+        for idx, person in enumerate(filtered_persons)
+    }
+    matching_persons = [
+        person for idx, person in enumerate(filtered_persons)
+        if color_ratios.get(idx, 0.0) >= 0.15
+    ]
+    return matching_persons, color_ratios
+
+
 def _score_candidates(
     candidates: list[NumberCandidate],
     *,
@@ -728,6 +758,16 @@ def detect_jersey_in_frames(
             num_workers,
             settings.detection_strategy,
         )
+        if settings.youtube_clip_seconds is not None:
+            LOGGER.info(
+                "YouTube input clipping enabled for first %ss",
+                settings.youtube_clip_seconds,
+            )
+        if settings.early_exit_consecutive > 0:
+            LOGGER.info(
+                "Early exit optimization enabled after %s consecutive detections",
+                settings.early_exit_consecutive,
+            )
 
         use_detection_first = (
             settings.detection_strategy.strip().lower() == "detection_first"
@@ -777,9 +817,23 @@ def detect_jersey_in_frames(
                     # person seg -> colour filter -> number model
                     min_h = settings.min_person_crop_height
                     all_persons = detector.detect_persons_batch(frame_images)
+                    color_filter_futures = [
+                        pool.submit(
+                            _color_filter_persons_for_frame,
+                            frame_image,
+                            persons,
+                            jersey_color,
+                            settings,
+                            min_h,
+                        )
+                        for frame_image, persons in zip(frame_images, all_persons)
+                    ]
+                    color_filter_results = [
+                        future.result() for future in color_filter_futures
+                    ]
 
-                    for frame, frame_image, persons in zip(
-                        frames_to_process, frame_images, all_persons
+                    for frame, frame_image, persons, color_filter_result in zip(
+                        frames_to_process, frame_images, all_persons, color_filter_results
                     ):
                         if early_exit:
                             break
@@ -789,11 +843,7 @@ def detect_jersey_in_frames(
                         color_ratios: dict[int, float] = {}
                         candidates: list[NumberCandidate] = []
 
-                        # Filter out tiny persons where jersey numbers are unreadable
-                        persons = [
-                            p for p in persons
-                            if (p.y2 - p.y1) >= min_h
-                        ]
+                        matching_persons, color_ratios = color_filter_result
                         if not persons:
                             consecutive_detections = 0
                             if collect_debug:
@@ -803,15 +853,6 @@ def detect_jersey_in_frames(
                                 ))
                             continue
 
-                        # Step 2: Compute color ratios once per person
-                        for idx, person in enumerate(persons):
-                            color_ratios[idx] = _compute_color_ratio_in_box(
-                                frame_image, person, jersey_color, settings
-                            )
-                        matching_persons = [
-                            p for idx, p in enumerate(persons)
-                            if color_ratios.get(idx, 0.0) >= 0.15
-                        ]
                         if not matching_persons:
                             consecutive_detections = 0
                             if collect_debug:
@@ -893,6 +934,8 @@ def detect_jersey_in_frames(
                                     y1=best_cand.y1,
                                     x2=best_cand.x2,
                                     y2=best_cand.y2,
+                                    frame_w=frame_w,
+                                    frame_h=frame_h,
                                 )
                             )
                             batch_detection_count += 1
@@ -978,6 +1021,8 @@ def detect_jersey_in_frames(
                                     y1=best_cand.y1,
                                     x2=best_cand.x2,
                                     y2=best_cand.y2,
+                                    frame_w=frame_w,
+                                    frame_h=frame_h,
                                 )
                             )
                             batch_detection_count += 1

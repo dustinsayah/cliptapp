@@ -21,14 +21,17 @@ class TestCliptBackendFlow:
         """Validate output matches what scoreAndRankClips() expects."""
         assert isinstance(response_data, list)
         for frame in response_data:
-            # Must have exactly these two keys
-            assert set(frame.keys()) == {"timestamp", "confidence"}
+            assert set(frame.keys()) == {"timestamp", "confidence", "bbox"}
             # timestamp must be a non-negative float (seconds into video)
             assert isinstance(frame["timestamp"], (int, float))
             assert frame["timestamp"] >= 0.0
             # confidence must be 0.0–1.0
             assert isinstance(frame["confidence"], (int, float))
             assert 0.0 <= frame["confidence"] <= 1.0
+            # bbox must include both absolute and normalized coordinates
+            assert set(frame["bbox"].keys()) == {
+                "x1", "y1", "x2", "y2", "x1_pct", "y1_pct", "x2_pct", "y2_pct"
+            }
 
         # Timestamps should be sorted (pipeline dedupes and sorts)
         timestamps = [f["timestamp"] for f in response_data]
@@ -127,8 +130,4 @@ class TestSportSpecific:
             "jerseyColor": "white",
             "sport": bad_sport,
         })
-        # Empty string fails at schema; unsupported sport names pass schema
-        # but would fail in pipeline validation. Since we mock the pipeline,
-        # only empty string reliably returns 400 from the schema layer.
-        if not bad_sport.strip():
-            assert response.status_code == 400
+        assert response.status_code == 400

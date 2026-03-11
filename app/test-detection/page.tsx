@@ -104,7 +104,6 @@ const LABEL: React.CSSProperties = {
 export default function TestDetectionPage() {
   const ACCENT = "#00A3FF";
 
-  const [apiBaseUrl, setApiBaseUrl] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
   const [jerseyNumber, setJerseyNumber] = useState("");
   const [jerseyColor, setJerseyColor] = useState("");
@@ -121,16 +120,6 @@ export default function TestDetectionPage() {
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const rawResponse = useRef<unknown>(null);
-
-  // Persist API URL
-  useEffect(() => {
-    const saved = localStorage.getItem("detection_api_url");
-    if (saved) setApiBaseUrl(saved);
-  }, []);
-
-  useEffect(() => {
-    if (apiBaseUrl) localStorage.setItem("detection_api_url", apiBaseUrl);
-  }, [apiBaseUrl]);
 
   // Timer
   useEffect(() => {
@@ -161,17 +150,10 @@ export default function TestDetectionPage() {
     const startTime = Date.now();
 
     try {
-      const response = await fetch('/api/detect-proxy', {
+      const response = await fetch('/api/detect-jersey', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          apiBaseUrl,
-          videoUrl,
-          jerseyNumber: Number(jerseyNumber),
-          jerseyColor,
-          sport,
-          position: position || undefined
-        })
+        body: JSON.stringify(requestBody),
       });
 
       const data: unknown = await response.json();
@@ -200,7 +182,7 @@ export default function TestDetectionPage() {
 
   const copyCode = () => {
     navigator.clipboard.writeText(
-      `POST ${apiBaseUrl}/detect\n${JSON.stringify(requestBody, null, 2)}`
+      `POST /api/detect-jersey\n${JSON.stringify(requestBody, null, 2)}`
     );
     setCodeCopied(true);
     setTimeout(() => setCodeCopied(false), 2000);
@@ -212,7 +194,7 @@ export default function TestDetectionPage() {
     rawResponse.current = null;
   };
 
-  const canRun = apiBaseUrl.trim() && videoUrl.trim() && jerseyNumber !== "" && jerseyColor.trim();
+  const canRun = videoUrl.trim() && jerseyNumber !== "" && jerseyColor.trim();
 
   // Stats
   const bestConf =
@@ -234,7 +216,7 @@ export default function TestDetectionPage() {
             Jersey Detection Tester
           </h1>
           <p style={{ color: "#6B7280", fontSize: 14, margin: "6px 0 0" }}>
-            Internal tool — test Ali&apos;s API against real game footage
+            Internal tool — routes through /api/detect-jersey → Railway
           </p>
         </div>
 
@@ -248,19 +230,7 @@ export default function TestDetectionPage() {
             marginBottom: 20,
           }}
         >
-          {/* API Base URL */}
-          <div style={{ marginBottom: 16 }}>
-            <label style={LABEL}>API Base URL</label>
-            <input
-              style={INPUT}
-              type="text"
-              value={apiBaseUrl}
-              onChange={(e) => setApiBaseUrl(e.target.value)}
-              placeholder="https://your-app.up.railway.app"
-            />
-          </div>
-
-          {/* Video URL */}
+            {/* Video URL */}
           <div style={{ marginBottom: 16 }}>
             <label style={LABEL}>Video URL</label>
             <input
@@ -634,7 +604,7 @@ export default function TestDetectionPage() {
                     margin: 0,
                   }}
                 >
-                  {`POST ${apiBaseUrl}/detect\n${JSON.stringify(requestBody, null, 2)}`}
+                  {`POST /api/detect-jersey\n${JSON.stringify(requestBody, null, 2)}`}
                 </pre>
                 <button
                   onClick={copyCode}

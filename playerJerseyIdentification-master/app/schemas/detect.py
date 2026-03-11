@@ -15,12 +15,18 @@ from pydantic import (
     model_validator,
 )
 
+SUPPORTED_SPORTS = {"basketball", "football", "lacrosse"}
+
 
 class BBox(BaseModel):
     x1: int
     y1: int
     x2: int
     y2: int
+    x1_pct: float
+    y1_pct: float
+    x2_pct: float
+    y2_pct: float
 
 
 class DetectionFrame(BaseModel):
@@ -62,12 +68,23 @@ class DetectRequest(BaseModel):
             raise ValueError("'jersey_number' must be between 0 and 99.")
         return parsed
 
-    @field_validator("jersey_color", "sport", mode="before")
+    @field_validator("jersey_color", mode="before")
     @classmethod
     def _require_non_empty_string(cls, value: Any, info: ValidationInfo) -> str:
         if not isinstance(value, str) or not value.strip():
             raise ValueError(f"'{info.field_name}' must be a non-empty string.")
         return value.strip()
+
+    @field_validator("sport", mode="before")
+    @classmethod
+    def _validate_sport(cls, value: Any) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("'sport' must be a non-empty string.")
+        stripped = value.strip()
+        normalized = stripped.lower()
+        if normalized not in SUPPORTED_SPORTS:
+            raise ValueError("'sport' must be one of: basketball, football, lacrosse.")
+        return stripped
 
     @field_validator("position", mode="before")
     @classmethod

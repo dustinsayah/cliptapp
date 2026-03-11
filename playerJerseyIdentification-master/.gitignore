@@ -6,7 +6,7 @@ __pycache__/
 dist/
 build/
 .eggs/
-
+client_convo
 # Virtual environments
 .venv/
 venv/
@@ -14,6 +14,8 @@ env/
 
 # Model weights (large binaries — download or copy separately)
 *.pt
+!app/model/
+!app/model/jersey_number_yolo11m.pt
 
 # Video files
 *.mp4

@@ -52,6 +52,8 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
+The repository includes the default jersey-number and person-detection weights under `app/model/`. You can still override them with `YOLO_MODEL_SOURCE` and `PERSON_MODEL_SOURCE` if needed.
+
 ## Run Locally
 
 ```bash
@@ -62,11 +64,13 @@ python -m uvicorn asgi:app --host 0.0.0.0 --port 8000
 
 ### Health
 
-`GET /health`
+`GET /live`
 
 ```json
 { "status": "ok" }
 ```
+
+`GET /ready` and `GET /health` report detector readiness. If required model assets or runtime binaries are missing, they return `503` with an error detail instead of reporting a false healthy state.
 
 ### Detect
 
@@ -92,8 +96,20 @@ Response:
 
 ```json
 [
-  { "timestamp": 8.4, "confidence": 0.92 },
-  { "timestamp": 9.1, "confidence": 0.88 }
+  {
+    "timestamp": 8.4,
+    "confidence": 0.92,
+    "bbox": {
+      "x1": 340,
+      "y1": 180,
+      "x2": 490,
+      "y2": 520,
+      "x1_pct": 21.25,
+      "y1_pct": 15.0,
+      "x2_pct": 30.63,
+      "y2_pct": 43.33
+    }
+  }
 ]
 ```
 
@@ -109,21 +125,33 @@ All settings can be tuned via env vars. See `.env.example` for the full list.
 | `FPS` | `2` | Frames per second to sample |
 | `CONF_THRESHOLD_EXPORT` | `0.55` | Minimum confidence for exported detections |
 | `POSITION_PRIOR_WEIGHT` | `0.10` | Weight for position-based scoring |
-| `YOUTUBE_CLIP_SECONDS` | `120` | Max seconds to download from YouTube |
+| `YOUTUBE_CLIP_SECONDS` | _(unset)_ | Optional cap for YouTube downloads; leave unset for full videos |
 | `DEBUG_VIDEO_PATH` | _(unset)_ | Set a path to write annotated debug video |
 
 ## Docker
 
-Build:
+CPU-friendly build:
 
 ```bash
 docker build -t layer1-cv:latest .
+```
+
+GPU build:
+
+```bash
+docker build -f Dockerfile.gpu -t layer1-cv:gpu .
 ```
 
 Run:
 
 ```bash
 docker run --rm -p 8000:8000 layer1-cv:latest
+```
+
+Run on GPU host:
+
+```bash
+docker run --rm --gpus all -p 8000:8000 layer1-cv:gpu
 ```
 
 Override settings:
@@ -134,4 +162,21 @@ docker run --rm -p 8000:8000 \
   -e CONF_THRESHOLD_EXPORT=0.60 \
   -e DEBUG_VIDEO_PATH=/tmp/debug.mp4 \
   layer1-cv:latest
+```
+
+Railway deployment handoff:
+
+- See `docs/RAILWAY_DEPLOYMENT.md` for step-by-step Railway setup, required env vars, health checks, sample verification requests, and CPU vs GPU image guidance.
+
+### Browser Testing / CORS
+
+By default, the API allows browser requests from local Next.js development origins:
+
+- `http://localhost:3000`
+- `http://127.0.0.1:3000`
+
+Override this with `CORS_ALLOW_ORIGINS` for production deployments:
+
+```bash
+CORS_ALLOW_ORIGINS=https://your-app.com,https://www.your-app.com
 ```
