@@ -48,6 +48,13 @@ export async function POST(req: NextRequest) {
 
     const data: unknown = await response.json()
 
+    if (response.status === 503) {
+      return NextResponse.json(
+        { error: 'Server is busy processing another request — please wait 30 seconds and try again.' },
+        { status: 503 }
+      )
+    }
+
     if (!response.ok) {
       const errData = data as { error?: string }
       return NextResponse.json(
