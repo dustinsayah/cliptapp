@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const RAILWAY_URL = process.env.JERSEY_DETECTION_API_URL
-
 export async function POST(req: NextRequest) {
+  // Read at request time so Vercel env vars are always picked up
+  const RAILWAY_URL = process.env.JERSEY_DETECTION_API_URL
   if (!RAILWAY_URL) {
     return NextResponse.json(
-      { error: 'JERSEY_DETECTION_API_URL is not configured on the server.' },
+      {
+        error:
+          'Missing environment variable: JERSEY_DETECTION_API_URL. ' +
+          'Set it in the Vercel dashboard → Settings → Environment Variables, then redeploy.',
+      },
       { status: 503 }
     )
   }

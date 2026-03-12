@@ -12,6 +12,10 @@ interface Detection {
     y1?: number;
     x2?: number;
     y2?: number;
+    x1_pct?: number;
+    y1_pct?: number;
+    x2_pct?: number;
+    y2_pct?: number;
   };
   [key: string]: unknown;
 }
@@ -212,6 +216,9 @@ export default function TestDetectionPage() {
       <div style={{ maxWidth: 800, margin: "0 auto" }}>
         {/* Header */}
         <div style={{ marginBottom: 28 }}>
+          <p style={{ color: "#4B5563", fontSize: 11, margin: "0 0 10px", letterSpacing: "0.04em" }}>
+            Internal testing only — not public facing
+          </p>
           <h1 style={{ color: "#fff", fontSize: 28, fontWeight: 700, margin: 0 }}>
             Jersey Detection Tester
           </h1>
@@ -497,8 +504,17 @@ export default function TestDetectionPage() {
                           <div>
                             <span style={{ color: "#6B7280" }}>Bbox pixels: </span>
                             <span style={{ color: "#fff" }}>
-                              x1:{det.bbox.x1 ?? "?"} y1:{det.bbox.y1 ?? "?"} x2:{det.bbox.x2 ?? "?"} y2:
-                              {det.bbox.y2 ?? "?"}
+                              x1:{det.bbox.x1 ?? "?"} y1:{det.bbox.y1 ?? "?"} x2:{det.bbox.x2 ?? "?"} y2:{det.bbox.y2 ?? "?"}
+                            </span>
+                          </div>
+                        )}
+                        {det.bbox && (det.bbox.x1_pct !== undefined || det.bbox.y1_pct !== undefined) && (
+                          <div>
+                            <span style={{ color: "#6B7280" }}>Bbox %: </span>
+                            <span style={{ color: confidenceColor(conf), fontWeight: 600 }}>
+                              x1:{det.bbox.x1_pct?.toFixed(1) ?? "?"}% y1:{det.bbox.y1_pct?.toFixed(1) ?? "?"}%
+                              {det.bbox.x2_pct !== undefined && ` x2:${det.bbox.x2_pct.toFixed(1)}%`}
+                              {det.bbox.y2_pct !== undefined && ` y2:${det.bbox.y2_pct.toFixed(1)}%`}
                             </span>
                           </div>
                         )}
@@ -513,8 +529,7 @@ export default function TestDetectionPage() {
                             <div>
                               <span style={{ color: "#6B7280" }}>Estimated %: </span>
                               <span style={{ color: "#fff" }}>
-                                x:{((center.cx / 1920) * 100).toFixed(0)}% y:
-                                {((center.cy / 1080) * 100).toFixed(0)}%
+                                x:{((center.cx / 1920) * 100).toFixed(0)}% y:{((center.cy / 1080) * 100).toFixed(0)}%
                               </span>
                             </div>
                           </>

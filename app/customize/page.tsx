@@ -59,6 +59,7 @@ interface SavedSettings {
   musicUrl?: string | null;
   musicName?: string | null;
   jerseyColor?: string;
+  autoDetect?: boolean;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -345,7 +346,7 @@ export default function CustomizePage() {
   const spotlightContainerRef = useRef<HTMLDivElement>(null);
 
   // ── AI Detection ─────────────────────────────────────────────────────────────
-  const [aiDetectColor, setAiDetectColor] = useState("");
+  const [autoDetect, setAutoDetect] = useState(false);
   const [aiDetectStatus, setAiDetectStatus] = useState<"idle" | "loading" | "success" | "error" | "timeout">("idle");
   const [aiDetectMsg, setAiDetectMsg] = useState("");
 
@@ -413,7 +414,7 @@ export default function CustomizePage() {
     else if (d.statsData) setStatsData(d.statsData);
 
     if (prev.settings?.colorAccent) setAccentHex(prev.settings.colorAccent);
-    if (prev.jerseyColor) setAiDetectColor(prev.jerseyColor);
+    if (typeof prev.autoDetect === "boolean") setAutoDetect(prev.autoDetect);
 
     if (prev.spotlightStyle === "circle" || prev.spotlightStyle === "none") {
       setSpotlightStyle(prev.spotlightStyle);
@@ -668,7 +669,7 @@ export default function CustomizePage() {
         body: JSON.stringify({
           videoUrl: firstClip.blobUrl,
           jerseyNumber: Number(jerseyNumber),
-          jerseyColor: aiDetectColor || "white",
+          jerseyColor: jerseyColor || "white",
           sport: sport.toLowerCase() || "basketball",
           position: position || undefined,
         }),
@@ -680,7 +681,7 @@ export default function CustomizePage() {
       if (!response.ok || (data && typeof data === "object" && !Array.isArray(data) && data.error)) {
         const errMsg = Array.isArray(data) ? "" : (data as { error?: string }).error ?? "Detection failed";
         setAiDetectStatus("error");
-        setAiDetectMsg(errMsg || "Could not detect your position in this clip — try tapping manually in Player Spotlight above.");
+        setAiDetectMsg(errMsg || "Couldn't auto-detect — tap your clip to place manually");
         return;
       }
 
@@ -688,7 +689,7 @@ export default function CustomizePage() {
 
       if (detections.length === 0) {
         setAiDetectStatus("error");
-        setAiDetectMsg("Could not detect your position in this clip — try tapping manually in Player Spotlight above.");
+        setAiDetectMsg("Couldn't auto-detect — tap your clip to place manually");
         return;
       }
 
@@ -701,15 +702,26 @@ export default function CustomizePage() {
       setMarkedClips(prev => ({ ...prev, 0: { x, y } }));
 
       setAiDetectStatus("success");
-      setAiDetectMsg("Position detected — spotlight updated automatically. You can adjust it manually in Player Spotlight above.");
+      setAiDetectMsg("Spotlight placed automatically — you can tap to adjust if needed");
     } catch (err: unknown) {
       if (err instanceof Error && (err.name === "TimeoutError" || err.message.includes("timeout"))) {
         setAiDetectStatus("timeout");
-        setAiDetectMsg("Detection is taking longer than expected. Try again or mark manually.");
+        setAiDetectMsg("Couldn't auto-detect — tap your clip to place manually");
       } else {
         setAiDetectStatus("error");
-        setAiDetectMsg("Could not detect your position in this clip — try tapping manually in Player Spotlight above.");
+        setAiDetectMsg("Couldn't auto-detect — tap your clip to place manually");
       }
+    }
+  }
+
+  // Toggle handler — runs detection when turned on
+  function handleAutoDetectToggle(on: boolean) {
+    setAutoDetect(on);
+    if (on) {
+      runAiDetect();
+    } else {
+      setAiDetectStatus("idle");
+      setAiDetectMsg("");
     }
   }
 
@@ -800,7 +812,8 @@ export default function CustomizePage() {
       music,        // track identifier
       musicUrl,     // full URL or null
       musicName,    // display name or null
-      jerseyColor: aiDetectColor || undefined,
+      jerseyColor: jerseyColor || undefined,
+      autoDetect,
     };
 
     try {
@@ -1105,6 +1118,60 @@ export default function CustomizePage() {
             ))}
           </div>
 
+          {/* Auto-Detect Toggle (only when circle spotlight is on) */}
+          {spotlightStyle !== "none" && clips.length > 0 && (
+            <div style={{ marginBottom: 20, padding: "14px 16px", borderRadius: 12, background: "#0D1F38", border: "1px solid rgba(255,255,255,0.07)" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "#FFFFFF" }}>Auto-Detect My Position</div>
+                  <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>AI will automatically place the spotlight circle on you in each clip.</div>
+                </div>
+                {/* Toggle switch */}
+                <button
+                  type="button"
+                  onClick={() => handleAutoDetectToggle(!autoDetect)}
+                  aria-label="Toggle auto-detect"
+                  style={{
+                    flexShrink: 0,
+                    width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer",
+                    background: autoDetect ? accentHex : "#1E293B",
+                    position: "relative", transition: "background 0.2s",
+                  }}
+                >
+                  <span style={{
+                    position: "absolute", top: 3, left: autoDetect ? 23 : 3,
+                    width: 18, height: 18, borderRadius: "50%", background: "#fff",
+                    transition: "left 0.2s", display: "block",
+                  }} />
+                </button>
+              </div>
+              {/* Status line */}
+              {aiDetectStatus === "loading" && (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, fontSize: 12, color: "#94a3b8" }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="animate-spin" style={{ flexShrink: 0 }}>
+                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                  </svg>
+                  AI is finding you in your clips...
+                </div>
+              )}
+              {aiDetectStatus === "success" && (
+                <div style={{ marginTop: 10, fontSize: 12, color: "#22C55E" }}>
+                  ✓ {aiDetectMsg}
+                </div>
+              )}
+              {(aiDetectStatus === "error" || aiDetectStatus === "timeout") && (
+                <div style={{ marginTop: 10, fontSize: 12, color: "#94a3b8" }}>
+                  {aiDetectMsg}
+                </div>
+              )}
+              {autoDetect && !jerseyNumber.trim() && aiDetectStatus === "idle" && (
+                <div style={{ marginTop: 10, fontSize: 12, color: "#475569" }}>
+                  Add your jersey number in Opening Title Card to enable auto-detect.
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Tap-to-mark slideshow (only when spotlight is on) */}
           {spotlightStyle !== "none" && (
             clips.length === 0 ? (
@@ -1245,105 +1312,6 @@ export default function CustomizePage() {
             )
           )}
         </SectionCard>
-
-        {/* ─── AI DETECTION ─── */}
-        <div style={{ background: "#0A1628", borderRadius: 16, overflow: "hidden", borderLeft: `3px solid rgba(255,255,255,0.06)` }}>
-          <div style={{ padding: "20px 24px" }}>
-            {/* Header */}
-            <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
-              <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#1E293B", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0 }}>
-                🎯
-              </div>
-              <div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: "#FFFFFF" }}>AI Detection</div>
-                <div style={{ fontSize: 13, color: "#64748b", marginTop: 2 }}>Auto-detect your position in the first clip</div>
-              </div>
-            </div>
-
-            {/* Jersey Color Input */}
-            <div style={{ marginBottom: 14 }}>
-              <label style={labelStyle}>Jersey Color</label>
-              <input
-                style={inputStyle}
-                type="text"
-                value={aiDetectColor}
-                onChange={e => setAiDetectColor(e.target.value)}
-                placeholder="e.g. white, blue, red"
-              />
-            </div>
-
-            {/* Auto-Detect Button */}
-            {(() => {
-              const firstClipUrl = clips[0]?.blobUrl ?? "";
-              const canDetect = firstClipUrl.length > 0 && jerseyNumber.trim().length > 0;
-              const isLoading = aiDetectStatus === "loading";
-              return (
-                <button
-                  type="button"
-                  onClick={runAiDetect}
-                  disabled={!canDetect || isLoading}
-                  style={{
-                    width: "100%",
-                    padding: "12px 16px",
-                    borderRadius: 10,
-                    border: "none",
-                    cursor: canDetect && !isLoading ? "pointer" : "not-allowed",
-                    background: canDetect && !isLoading ? "#00A3FF" : "#1E293B",
-                    color: canDetect && !isLoading ? "#FFFFFF" : "#475569",
-                    fontSize: 14,
-                    fontWeight: 700,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 8,
-                    transition: "background 0.2s",
-                    marginBottom: 12,
-                  }}
-                >
-                  {isLoading ? (
-                    <>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="animate-spin">
-                        <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                      </svg>
-                      Analyzing...
-                    </>
-                  ) : (
-                    "Auto-Detect My Position"
-                  )}
-                </button>
-              );
-            })()}
-
-            {/* Status messages */}
-            {aiDetectStatus === "loading" && (
-              <div style={{ background: "#0D1F38", border: "1px solid rgba(0,163,255,0.2)", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#94a3b8", lineHeight: 1.5 }}>
-                Analyzing your clip... this usually takes 1-2 minutes. Don&apos;t close this page.
-              </div>
-            )}
-            {aiDetectStatus === "success" && (
-              <div style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.25)", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#22C55E", lineHeight: 1.5 }}>
-                ✓ {aiDetectMsg}
-              </div>
-            )}
-            {(aiDetectStatus === "error" || aiDetectStatus === "timeout") && (
-              <div style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#FCA5A5", lineHeight: 1.5 }}>
-                {aiDetectMsg}
-              </div>
-            )}
-
-            {/* Hint when can't detect */}
-            {clips.length > 0 && !jerseyNumber.trim() && (
-              <div style={{ fontSize: 12, color: "#475569", marginTop: 8 }}>
-                Add your jersey number in Opening Title Card to enable auto-detect.
-              </div>
-            )}
-            {clips.length === 0 && (
-              <div style={{ fontSize: 12, color: "#475569", marginTop: 8 }}>
-                Upload clips first to use auto-detection.
-              </div>
-            )}
-          </div>
-        </div>
 
         {/* ─── 3 · OPENING TITLE CARD ─── */}
         <SectionCard
