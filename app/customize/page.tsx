@@ -13,6 +13,7 @@ interface ClipItem {
   id: string;
   name: string;
   blobUrl: string;
+  url?: string; // Cloudinary URL — required for server-side detection
   thumbnailUrl: string | null;
   duration: number;
   trimStart: number;
@@ -29,6 +30,7 @@ interface CliptDataClip {
   duration: number;
   thumbnailUrl: string | null;
   blobUrl: string;
+  url?: string; // Cloudinary URL
   playType?: string;
   qualityScore?: number;
 }
@@ -455,6 +457,7 @@ export default function CustomizePage() {
           id:            `clip-${i}-${Date.now()}`,
           name:          c.name,
           blobUrl:       c.blobUrl ?? "",
+          url:           c.url,
           thumbnailUrl:  c.thumbnailUrl,
           duration:      c.duration,
           trimStart:     saved?.trimStart ?? 0,
@@ -657,7 +660,26 @@ export default function CustomizePage() {
   // ── AI Detection ─────────────────────────────────────────────────────────────
   async function runAiDetect() {
     const firstClip = clips[0];
-    if (!firstClip?.blobUrl || !jerseyNumber) return;
+
+    // Validate Cloudinary URL — blob URLs cannot be accessed by the Railway server
+    if (!firstClip?.url || !firstClip.url.startsWith("https://res.cloudinary.com")) {
+      setAutoDetect(false);
+      setAiDetectStatus("error");
+      setAiDetectMsg("Re-upload this clip to enable auto-detect");
+      return;
+    }
+    if (!jerseyNumber.trim()) {
+      setAutoDetect(false);
+      setAiDetectStatus("error");
+      setAiDetectMsg("Add your jersey number above to use auto-detect");
+      return;
+    }
+    if (!sport.trim()) {
+      setAutoDetect(false);
+      setAiDetectStatus("error");
+      setAiDetectMsg("Add your sport above to use auto-detect");
+      return;
+    }
 
     setAiDetectStatus("loading");
     setAiDetectMsg("");
@@ -667,7 +689,7 @@ export default function CustomizePage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          videoUrl: firstClip.blobUrl,
+          videoUrl: firstClip.url, // Cloudinary URL — accessible by Railway server
           jerseyNumber: Number(jerseyNumber),
           jerseyColor: jerseyColor || "white",
           sport: sport.toLowerCase() || "basketball",
@@ -676,10 +698,13 @@ export default function CustomizePage() {
         signal: AbortSignal.timeout(155_000),
       });
 
-      const data = await response.json() as { error?: string; [key: string]: unknown } | Array<{ confidence: number; bbox: { x1_pct: number; y1_pct: number } }>;
+      const data = await response.json() as
+        | { error?: string; [key: string]: unknown }
+        | Array<{ confidence: number; bbox: { x1_pct: number; y1_pct: number; x2_pct: number; y2_pct: number } }>;
 
       if (!response.ok || (data && typeof data === "object" && !Array.isArray(data) && data.error)) {
         const errMsg = Array.isArray(data) ? "" : (data as { error?: string }).error ?? "Detection failed";
+        setAutoDetect(false);
         setAiDetectStatus("error");
         setAiDetectMsg(errMsg || "Couldn't auto-detect — tap your clip to place manually");
         return;
@@ -688,25 +713,32 @@ export default function CustomizePage() {
       const detections = Array.isArray(data) ? data : [];
 
       if (detections.length === 0) {
+        setAutoDetect(false);
         setAiDetectStatus("error");
-        setAiDetectMsg("Couldn't auto-detect — tap your clip to place manually");
+        setAiDetectMsg("Couldn't find you in this clip — tap to place manually");
         return;
       }
 
-      // Pick highest confidence detection
+      // Pick highest confidence detection, use CENTER of bbox (not top-left corner)
       const best = detections.reduce((a, b) => (a.confidence > b.confidence ? a : b));
-      const x = best.bbox.x1_pct;
-      const y = best.bbox.y1_pct;
+      const x = (best.bbox.x1_pct + best.bbox.x2_pct) / 2;
+      const y = (best.bbox.y1_pct + best.bbox.y2_pct) / 2;
 
       setClips(prev => prev.map((c, i) => i === 0 ? { ...c, markX: x, markY: y } : c));
       setMarkedClips(prev => ({ ...prev, 0: { x, y } }));
 
+      // Jump spotlight step to 0 so user sees the result immediately
+      setSpotlightStep(0);
+      setSpotlightDone(false);
+
       setAiDetectStatus("success");
       setAiDetectMsg("Spotlight placed automatically — you can tap to adjust if needed");
     } catch (err: unknown) {
+      console.error("CLIPT: AI detection error:", err);
+      setAutoDetect(false);
       if (err instanceof Error && (err.name === "TimeoutError" || err.message.includes("timeout"))) {
         setAiDetectStatus("timeout");
-        setAiDetectMsg("Couldn't auto-detect — tap your clip to place manually");
+        setAiDetectMsg("Detection timed out — tap to place manually");
       } else {
         setAiDetectStatus("error");
         setAiDetectMsg("Couldn't auto-detect — tap your clip to place manually");
@@ -785,6 +817,7 @@ export default function CustomizePage() {
       clips: clips.map(c => ({
         name:          c.name,
         blobUrl:       c.blobUrl,
+        url:           c.url,
         thumbnailUrl:  c.thumbnailUrl,
         duration:      c.duration,
         trimStart:     c.trimStart,
@@ -1119,58 +1152,66 @@ export default function CustomizePage() {
           </div>
 
           {/* Auto-Detect Toggle (only when circle spotlight is on) */}
-          {spotlightStyle !== "none" && clips.length > 0 && (
-            <div style={{ marginBottom: 20, padding: "14px 16px", borderRadius: 12, background: "#0D1F38", border: "1px solid rgba(255,255,255,0.07)" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: "#FFFFFF" }}>Auto-Detect My Position</div>
-                  <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>AI will automatically place the spotlight circle on you in each clip.</div>
+          {spotlightStyle !== "none" && clips.length > 0 && (() => {
+            const firstUrl = clips[0]?.url;
+            const hasCloudinaryUrl = typeof firstUrl === "string" && firstUrl.startsWith("https://res.cloudinary.com");
+            if (!hasCloudinaryUrl) {
+              return (
+                <div style={{ marginBottom: 20, padding: "12px 16px", borderRadius: 12, background: "#0D1F38", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div style={{ fontSize: 12, color: "#475569" }}>
+                    Re-upload this clip to enable auto-detect
+                  </div>
                 </div>
-                {/* Toggle switch */}
-                <button
-                  type="button"
-                  onClick={() => handleAutoDetectToggle(!autoDetect)}
-                  aria-label="Toggle auto-detect"
-                  style={{
-                    flexShrink: 0,
-                    width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer",
-                    background: autoDetect ? accentHex : "#1E293B",
-                    position: "relative", transition: "background 0.2s",
-                  }}
-                >
-                  <span style={{
-                    position: "absolute", top: 3, left: autoDetect ? 23 : 3,
-                    width: 18, height: 18, borderRadius: "50%", background: "#fff",
-                    transition: "left 0.2s", display: "block",
-                  }} />
-                </button>
+              );
+            }
+            return (
+              <div style={{ marginBottom: 20, padding: "14px 16px", borderRadius: 12, background: "#0D1F38", border: "1px solid rgba(255,255,255,0.07)" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "#FFFFFF" }}>Auto-Detect My Position</div>
+                    <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>AI will automatically place the spotlight circle on you in each clip.</div>
+                  </div>
+                  {/* Toggle switch */}
+                  <button
+                    type="button"
+                    onClick={() => handleAutoDetectToggle(!autoDetect)}
+                    aria-label="Toggle auto-detect"
+                    style={{
+                      flexShrink: 0,
+                      width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer",
+                      background: autoDetect ? accentHex : "#1E293B",
+                      position: "relative", transition: "background 0.2s",
+                    }}
+                  >
+                    <span style={{
+                      position: "absolute", top: 3, left: autoDetect ? 23 : 3,
+                      width: 18, height: 18, borderRadius: "50%", background: "#fff",
+                      transition: "left 0.2s", display: "block",
+                    }} />
+                  </button>
+                </div>
+                {/* Status line */}
+                {aiDetectStatus === "loading" && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, fontSize: 12, color: "#94a3b8" }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="animate-spin" style={{ flexShrink: 0 }}>
+                      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                    </svg>
+                    AI is finding you in your clips...
+                  </div>
+                )}
+                {aiDetectStatus === "success" && (
+                  <div style={{ marginTop: 10, fontSize: 12, color: "#22C55E" }}>
+                    ✓ {aiDetectMsg}
+                  </div>
+                )}
+                {(aiDetectStatus === "error" || aiDetectStatus === "timeout") && (
+                  <div style={{ marginTop: 10, fontSize: 12, color: "#94a3b8" }}>
+                    {aiDetectMsg}
+                  </div>
+                )}
               </div>
-              {/* Status line */}
-              {aiDetectStatus === "loading" && (
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, fontSize: 12, color: "#94a3b8" }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="animate-spin" style={{ flexShrink: 0 }}>
-                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                  </svg>
-                  AI is finding you in your clips...
-                </div>
-              )}
-              {aiDetectStatus === "success" && (
-                <div style={{ marginTop: 10, fontSize: 12, color: "#22C55E" }}>
-                  ✓ {aiDetectMsg}
-                </div>
-              )}
-              {(aiDetectStatus === "error" || aiDetectStatus === "timeout") && (
-                <div style={{ marginTop: 10, fontSize: 12, color: "#94a3b8" }}>
-                  {aiDetectMsg}
-                </div>
-              )}
-              {autoDetect && !jerseyNumber.trim() && aiDetectStatus === "idle" && (
-                <div style={{ marginTop: 10, fontSize: 12, color: "#475569" }}>
-                  Add your jersey number in Opening Title Card to enable auto-detect.
-                </div>
-              )}
-            </div>
-          )}
+            );
+          })()}
 
           {/* Tap-to-mark slideshow (only when spotlight is on) */}
           {spotlightStyle !== "none" && (

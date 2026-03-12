@@ -6,6 +6,7 @@ import { SPORTS_CONFIG } from "../../lib/sportsConfig";
 import { estimateClipClassification, classifyClipViaApi, playTypeBadgeColor } from "../../lib/clipClassifier";
 import type { ClipClassification } from "../../lib/clipClassifier";
 import JerseyColorInput from "../../components/JerseyColorInput";
+import { uploadToCloudinary } from "../../lib/cloudinaryUpload";
 
 // ── Icons ──────────────────────────────────────────────────────────────────────
 const ArrowLeftIcon = () => (
@@ -198,9 +199,25 @@ export default function UploadPage() {
   const [isMobile, setIsMobile]       = useState(false);
   const [mounted,  setMounted]        = useState(false);
 
+  // ── Per-clip Cloudinary upload state ──────────────────────────────────────
+  const [clipUploadStatus,   setClipUploadStatus]   = useState<Array<"pending" | "uploading" | "done" | "error">>([]);
+  const [clipUploadProgress, setClipUploadProgress] = useState<number[]>([]);
+  const [cloudinaryUrls,     setCloudinaryUrls]     = useState<(string | null)[]>([]);
+  const [hasCorruptedPrev,   setHasCorruptedPrev]   = useState(false);
+
   useEffect(() => {
     setMounted(true);
     setIsMobile(window.innerWidth < 768 || navigator.maxTouchPoints > 0);
+    // Check if previous session left clips with missing Cloudinary URLs
+    try {
+      const prev = JSON.parse(localStorage.getItem("cliptSettings") || "{}");
+      if (Array.isArray(prev.clips) && prev.clips.length > 0) {
+        const corrupted = (prev.clips as Array<Record<string, unknown>>).some(c =>
+          !c.url || typeof c.url !== "string" || c.url.startsWith("blob:")
+        );
+        setHasCorruptedPrev(corrupted);
+      }
+    } catch { /* ignore */ }
   }, []);
 
   // Form fields
@@ -240,16 +257,41 @@ export default function UploadPage() {
     setPosition("");
   };
 
-  // Generate thumbnails + classifications when files added
+  // Generate thumbnails + classifications + Cloudinary uploads when files added
   const processNewFiles = useCallback(async (newFiles: File[], startIndex: number, currentSport: string, currentPosition: string) => {
     // Load clips one at a time so the first clip appears immediately
     const cloudinaryCloud = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
 
     for (let localIdx = 0; localIdx < newFiles.length; localIdx++) {
       const globalIdx = startIndex + localIdx;
-      const meta = await generateClipMeta(newFiles[localIdx]);
+      const file = newFiles[localIdx];
+      const meta = await generateClipMeta(file);
       setClipMeta(prev => [...prev, meta]);
 
+      // ── Cloudinary upload (starts immediately, non-blocking) ───────────────
+      setClipUploadStatus(prev => { const n = [...prev]; n[globalIdx] = cloudinaryCloud ? "uploading" : "error"; return n; });
+      setClipUploadProgress(prev => { const n = [...prev]; n[globalIdx] = 0; return n; });
+      setCloudinaryUrls(prev => { const n = [...prev]; n[globalIdx] = null; return n; });
+
+      if (cloudinaryCloud) {
+        const idx = globalIdx;
+        console.log(`CLIPT: starting Cloudinary upload for clip ${file.name}`);
+        uploadToCloudinary(file, (pct) => {
+          setClipUploadProgress(prev => { const n = [...prev]; n[idx] = pct; return n; });
+        }).then(url => {
+          console.log(`CLIPT: upload successful — URL: ${url}`);
+          setCloudinaryUrls(prev => { const n = [...prev]; n[idx] = url; return n; });
+          setClipUploadStatus(prev => { const n = [...prev]; n[idx] = "done"; return n; });
+        }).catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error(`CLIPT: ERROR — upload failed for ${file.name}: ${msg}`);
+          setClipUploadStatus(prev => { const n = [...prev]; n[idx] = "error"; return n; });
+        });
+      } else {
+        console.warn(`CLIPT: NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME not set — upload skipped for ${file.name}`);
+      }
+
+      // ── Classification (non-blocking) ──────────────────────────────────────
       setClassifyingSet(prev => { const n = new Set(prev); n.add(globalIdx); return n; });
 
       const classify = async () => {
@@ -295,6 +337,9 @@ export default function UploadPage() {
     setFiles(prev => prev.filter((_, i) => i !== index));
     setClipMeta(prev => prev.filter((_, i) => i !== index));
     setClipClassifications(prev => prev.filter((_, i) => i !== index));
+    setClipUploadStatus(prev => prev.filter((_, i) => i !== index));
+    setClipUploadProgress(prev => prev.filter((_, i) => i !== index));
+    setCloudinaryUrls(prev => prev.filter((_, i) => i !== index));
     setClassifyingSet(prev => {
       const n = new Set(prev);
       // Rebuild with shifted indices
@@ -304,6 +349,27 @@ export default function UploadPage() {
     });
   };
 
+  const retryUpload = async (index: number) => {
+    const file = files[index];
+    if (!file) return;
+    setClipUploadStatus(prev => { const n = [...prev]; n[index] = "uploading"; return n; });
+    setClipUploadProgress(prev => { const n = [...prev]; n[index] = 0; return n; });
+    setCloudinaryUrls(prev => { const n = [...prev]; n[index] = null; return n; });
+    console.log(`CLIPT: starting Cloudinary upload for clip ${file.name} (retry)`);
+    try {
+      const url = await uploadToCloudinary(file, (pct) => {
+        setClipUploadProgress(prev => { const n = [...prev]; n[index] = pct; return n; });
+      });
+      console.log(`CLIPT: upload successful — URL: ${url}`);
+      setCloudinaryUrls(prev => { const n = [...prev]; n[index] = url; return n; });
+      setClipUploadStatus(prev => { const n = [...prev]; n[index] = "done"; return n; });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`CLIPT: ERROR — upload failed for ${file.name}: ${msg}`);
+      setClipUploadStatus(prev => { const n = [...prev]; n[index] = "error"; return n; });
+    }
+  };
+
   const onDragOver = (e: React.DragEvent) => { e.preventDefault(); setDragging(true); };
   const onDragLeave = (e: React.DragEvent) => { e.preventDefault(); setDragging(false); };
   const onDrop = (e: React.DragEvent) => {
@@ -311,8 +377,18 @@ export default function UploadPage() {
     addFiles(e.dataTransfer.files, sport, position);
   };
 
+  const cloudinaryConfigured = !!process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
+  const allUploaded = !cloudinaryConfigured || (
+    files.length > 0 &&
+    cloudinaryUrls.length === files.length &&
+    cloudinaryUrls.every(url => typeof url === "string" && url.startsWith("https://res.cloudinary.com"))
+  );
+  const anyUploading = cloudinaryConfigured && clipUploadStatus.some(s => s === "uploading");
+  const anyUploadError = cloudinaryConfigured && clipUploadStatus.some(s => s === "error");
+
   const canContinue =
     files.length > 0 &&
+    allUploaded &&
     firstName.trim() !== "" &&
     lastName.trim() !== "" &&
     jerseyNumber.trim() !== "" &&
@@ -327,13 +403,16 @@ export default function UploadPage() {
     // Build clips array with all metadata including AI/estimated classifications
     const clipsData = files.map((file, i) => {
       const cls = clipClassifications[i] ?? estimateClipClassification(sport, position, i, clipMeta[i]?.duration || 0);
+      const cloudinaryUrl = cloudinaryUrls[i] ?? undefined;
       console.log(`CLIPT AI: clip ${i + 1} final save → playType="${cls.playType}" quality=${cls.qualityScore} classifiedBy=${cls.classifiedBy}`);
+      console.log(`CLIPT: saving clip to cliptSettings with url: ${cloudinaryUrl}`);
       return {
         name: file.name,
         size: file.size,
         duration: clipMeta[i]?.duration || 0,
         thumbnailUrl: clipMeta[i]?.thumbnail || null,
         blobUrl: clipMeta[i]?.blobUrl || (() => { try { return URL.createObjectURL(file); } catch { return ""; } })(),
+        url: cloudinaryUrl, // Cloudinary URL — required for server-side detection and Creatomate
         playType:     cls.playType,
         qualityScore: cls.qualityScore,
         confidence:   cls.confidence,
@@ -358,9 +437,12 @@ export default function UploadPage() {
     try {
       localStorage.setItem("cliptData", JSON.stringify(cliptData));
       localStorage.setItem("clipSource", "manual");
-      // Also store blob URLs separately for fallback
+      // Also store blob URLs separately for canvas export fallback
       localStorage.setItem("clipt_blob_urls", JSON.stringify(clipsData.map(c => c.blobUrl)));
       localStorage.setItem("clipt_blob_count", String(clipsData.length));
+      // Verify the save immediately
+      const verified = JSON.parse(localStorage.getItem("cliptData") || "{}") as { clips?: Array<{ url?: string }> };
+      console.log("CLIPT: verified saved clip URLs:", verified.clips?.map(c => c.url));
     } catch (e) {
       console.warn("localStorage save failed:", e);
     }
@@ -420,6 +502,18 @@ export default function UploadPage() {
 
       {/* ── MAIN CONTENT ── */}
       <main className="max-w-3xl mx-auto px-6 pb-12">
+        {/* Corrupted clips banner */}
+        {hasCorruptedPrev && (
+          <div className="mb-6 px-4 py-3 rounded-xl flex items-start gap-3"
+            style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)" }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0, marginTop: 1 }}><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <div>
+              <div className="text-red-400 text-sm font-bold mb-0.5">Previous clips need re-upload</div>
+              <div className="text-red-300 text-xs">Some of your previous clips didn&apos;t upload to the cloud correctly and need to be re-uploaded. Please remove them and add them again.</div>
+            </div>
+          </div>
+        )}
+
         <div className="mb-8">
           <h1 className="text-3xl font-black text-white mb-2">Upload Your Clips</h1>
           <p className="text-slate-400 text-sm">Add up to {MAX_CLIPS} clips. All video formats accepted — MP4, MOV, AVI, MKV, WEBM and more.</p>
@@ -539,7 +633,37 @@ export default function UploadPage() {
                       )}
                       {!clipMeta[i] && <span className="text-[10px] text-slate-500 animate-pulse">Loading…</span>}
                     </div>
-                    {/* Play type badge row */}
+                    {/* Upload status */}
+                    {cloudinaryConfigured && (() => {
+                      const status = clipUploadStatus[i];
+                      const progress = clipUploadProgress[i] ?? 0;
+                      if (status === "uploading") return (
+                        <div className="mt-1">
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <svg className="animate-spin" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#00A3FF" strokeWidth="3"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                            <span className="text-[10px] text-blue-400">Uploading to cloud... {progress}%</span>
+                          </div>
+                          <div className="h-0.5 rounded-full bg-slate-800 overflow-hidden">
+                            <div className="h-full rounded-full bg-blue-500 transition-all" style={{ width: `${progress}%` }} />
+                          </div>
+                        </div>
+                      );
+                      if (status === "done") return (
+                        <div className="flex items-center gap-1 mt-1">
+                          <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#22C55E" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                          <span className="text-[10px] text-green-400 font-semibold">Ready</span>
+                        </div>
+                      );
+                      if (status === "error") return (
+                        <button type="button" onClick={() => retryUpload(i)}
+                          className="flex items-center gap-1 mt-1 cursor-pointer hover:opacity-80">
+                          <span className="text-[10px] text-red-400 font-semibold">Upload failed — tap to retry</span>
+                        </button>
+                      );
+                      return null;
+                    })()}
+
+                  {/* Play type badge row */}
                     <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                       {isClassifying && (
                         <span className="flex items-center gap-1 text-[9px] text-slate-500">
@@ -680,6 +804,8 @@ export default function UploadPage() {
         {!canContinue && (
           <p className="text-slate-500 text-xs text-center mb-3">
             {files.length === 0 ? "Add at least one clip to continue"
+              : anyUploading ? "Please wait — your clips are still uploading"
+              : anyUploadError ? "Some clips failed to upload — tap 'Upload failed — tap to retry' on each"
               : !sport ? "Select a sport to continue"
               : !position ? "Select a position to continue"
               : "Fill out all required fields to continue"}
@@ -706,7 +832,7 @@ export default function UploadPage() {
         </button>
 
         <p className="text-center text-slate-600 text-xs mt-4">
-          Clips are processed locally — your videos never leave your device
+          Clips are securely uploaded to the cloud for processing and AI detection.
         </p>
       </main>
 
