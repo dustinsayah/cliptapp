@@ -659,13 +659,17 @@ export default function CustomizePage() {
 
   // ── AI Detection ─────────────────────────────────────────────────────────────
   async function runAiDetect() {
+    console.log("AUTO-DETECT STEP 1: function called");
     const firstClip = clips[0];
 
+    console.log("AUTO-DETECT STEP 2: firstClip.url =", firstClip?.url?.slice(-50));
+    console.log("AUTO-DETECT STEP 2: url is cloudinary?", firstClip?.url?.startsWith("https://res.cloudinary.com"));
+
     // Validate Cloudinary URL — blob URLs cannot be accessed by the Railway server
-    if (!firstClip?.url || !firstClip.url.startsWith("https://res.cloudinary.com")) {
+    if (!firstClip?.url?.startsWith("https://res.cloudinary.com")) {
       setAutoDetect(false);
       setAiDetectStatus("error");
-      setAiDetectMsg("Re-upload this clip to enable auto-detect");
+      setAiDetectMsg("This clip needs to finish uploading before auto-detect can run. Please wait for the green checkmark.");
       return;
     }
     if (!jerseyNumber.trim()) {
@@ -680,6 +684,8 @@ export default function CustomizePage() {
       setAiDetectMsg("Add your sport above to use auto-detect");
       return;
     }
+
+    console.log("AUTO-DETECT STEP 3: sending payload", { jerseyNumber, jerseyColor, sport, position });
 
     setAiDetectStatus("loading");
     setAiDetectMsg("");
@@ -698,9 +704,14 @@ export default function CustomizePage() {
         signal: AbortSignal.timeout(155_000),
       });
 
+      console.log("AUTO-DETECT STEP 4: API response status", response.status);
+
       const data = await response.json() as
         | { error?: string; [key: string]: unknown }
         | Array<{ confidence: number; bbox: { x1_pct: number; y1_pct: number; x2_pct: number; y2_pct: number } }>;
+
+      const detections = Array.isArray(data) ? data : [];
+      console.log("AUTO-DETECT STEP 5: detections received", JSON.stringify(detections).slice(0, 300));
 
       if (!response.ok || (data && typeof data === "object" && !Array.isArray(data) && data.error)) {
         const errMsg = Array.isArray(data) ? "" : (data as { error?: string }).error ?? "Detection failed";
@@ -709,8 +720,6 @@ export default function CustomizePage() {
         setAiDetectMsg(errMsg || "Couldn't auto-detect — tap your clip to place manually");
         return;
       }
-
-      const detections = Array.isArray(data) ? data : [];
 
       if (detections.length === 0) {
         setAutoDetect(false);
@@ -721,11 +730,26 @@ export default function CustomizePage() {
 
       // Pick highest confidence detection, use CENTER of bbox (not top-left corner)
       const best = detections.reduce((a, b) => (a.confidence > b.confidence ? a : b));
-      const x = (best.bbox.x1_pct + best.bbox.x2_pct) / 2;
-      const y = (best.bbox.y1_pct + best.bbox.y2_pct) / 2;
+      const markX = (best.bbox.x1_pct + best.bbox.x2_pct) / 2;
+      const markY = (best.bbox.y1_pct + best.bbox.y2_pct) / 2;
 
-      setClips(prev => prev.map((c, i) => i === 0 ? { ...c, markX: x, markY: y } : c));
-      setMarkedClips(prev => ({ ...prev, 0: { x, y } }));
+      console.log("AUTO-DETECT STEP 6: placing circle at markX=", markX, "markY=", markY);
+
+      setClips(prev => prev.map((c, i) => i === 0 ? { ...c, markX, markY } : c));
+      setMarkedClips(prev => ({ ...prev, 0: { x: markX, y: markY } }));
+
+      // Save detected position directly to localStorage so it survives navigation without re-submit
+      try {
+        const existingSettings = JSON.parse(localStorage.getItem("cliptSettings") || "{}");
+        if (Array.isArray(existingSettings.clips) && existingSettings.clips.length > 0) {
+          existingSettings.clips[0] = { ...existingSettings.clips[0], markX, markY };
+          localStorage.setItem("cliptSettings", JSON.stringify(existingSettings));
+        }
+        console.log("AUTO-DETECT STEP 7: saved to cliptSettings, verifying...");
+        console.log("AUTO-DETECT STEP 7: verification =", JSON.parse(localStorage.getItem("cliptSettings") || "{}").clips?.[0]?.markX);
+      } catch (saveErr) {
+        console.warn("AUTO-DETECT: failed to persist to localStorage:", saveErr);
+      }
 
       // Jump spotlight step to 0 so user sees the result immediately
       setSpotlightStep(0);
@@ -1165,11 +1189,18 @@ export default function CustomizePage() {
               );
             }
             return (
-              <div style={{ marginBottom: 20, padding: "14px 16px", borderRadius: 12, background: "#0D1F38", border: "1px solid rgba(255,255,255,0.07)" }}>
+              <div
+                className={`transition-all ${autoDetect ? "border-blue-500 bg-blue-500/10" : "border-blue-500/40 bg-blue-500/5 animate-pulse"}`}
+                style={{ marginBottom: 20, padding: "16px", borderRadius: 12, border: "1px solid", marginTop: 16 }}
+              >
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: "#FFFFFF" }}>Auto-Detect My Position</div>
-                    <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>AI will automatically place the spotlight circle on you in each clip.</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "#FFFFFF" }}>🎯 Auto-Place Spotlight Circle</div>
+                    <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>AI will find you in this clip and place the circle automatically. Takes 1-2 minutes.</div>
+                    {/* Jersey number warning */}
+                    {!jerseyNumber.trim() && (
+                      <p style={{ color: "#FBBF24", fontSize: 12, margin: "6px 0 0" }}>⚠️ Add your jersey number above to enable auto-detect</p>
+                    )}
                   </div>
                   {/* Toggle switch */}
                   <button

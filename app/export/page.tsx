@@ -1903,29 +1903,50 @@ export default function ExportPage() {
       ? forceSocial
       : (settingsExportType === "social" || aspectRatio === "9:16");
 
+    // Always read fresh from localStorage to avoid stale state
+    const freshSettings = JSON.parse(localStorage.getItem("cliptSettings") || "{}");
+    const freshTc = (freshSettings.titleCard && typeof freshSettings.titleCard === "object")
+      ? (freshSettings.titleCard as Record<string, string>)
+      : tc;
+    const freshStats = (freshSettings.stats && typeof freshSettings.stats === "object")
+      ? (freshSettings.stats as Record<string, string>)
+      : (settings.stats as Record<string, string>);
+
+    console.log("RENDER PAYLOAD FIELDS:", {
+      firstName:    freshTc.firstName    || info.firstName,
+      lastName:     freshTc.lastName     || "",
+      jerseyNumber: freshTc.jerseyNumber || info.jerseyNumber,
+      position:     freshTc.position     || info.position,
+      sport:        freshTc.sport        || info.sport,
+      school:       freshTc.school       || info.school,
+      email:        freshTc.email        || info.email,
+      statsData:    freshStats,
+    });
+
     // Full structured payload — every field passed explicitly
     const renderPayload = {
       clips: clipsWithTrim,
       titleCard: {
-        firstName:    tc.firstName    || info.firstName,
-        lastName:     tc.lastName     || "",
-        jerseyNumber: tc.jerseyNumber || info.jerseyNumber,
-        position:     tc.position     || info.position,
-        sport:        tc.sport        || info.sport,
-        school:       tc.school       || info.school,
-        gradYear:     tc.gradYear     || info.gradYear,
-        email:        tc.email        || info.email,
-        coachName:    tc.coachName    || info.coachName,
-        coachEmail:   tc.coachEmail   || info.coachEmail,
+        firstName:    freshTc.firstName    || info.firstName,
+        lastName:     freshTc.lastName     || "",
+        jerseyNumber: freshTc.jerseyNumber || info.jerseyNumber,
+        position:     freshTc.position     || info.position,
+        sport:        freshTc.sport        || info.sport,
+        school:       freshTc.school       || info.school,
+        gradYear:     freshTc.gradYear     || info.gradYear,
+        email:        freshTc.email        || info.email,
+        coachName:    freshTc.coachName    || info.coachName,
+        coachEmail:   freshTc.coachEmail   || info.coachEmail,
         // New fields from customize page
-        phone:        tc.phone        || "",
-        heightFt:     tc.heightFt     || "",
-        heightIn:     tc.heightIn     || "",
-        clubTeam:     tc.clubTeam     || "",
-        city:         tc.city         || "",
-        state:        tc.state        || "",
+        phone:        freshTc.phone        || "",
+        heightFt:     freshTc.heightFt     || "",
+        heightIn:     freshTc.heightIn     || "",
+        clubTeam:     freshTc.clubTeam     || "",
+        location:     freshTc.location     || "",
+        city:         freshTc.city         || "",
+        state:        freshTc.state        || "",
       },
-      stats:    info.statsData || (settings.stats as Record<string, string>) || {},
+      stats:    info.statsData || freshStats || {},
       settings: {
         colorAccent:     accentHex,
         transition:      sGet("transition",        reel.transition        || "Hard Cut") as string,

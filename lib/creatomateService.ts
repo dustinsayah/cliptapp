@@ -712,23 +712,23 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
       console.log(`CLIP ${idx} at timeline time ${sectionStart}, circle at x:${markX}% y:${markY}%`);
 
       const innerEls: unknown[] = [
-        // Layer 1 — main video (delayed 2s so freeze frame shows first)
+        // Layer 1 — main video (delayed 0.5s so freeze frame shows first)
         {
           type:       "video",
           track:      1,
-          time:       2,
+          time:       0.5,
           source:     clip.url,
           trim_start: trimStart,
           volume:     "100%",
           fit:        videoFit,
           fill_color: "#000000",
         },
-        // Layer 2 — freeze frame (held at first frame for 2s, then fades out)
+        // Layer 2 — freeze frame (held at first frame for 0.5s, then fades out)
         {
           type:          "video",
           track:         2,
           time:          0,
-          duration:      2,
+          duration:      0.5,
           source:        clip.url,
           trim_start:    0,
           trim_duration: 0.1,
@@ -737,7 +737,7 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
           fill_color:    "#000000",
           player_speed:  0,
           animations: [
-            { time: 1.7, duration: 0.3, easing: "ease-in", type: "fade", fade: false },
+            { time: 0.3, duration: 0.2, easing: "ease-in", type: "fade", fade: false },
           ],
         },
       ];
@@ -746,7 +746,7 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
         type:     "composition",
         track:    1,
         time:     sectionStart,
-        duration: trimDuration + 2,
+        duration: trimDuration + 0.5,
         elements: innerEls,
       };
       if (idx > 0) clipEl.transition = clipTransition;
@@ -764,17 +764,18 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
         type:         "shape",
         track:        999,
         time:         sectionStart,
-        duration:     1.8,
+        duration:     1.2,
         shape:        "ellipse",
         x:            `${markX}%`,
         y:            `${markY}%`,
         width:        "8%",
-        height:       "14.22%",
+        height:       isVertical ? "4.5%" : "14.22%",
         x_anchor:     "50%",
         y_anchor:     "50%",
-        fill_color:   "transparent",
-        stroke_color: "#FF0000",
-        stroke_width: 10,
+        fill_color:   "#000000",
+        opacity:      0,
+        stroke_color: "#FFFFFF",
+        stroke_width: 4,
         animations: [
           {
             time:        0,
@@ -786,7 +787,7 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
             end_scale:   "100%",
           },
           {
-            time:     1.4,
+            time:     0.8,
             duration: 0.4,
             easing:   "ease-in",
             type:     "fade",
@@ -848,7 +849,7 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
       elements.push(clipEl);
     }
 
-    currentTime = sectionStart + trimDuration + (spotlightStyle !== "none" ? 2 : 0);
+    currentTime = sectionStart + trimDuration + (spotlightStyle !== "none" ? 0.5 : 0);
   });
 
   // ── 4. END CARD (5s) — rebuilt layout ────────────────────────────────────
@@ -939,6 +940,7 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
   elements.push({ type: "composition", track: 1, time: currentTime, duration: END_DUR, elements: endEls });
 
   const totalDuration = currentTime + END_DUR;
+  console.log("[Creatomate] Total video duration:", totalDuration, "seconds");
 
   // ── 5. MUSIC — root-level audio on track 2 ───────────────────────────────
   //
@@ -962,12 +964,13 @@ function buildReelSource(input: ReelRenderInput): Record<string, unknown> {
       type:           "audio",
       track:          2,
       time:           0,
+      duration:       totalDuration,
       source:         input.musicUrl,
       volume:         "40%",
       audio_fade_in:  1,
       audio_fade_out: 3,
     });
-    console.log("AUDIO ELEMENT pushed — source:", input.musicUrl?.slice(0, 80));
+    console.log("AUDIO ELEMENT pushed — source:", input.musicUrl?.slice(0, 80), "| duration:", totalDuration);
   }
 
   return {
