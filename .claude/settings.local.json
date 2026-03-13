@@ -20,7 +20,8 @@
       "Bash(railway:*)",
       "Bash(powershell.exe:*)",
       "Bash(gh:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "WebFetch(domain:api.github.com)"
     ]
   }
 }
