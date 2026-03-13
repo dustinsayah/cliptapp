@@ -38,6 +38,8 @@ export async function POST(req: NextRequest) {
   }
   if (position) payload.position = position
 
+  console.log('CLIPT DEBUG: detect-jersey route hit, forwarding to Railway:', JSON.stringify({ videoUrl, jerseyNumber, jerseyColor, sport, position }))
+
   try {
     const response = await fetch(`${RAILWAY_URL}/detect`, {
       method: 'POST',
@@ -47,6 +49,7 @@ export async function POST(req: NextRequest) {
     })
 
     const data: unknown = await response.json()
+    console.log('CLIPT DEBUG: Railway response status:', response.status, 'body preview:', JSON.stringify(data).slice(0, 200))
 
     if (response.status === 503) {
       return NextResponse.json(
