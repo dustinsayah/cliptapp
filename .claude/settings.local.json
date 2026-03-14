@@ -21,7 +21,8 @@
       "Bash(powershell.exe:*)",
       "Bash(gh:*)",
       "Bash(curl:*)",
-      "WebFetch(domain:api.github.com)"
+      "WebFetch(domain:api.github.com)",
+      "Bash(vercel project:*)"
     ]
   }
 }
