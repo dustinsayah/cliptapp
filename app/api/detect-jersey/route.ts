@@ -1,89 +1,87 @@
-import { NextRequest, NextResponse } from 'next/server'
-
-export async function POST(req: NextRequest) {
-  // Read at request time so Vercel env vars are always picked up
+export async function POST(request: Request) {
   const RAILWAY_URL = process.env.JERSEY_DETECTION_API_URL
   if (!RAILWAY_URL) {
-    return NextResponse.json(
-      {
-        error:
-          'Missing environment variable: JERSEY_DETECTION_API_URL. ' +
-          'Set it in the Vercel dashboard → Settings → Environment Variables, then redeploy.',
-      },
-      { status: 503 }
-    )
+    return Response.json({ error: 'Missing environment variable: JERSEY_DETECTION_API_URL' }, { status: 500 })
   }
 
-  let body: unknown
+  let body: Record<string, unknown>
   try {
-    body = await req.json()
+    body = await request.json()
   } catch {
-    return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 })
+    return Response.json({ error: 'Invalid JSON body.' }, { status: 400 })
   }
 
-  const { videoUrl, jerseyNumber, jerseyColor, sport, position } = body as Record<string, unknown>
+  const { videoUrl, jerseyNumber, jerseyColor, sport, position } = body
 
-  if (!videoUrl || jerseyNumber === undefined || !jerseyColor || !sport) {
-    return NextResponse.json(
-      { error: 'Missing required fields: videoUrl, jerseyNumber, jerseyColor, sport' },
-      { status: 400 }
-    )
-  }
-
-  const payload: Record<string, unknown> = {
-    videoUrl,
-    jerseyNumber: Number(jerseyNumber),
+  console.log('PROXY RECEIVED FROM FRONTEND:', JSON.stringify({
+    videoUrl: typeof videoUrl === 'string' ? videoUrl.slice(-40) : videoUrl,
+    jerseyNumber,
+    jerseyNumberType: typeof jerseyNumber,
     jerseyColor,
     sport,
-  }
-  if (position) payload.position = position
+    position,
+  }))
 
-  console.log('CLIPT DEBUG: detect-jersey route hit, forwarding to Railway:', JSON.stringify({ videoUrl, jerseyNumber, jerseyColor, sport, position }))
+  if (!videoUrl) {
+    return Response.json({ error: 'videoUrl is required' }, { status: 400 })
+  }
+
+  const railwayPayload: Record<string, unknown> = {
+    videoUrl,
+    jerseyNumber: Number(jerseyNumber),
+    jerseyColor: jerseyColor || 'white',
+    sport: sport || 'basketball',
+  }
+  if (position && typeof position === 'string' && position.trim() !== '') {
+    railwayPayload.position = position.trim()
+  }
+
+  console.log('PROXY FORWARDING TO RAILWAY:', JSON.stringify(railwayPayload))
 
   try {
-    const response = await fetch(`${RAILWAY_URL}/detect`, {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 150000)
+
+    const railwayResponse = await fetch(`${RAILWAY_URL}/detect`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(150_000), // 150s — detection takes 90-120s on CPU
+      body: JSON.stringify(railwayPayload),
+      signal: controller.signal,
     })
 
-    const data: unknown = await response.json()
-    console.log('CLIPT DEBUG: Railway response status:', response.status, 'body preview:', JSON.stringify(data).slice(0, 200))
+    clearTimeout(timeout)
 
-    if (response.status === 503) {
-      return NextResponse.json(
-        { error: 'Server is busy processing another request — please wait 30 seconds and try again.' },
-        { status: 503 }
+    console.log('PROXY RAILWAY RESPONSE STATUS:', railwayResponse.status)
+
+    if (!railwayResponse.ok) {
+      const errorText = await railwayResponse.text().catch(() => 'unknown')
+      console.error('PROXY RAILWAY ERROR:', railwayResponse.status, errorText.slice(0, 300))
+      return Response.json(
+        { error: `Detection API returned ${railwayResponse.status}` },
+        { status: railwayResponse.status }
       )
     }
 
-    if (!response.ok) {
-      const errData = data as { error?: string }
-      return NextResponse.json(
-        { error: errData.error ?? `Detection API returned ${response.status}` },
-        { status: response.status }
-      )
-    }
+    const data: unknown = await railwayResponse.json()
+    console.log('PROXY RAILWAY DATA:', JSON.stringify(data).slice(0, 300))
 
-    const detections = Array.isArray(data) ? data : []
-
-    if (detections.length === 0) {
-      return NextResponse.json(
+    if (!Array.isArray(data) || data.length === 0) {
+      return Response.json(
         { error: 'No detections found — jersey not detected in this clip.' },
         { status: 200 }
       )
     }
 
-    return NextResponse.json(detections, { status: 200 })
+    return Response.json(data)
+
   } catch (err: unknown) {
-    if (err instanceof Error && err.name === 'TimeoutError') {
-      return NextResponse.json(
-        { error: 'Detection request timed out after 150 seconds.' },
+    if (err instanceof Error && err.name === 'AbortError') {
+      return Response.json(
+        { error: 'Detection timed out after 150 seconds — try again or mark manually.' },
         { status: 504 }
       )
     }
-    const message = err instanceof Error ? err.message : 'Detection request failed'
-    return NextResponse.json({ error: message }, { status: 500 })
+    console.error('PROXY UNEXPECTED ERROR:', err)
+    return Response.json({ error: 'Unexpected error in detection proxy.' }, { status: 500 })
   }
 }
