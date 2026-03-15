@@ -412,7 +412,7 @@ export default function UploadPage() {
         duration: clipMeta[i]?.duration || 0,
         thumbnailUrl: clipMeta[i]?.thumbnail || null,
         blobUrl: clipMeta[i]?.blobUrl || (() => { try { return URL.createObjectURL(file); } catch { return ""; } })(),
-        url: cloudinaryUrl, // Cloudinary URL — required for server-side detection and Creatomate
+        url: cloudinaryUrl, // Cloudinary URL — required for server-side detection and Remotion render
         playType:     cls.playType,
         qualityScore: cls.qualityScore,
         confidence:   cls.confidence,

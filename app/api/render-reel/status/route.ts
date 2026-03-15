@@ -1,29 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getRenderStatus, isCreatomateConfigured } from "@/lib/creatomateService";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-// GET /api/render-reel/status?renderId=xxx
-// Returns current render status from Creatomate.
-// Poll this every 3–5 seconds until status is "succeeded" or "failed".
+// GET /api/render-reel/status?jobId=xxx
+// Proxies to the Remotion render server status endpoint.
+// Returns: {status: 'rendering:45'} | {status: 'succeeded', url: '...'} | {status: 'failed', error: '...'}
 export async function GET(req: NextRequest) {
-  if (!isCreatomateConfigured()) {
-    return NextResponse.json({ error: "CREATOMATE_API_KEY not configured" }, { status: 503 });
-  }
+  const RENDER_SERVER = process.env.RENDER_SERVER_URL;
+  const jobId = req.nextUrl.searchParams.get("jobId");
 
-  const renderId = req.nextUrl.searchParams.get("renderId");
-  if (!renderId) {
-    return NextResponse.json({ error: "renderId is required" }, { status: 400 });
+  if (!RENDER_SERVER) {
+    return NextResponse.json({ error: "RENDER_SERVER_URL not configured" }, { status: 500 });
+  }
+  if (!jobId) {
+    return NextResponse.json({ error: "jobId is required" }, { status: 400 });
   }
 
   try {
-    const status = await getRenderStatus(renderId);
-    return NextResponse.json(status);
+    const response = await fetch(`${RENDER_SERVER}/status/${jobId}`);
+    const data = await response.json();
+    return NextResponse.json(data, { status: response.status });
   } catch (err) {
-    console.error("[render-reel/status] error:", err);
+    console.error("[render-reel/status] Render server unreachable:", err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Status fetch failed" },
-      { status: 500 }
+      { error: "Render server unreachable" },
+      { status: 502 }
     );
   }
 }

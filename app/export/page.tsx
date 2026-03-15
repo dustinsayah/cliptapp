@@ -281,7 +281,7 @@ async function drawRecruitingCard(info: TitleInfo, accentHex: string, renderUrl?
     ctx.restore();
   });
 
-  // QR code — points to renderUrl (Creatomate MP4) if available, else cliptapp.com
+  // QR code — points to renderUrl (server-rendered MP4) if available, else cliptapp.com
   const qrTarget = renderUrl || "https://cliptapp.com";
   try {
     const qrDataUrl = await QRCode.toDataURL(qrTarget, {
@@ -1614,7 +1614,7 @@ export default function ExportPage() {
   const [showSuccess, setShowSuccess] = useState(false);
   const successTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Creatomate server-side rendering state
+  // Server-side rendering state (Remotion render server)
   const [creatomatAvailable, setCreatomatAvailable] = useState(false);
   const [isCreatomateRender, setIsCreatomateRender] = useState(false);
   const [renderUrl, setRenderUrl] = useState<string | null>(null);
@@ -1705,7 +1705,7 @@ export default function ExportPage() {
       setSpotlightStyleSetting(sp || "none");
       if (Array.isArray(s.clips)) setClipCountSetting(s.clips.length);
     } catch {}
-    // Check if Creatomate server rendering is configured
+    // Check if Remotion render server is configured
     fetch("/api/render-reel")
       .then((r) => r.json())
       .then((d) => { if (d?.configured) setCreatomatAvailable(true); })
@@ -1790,11 +1790,12 @@ export default function ExportPage() {
   };
 
   const startActualBuild = async (forceSocial?: boolean) => {
+    // Prefer server-side Remotion render when available; fall back to browser canvas
     if (creatomatAvailable) { await doCreatomateBuild(forceSocial); return; }
     await doBuild(forceSocial);
   };
 
-  // ── Creatomate server-side render flow ──────────────────────────────────────
+  // ── Server-side render flow (Remotion render server on Railway) ─────────────
   const doCreatomateBuild = async (forceSocial?: boolean) => {
     setDurationModal(false);
     abortRef.current = false;
@@ -1839,7 +1840,7 @@ export default function ExportPage() {
       setErrMsg("No clips found — go back and upload your clips first."); setPhase("error"); setIsCreatomateRender(false); return;
     }
 
-    // Upload clips to Cloudinary so Creatomate can access them
+    // Upload clips to Cloudinary so the render server can access them
     let publicUrls: string[];
     try {
       const { uploadClipsToCloudinary } = await import("@/lib/cloudinaryUpload");
@@ -1980,12 +1981,12 @@ export default function ExportPage() {
       athleteName: `${renderPayload.titleCard?.firstName || ""} ${renderPayload.titleCard?.lastName || ""}`.trim(),
     }, null, 2));
 
-    // Start Creatomate render
+    // Start server render (Remotion)
     setPhase("processing");
     setStep("Starting render job...");
     setPct(36);
 
-    let renderId: string;
+    let jobId: string;
     try {
       const resp = await fetch("/api/render-reel", {
         method: "POST",
@@ -1993,10 +1994,10 @@ export default function ExportPage() {
         body: JSON.stringify(renderPayload),
       });
       const data = await resp.json();
-      if (!resp.ok || !data.renderId) {
+      if (!resp.ok || !data.jobId) {
         throw new Error(data.error || "Render start failed");
       }
-      renderId = data.renderId;
+      jobId = data.jobId;
     } catch (startErr) {
       setErrMsg(startErr instanceof Error ? startErr.message : "Render failed — try again");
       setPhase("error"); setIsCreatomateRender(false); return;
@@ -2004,19 +2005,18 @@ export default function ExportPage() {
 
     if (abortRef.current) { setPhase("idle"); setIsCreatomateRender(false); return; }
 
-    // Sequential progress messages — mapped to render progress % bands
-    const RENDER_MESSAGES: Array<{ maxPct: number; text: string }> = [
-      { maxPct: 10,  text: "Starting render job..." },
-      { maxPct: 25,  text: "Loading your clips onto the server..." },
-      { maxPct: 40,  text: "Building title card and intro..." },
-      { maxPct: 70,  text: "Processing clips and transitions..." },
-      { maxPct: 85,  text: "Adding music and mixing audio..." },
-      { maxPct: 95,  text: "Encoding final MP4..." },
-      { maxPct: 100, text: "Almost done — finalizing..." },
-    ];
+    // Progress messages by elapsed time
+    const getProgressMsg = (elapsedSec: number): string => {
+      if (elapsedSec <  15) return "Building your title card...";
+      if (elapsedSec <  30) return "Processing your clips...";
+      if (elapsedSec <  45) return "Adding spotlight circles...";
+      if (elapsedSec <  60) return "Mixing your music...";
+      if (elapsedSec <  90) return "Finalizing your reel...";
+      return "Almost done — this is a big reel...";
+    };
 
     // Poll for render completion — 4s initially, 8s after 2 minutes
-    setStep("Starting render job...");
+    setStep("Building your title card...");
     const renderStartTime = Date.now();
     let slowPoll = false;
 
@@ -2032,33 +2032,38 @@ export default function ExportPage() {
         setPhase("idle"); setIsCreatomateRender(false); return;
       }
       try {
-        const resp = await fetch(`/api/render-reel/status?renderId=${renderId}`);
+        const resp = await fetch(`/api/render-reel/status?jobId=${jobId}`);
         const status = await resp.json();
 
         const elapsedSec = Math.round((Date.now() - renderStartTime) / 1000);
 
-        if (status.status === "rendering" || status.status === "waiting" || status.status === "planned") {
-          // Animate progress 36–90% while rendering
-          const renderPct = Math.min(99, Math.round((elapsedSec / 300) * 100));
-          const animPct   = Math.min(90, 36 + Math.round((elapsedSec / 300) * 54));
-          const msg = RENDER_MESSAGES.find(m => renderPct < m.maxPct)?.text ?? "Almost done — finalizing...";
+        // New render server status format: 'rendering', 'rendering:45', 'succeeded', 'failed'
+        const rawStatus = status.status as string;
+
+        if (rawStatus === "rendering" || rawStatus?.startsWith("rendering:")) {
+          // Extract percentage if present (e.g. "rendering:45")
+          const pctMatch = rawStatus.match(/rendering:(\d+)/);
+          const serverPct = pctMatch ? parseInt(pctMatch[1], 10) : 0;
+          // Blend server % (36–95) with time-based animation
+          const timePct  = Math.min(90, 36 + Math.round((elapsedSec / 300) * 54));
+          const animPct  = serverPct > 0 ? Math.min(95, 36 + Math.round(serverPct * 0.59)) : timePct;
           setPct(animPct);
-          setStep(msg);
-          schedulePoll(); // reschedule next check
-        } else if (status.status === "succeeded" && status.url) {
+          setStep(getProgressMsg(elapsedSec));
+          schedulePoll();
+        } else if (rawStatus === "succeeded" && status.url) {
           if (creatomatePollRef.current) clearTimeout(creatomatePollRef.current as unknown as ReturnType<typeof setTimeout>);
           setPct(100);
           setRenderUrl(status.url);
           // Optional Supabase save — if there's an AI job in progress, update it
           try {
-            const jobId = localStorage.getItem("currentJobId");
-            if (jobId) {
+            const aiJobId = localStorage.getItem("currentJobId");
+            if (aiJobId) {
               const { createClient } = await import("@supabase/supabase-js");
               const sb = createClient(
                 process.env.NEXT_PUBLIC_SUPABASE_URL!,
                 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
               );
-              sb.from("processing_jobs").update({ reel_url: status.url }).eq("id", jobId).then(() => {});
+              sb.from("processing_jobs").update({ reel_url: status.url }).eq("id", aiJobId).then(() => {});
             }
           } catch { /* non-fatal */ }
           const builtTrack = settingsMusicId || musicTrackId;
@@ -2069,15 +2074,15 @@ export default function ExportPage() {
             setShowSuccess(true);
             successTimer.current = setTimeout(() => setShowSuccess(false), 4000);
           }, 400);
-        } else if (status.status === "failed") {
+        } else if (rawStatus === "failed") {
           if (creatomatePollRef.current) clearTimeout(creatomatePollRef.current as unknown as ReturnType<typeof setTimeout>);
-          setErrMsg(status.error_message || "Server render failed — try again");
+          setErrMsg(status.error || "Server render failed — try again");
           setPhase("error"); setIsCreatomateRender(false);
         } else {
           schedulePoll(); // unknown status — keep polling
         }
       } catch (pollErr) {
-        console.warn("[Creatomate poll] error:", pollErr);
+        console.warn("[server render poll] error:", pollErr);
         schedulePoll(); // retry on network error
       }
     };
@@ -2383,7 +2388,7 @@ export default function ExportPage() {
 
   const handlePrimaryDownload = () => {
     if (renderUrl) {
-      // Creatomate MP4 — direct link, works on every device including iOS
+      // Server-rendered MP4 — direct Cloudinary link, works on every device including iOS
       triggerDownload(renderUrl, `${baseName}-reel.mp4`);
       return;
     }
@@ -2602,7 +2607,7 @@ export default function ExportPage() {
             </div>
           )}
 
-          {/* Creatomate availability badge */}
+          {/* Server render availability badge */}
           {phase === "idle" && creatomatAvailable && (
             <div className="flex items-center gap-2 text-[10px] font-bold rounded-lg px-3 py-2"
               style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)", color: "#22C55E" }}>
@@ -2707,7 +2712,7 @@ export default function ExportPage() {
               {isCreatomateRender && (
                 <div className="flex items-center gap-2 text-[10px] text-slate-400 px-3 py-2 rounded-lg" style={{ background: "rgba(0,163,255,0.06)", border: "1px solid rgba(0,163,255,0.15)" }}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#00A3FF" strokeWidth="2.5" strokeLinecap="round" className="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
-                  <span>Rendering MP4 with music on Creatomate servers...</span>
+                  <span>Rendering MP4 with music on Remotion render server...</span>
                 </div>
               )}
               <div className="flex items-center justify-between">

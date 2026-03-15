@@ -168,7 +168,7 @@ export default function AdminPage() {
   const [apiTestResult,  setApiTestResult]  = useState<{ ok: boolean; message: string } | null>(null);
   const [apiTesting,     setApiTesting]     = useState(false);
 
-  // ── Creatomate test ───────────────────────────────────────────────────────
+  // ── Render server test (Remotion) ─────────────────────────────────────────
   const [creatTestLoading, setCreatTestLoading] = useState(false);
   const [creatTestRenderId, setCreatTestRenderId] = useState<string | null>(null);
   const [creatTestStatus, setCreatTestStatus] = useState<string>("");
@@ -195,7 +195,14 @@ export default function AdminPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          reelInput: {
+          clips: [{
+            url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+            duration: 15,
+            trimStart: 0,
+            markX: 50,
+            markY: 38,
+          }],
+          titleCard: {
             firstName: "Marcus",
             jerseyNumber: "23",
             sport: "Basketball",
@@ -203,39 +210,38 @@ export default function AdminPage() {
             position: "Point Guard",
             gradYear: "2026",
             email: "marcus@example.com",
-            statsData: { "PPG": "24.5", "APG": "7.2", "RPG": "5.8" },
-            accentHex: "#00A3FF",
-            // Public sample clip for testing (15-second Google storage video)
-            clipUrls: ["https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"],
-            musicUrl: "https://assets.mixkit.co/music/370/370.mp3",
-            width: 1280,
-            height: 720,
-            transitionStyle: "Hard Cut",
+          },
+          stats: { "PPG": "24.5", "APG": "7.2", "RPG": "5.8" },
+          settings: {
+            colorAccent: "#00A3FF",
+            spotlightStyle: "circle",
+            statsEnabled: true,
           },
         }),
       });
 
       const data = await resp.json();
-      if (!resp.ok || !data.renderId) {
+      if (!resp.ok || !data.jobId) {
         setCreatTestError(data.error || "Render start failed");
         setCreatTestLoading(false); return;
       }
 
-      setCreatTestRenderId(data.renderId);
+      setCreatTestRenderId(data.jobId);
       setCreatTestStatus("rendering...");
 
       creatPollRef.current = setInterval(async () => {
         try {
-          const sResp = await fetch(`/api/render-reel/status?renderId=${data.renderId}`);
+          const sResp = await fetch(`/api/render-reel/status?jobId=${data.jobId}`);
           const status = await sResp.json();
-          setCreatTestStatus(status.status);
-          if (status.status === "succeeded") {
+          const rawStatus = status.status as string;
+          setCreatTestStatus(rawStatus);
+          if (rawStatus === "succeeded") {
             clearInterval(creatPollRef.current!);
             setCreatTestUrl(status.url);
             setCreatTestLoading(false);
-          } else if (status.status === "failed") {
+          } else if (rawStatus === "failed") {
             clearInterval(creatPollRef.current!);
-            setCreatTestError(status.error_message || "Render failed");
+            setCreatTestError(status.error || "Render failed");
             setCreatTestLoading(false);
           }
         } catch { /* ignore poll errors */ }
@@ -1038,12 +1044,12 @@ export default function AdminPage() {
           </div>
         </section>
 
-        {/* ── Creatomate Server Rendering Test ── */}
+        {/* ── Remotion Render Server Test ── */}
         <section className="rounded-2xl overflow-hidden" style={{ background: "#0A1628", border: "1px solid rgba(0,163,255,0.15)" }}>
           <div className="px-6 py-5 border-b border-white/[0.05] flex items-center justify-between">
             <div>
-              <h2 className="text-base font-black text-white">Test Creatomate Render</h2>
-              <p className="text-slate-500 text-xs mt-0.5">Submits a real render job to Creatomate servers — outputs a downloadable MP4 with music</p>
+              <h2 className="text-base font-black text-white">Test Remotion Render Server</h2>
+              <p className="text-slate-500 text-xs mt-0.5">Submits a real render job to the Remotion render server on Railway — outputs a downloadable MP4</p>
             </div>
             <div className="flex items-center gap-2">
               {creatConfigured === true && (
@@ -1053,14 +1059,14 @@ export default function AdminPage() {
               )}
               {creatConfigured === false && (
                 <span className="px-3 py-1 rounded-full text-xs font-bold" style={{ background: "rgba(239,68,68,0.1)", color: "#EF4444", border: "1px solid rgba(239,68,68,0.25)" }}>
-                  ✗ CREATOMATE_API_KEY not set
+                  ✗ RENDER_SERVER_URL not set
                 </span>
               )}
             </div>
           </div>
           <div className="p-6">
             <p className="text-xs text-slate-500 mb-4">
-              Uses a public sample video clip with test player data (Marcus #23 · Basketball · Lincoln High). Renders at 1280×720 to minimize credits used. Set <code className="text-slate-400">CREATOMATE_API_KEY</code> in your <code className="text-slate-400">.env.local</code> to enable.
+              Uses a public sample video clip with test player data (Marcus #23 · Basketball · Lincoln High). Set <code className="text-slate-400">RENDER_SERVER_URL</code> in your <code className="text-slate-400">.env.local</code> to enable.
             </p>
 
             <div className="flex flex-wrap items-center gap-3 mb-4">
@@ -1074,7 +1080,7 @@ export default function AdminPage() {
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
                     Rendering...
                   </span>
-                ) : "Test Creatomate Render"}
+                ) : "Test Remotion Render"}
               </button>
 
               {creatTestRenderId && (

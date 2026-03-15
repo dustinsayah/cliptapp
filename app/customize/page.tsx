@@ -159,7 +159,7 @@ const labelStyle = {
 };
 
 // ── Live Preview: Stats Card ──────────────────────────────────────────────────
-// Matches Creatomate layout: 3×3 grid, x 18%/50%/82%, values y 40%/60%/80%, labels y 47%/67%/87%
+// Matches Remotion layout: 3×3 grid, x 18%/50%/82%, values y 40%/60%/80%, labels y 47%/67%/87%
 
 interface StatsCardPreviewProps {
   statsData: Record<string, string>;
@@ -176,7 +176,7 @@ function StatsCardPreview({ statsData, sport, position, accentHex, firstName, la
   const show   = filled.slice(0, 9); // max 9 (3×3 grid)
   const fullName = [firstName, lastName].filter(Boolean).join(" ").toUpperCase() || "ATHLETE NAME";
 
-  // 3 columns × 3 rows matching Creatomate x 18%/50%/82%, value y 40%/60%/80%
+  // 3 columns × 3 rows matching Remotion x 18%/50%/82%, value y 40%/60%/80%
   const colPositions = ["18%", "50%", "82%"];
   const rowValPositions = ["40%", "60%", "80%"];
   const rowLblPositions = ["47%", "67%", "87%"];
@@ -187,13 +187,13 @@ function StatsCardPreview({ statsData, sport, position, accentHex, firstName, la
       <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "1.5%", background: accentHex }} />
       <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: "1.5%", background: accentHex }} />
 
-      {/* Header — y 14% matches Creatomate */}
+      {/* Header — y 14% matches Remotion */}
       <div style={{ position: "absolute", top: "14%", left: "50%", transform: "translate(-50%, -50%)", textAlign: "center" as const, width: "90%" }}>
         <div style={{ fontSize: "clamp(5px, 1.2vw, 10px)", color: accentHex, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.1em" }}>
           SEASON STATS
         </div>
       </div>
-      {/* Athlete name — y 24% matches Creatomate */}
+      {/* Athlete name — y 24% matches Remotion */}
       <div style={{ position: "absolute", top: "24%", left: "50%", transform: "translate(-50%, -50%)", textAlign: "center" as const, width: "90%" }}>
         <div style={{ fontSize: "clamp(6px, 1.8vw, 16px)", fontWeight: 700, color: "#FFFFFF", fontFamily: "Oswald, sans-serif" }}>
           {fullName}

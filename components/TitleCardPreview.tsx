@@ -27,9 +27,9 @@ export interface TitleCardPreviewProps {
 
 // ── TitleCardPreview ──────────────────────────────────────────────────────────
 //
-// Pixel-for-pixel match of the Creatomate title card layout.
+// Pixel-for-pixel match of the Remotion title card layout.
 // All positions are expressed as percentage of the 16:9 container — matching
-// the exact x/y/width values used in buildReelSource().
+// the exact x/y/width values used in ReelComposition.tsx.
 //
 // Left half (0–50%): athlete identity, left-anchored at x 8%
 // Right half (52–100%): SEASON STATS + 2×2 stat grid
@@ -72,7 +72,7 @@ export function TitleCardPreview({
     ? Object.entries(statsData).filter(([, v]) => v?.trim()).slice(0, 4)
     : [];
 
-  // Stat positions match Creatomate exactly (% of full 1920×1080 frame):
+  // Stat positions match Remotion layout exactly (% of full 1920×1080 frame):
   //   Top-left  value: x 63%, y 45%  — label: y 53%
   //   Top-right value: x 83%, y 45%  — label: y 53%
   //   Bot-left  value: x 63%, y 65%  — label: y 73%
@@ -94,7 +94,7 @@ export function TitleCardPreview({
       fontFamily: "Inter, sans-serif",
       border: `1px solid ${accentColor}25`,
     }}>
-      {/* Top accent bar — matches Creatomate 20px / 1080 ≈ 1.85% */}
+      {/* Top accent bar — matches Remotion 20px / 1080 ≈ 1.85% */}
       <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "1.85%", background: accentColor }} />
       {/* Bottom accent bar */}
       <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: "1.85%", background: accentColor }} />
@@ -276,7 +276,7 @@ export function TitleCardPreview({
             SEASON STATS
           </div>
 
-          {/* Stat cells — positioned at Creatomate x/y coordinates */}
+          {/* Stat cells — positioned at Remotion x/y coordinates */}
           {statEntries.map(([label, value], idx) => {
             const pos = statPositions[idx];
             if (!pos) return null;
