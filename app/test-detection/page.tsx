@@ -273,8 +273,12 @@ export default function TestDetectionPage() {
                 type="text"
                 value={jerseyColor}
                 onChange={(e) => setJerseyColor(e.target.value)}
-                placeholder="e.g. white, red, navy blue"
+                placeholder="e.g. blue, #0000FF, navy"
               />
+              <p style={{ color: "#6B7280", fontSize: 11, margin: "6px 0 0", lineHeight: 1.5 }}>
+                Named: white, black, grey, red, scarlet, maroon, orange, yellow, gold, green, teal, cyan, blue, royal blue, navy, purple, violet, pink, magenta
+                <br />Also accepts CSS color names or hex like <code style={{ color: "#9CA3AF" }}>#FFD700</code>
+              </p>
             </div>
           </div>
 
@@ -287,20 +291,26 @@ export default function TestDetectionPage() {
                 value={sport}
                 onChange={(e) => setSport(e.target.value)}
               >
-                <option value="basketball">Basketball</option>
-                <option value="football">Football</option>
-                <option value="lacrosse">Lacrosse</option>
+                <option value="basketball">basketball</option>
+                <option value="football">football</option>
+                <option value="lacrosse">lacrosse</option>
               </select>
+              <p style={{ color: "#6B7280", fontSize: 11, margin: "6px 0 0" }}>
+                Valid: basketball · football · lacrosse
+              </p>
             </div>
             <div>
-              <label style={LABEL}>Position</label>
+              <label style={LABEL}>Position <span style={{ color: "#4B5563", fontWeight: 400 }}>(optional)</span></label>
               <input
                 style={INPUT}
                 type="text"
                 value={position}
                 onChange={(e) => setPosition(e.target.value)}
-                placeholder="e.g. guard, quarterback (optional)"
+                placeholder="guard / quarterback / midfielder"
               />
+              <p style={{ color: "#6B7280", fontSize: 11, margin: "6px 0 0" }}>
+                Tuned priors: basketball→guard · football→quarterback · lacrosse→midfielder
+              </p>
             </div>
           </div>
 

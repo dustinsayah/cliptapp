@@ -1,87 +1,72 @@
-export async function POST(request: Request) {
-  const RAILWAY_URL = process.env.JERSEY_DETECTION_API_URL
-  if (!RAILWAY_URL) {
-    return Response.json({ error: 'Missing environment variable: JERSEY_DETECTION_API_URL' }, { status: 500 })
+import { NextRequest, NextResponse } from "next/server";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const maxDuration = 300;
+
+// Env var in this project is JERSEY_DETECTION_API_URL (set in Vercel + .env.local)
+const UPSTREAM_URL = process.env.JERSEY_DETECTION_API_URL;
+
+export async function POST(request: NextRequest) {
+  if (!UPSTREAM_URL) {
+    return NextResponse.json(
+      { error: "Missing JERSEY_DETECTION_API_URL" },
+      { status: 500 }
+    );
   }
 
-  let body: Record<string, unknown>
+  let body: unknown;
   try {
-    body = await request.json()
+    body = await request.json();
   } catch {
-    return Response.json({ error: 'Invalid JSON body.' }, { status: 400 })
+    return NextResponse.json(
+      { error: "Invalid JSON body" },
+      { status: 400 }
+    );
   }
 
-  const { videoUrl, jerseyNumber, jerseyColor, sport, position } = body
-
-  console.log('PROXY RECEIVED FROM FRONTEND:', JSON.stringify({
-    videoUrl: typeof videoUrl === 'string' ? videoUrl.slice(-40) : videoUrl,
-    jerseyNumber,
-    jerseyNumberType: typeof jerseyNumber,
-    jerseyColor,
-    sport,
-    position,
-  }))
-
-  if (!videoUrl) {
-    return Response.json({ error: 'videoUrl is required' }, { status: 400 })
-  }
-
-  const railwayPayload: Record<string, unknown> = {
-    videoUrl,
-    jerseyNumber: Number(jerseyNumber),
-    jerseyColor: jerseyColor || 'white',
-    sport: sport || 'basketball',
-  }
-  if (position && typeof position === 'string' && position.trim() !== '') {
-    railwayPayload.position = position.trim()
-  }
-
-  console.log('PROXY FORWARDING TO RAILWAY:', JSON.stringify(railwayPayload))
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 180_000);
 
   try {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 150000)
-
-    const railwayResponse = await fetch(`${RAILWAY_URL}/detect`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(railwayPayload),
+    const upstream = await fetch(`${UPSTREAM_URL}/detect`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
       signal: controller.signal,
-    })
+      cache: "no-store",
+    });
 
-    clearTimeout(timeout)
-
-    console.log('PROXY RAILWAY RESPONSE STATUS:', railwayResponse.status)
-
-    if (!railwayResponse.ok) {
-      const errorText = await railwayResponse.text().catch(() => 'unknown')
-      console.error('PROXY RAILWAY ERROR:', railwayResponse.status, errorText.slice(0, 300))
-      return Response.json(
-        { error: `Detection API returned ${railwayResponse.status}` },
-        { status: railwayResponse.status }
-      )
+    const text = await upstream.text();
+    let data: unknown = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = { error: "Upstream returned a non-JSON response", raw: text };
     }
 
-    const data: unknown = await railwayResponse.json()
-    console.log('PROXY RAILWAY DATA:', JSON.stringify(data).slice(0, 300))
+    return NextResponse.json(data, {
+      status: upstream.status,
+      headers: {
+        "Cache-Control": "no-store",
+      },
+    });
+  } catch (error) {
+    const isAbort =
+      error instanceof Error &&
+      (error.name === "AbortError" || error.message.includes("aborted"));
 
-    if (!Array.isArray(data) || data.length === 0) {
-      return Response.json(
-        { error: 'No detections found — jersey not detected in this clip.' },
-        { status: 200 }
-      )
-    }
-
-    return Response.json(data)
-
-  } catch (err: unknown) {
-    if (err instanceof Error && err.name === 'AbortError') {
-      return Response.json(
-        { error: 'Detection timed out after 150 seconds — try again or mark manually.' },
-        { status: 504 }
-      )
-    }
-    console.error('PROXY UNEXPECTED ERROR:', err)
-    return Response.json({ error: 'Unexpected error in detection proxy.' }, { status: 500 })
+    return NextResponse.json(
+      {
+        error: isAbort
+          ? "Detection request timed out while waiting for the upstream API"
+          : "Failed to reach detection API",
+      },
+      { status: 504 }
+    );
+  } finally {
+    clearTimeout(timeout);
   }
 }
